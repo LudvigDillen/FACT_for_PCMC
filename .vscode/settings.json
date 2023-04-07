@@ -1,0 +1,15 @@
+{
+    "python.pythonPath": "/home/luddi824/sw/miniconda3/envs/PCAC/bin/python3.9",
+    "python.linting.pycodestyleEnabled": true,
+    "editor.formatOnSave": true,
+    "python.formatting.autopep8Path": "/home/luddi824/sw/miniconda3/envs/PCAC/bin/autopep8",
+    "python.formatting.provider": "autopep8",
+    "python.formatting.autopep8Args": [
+        "--max-line-length",
+        "110",
+        "--experimental"
+    ],
+    "python.linting.pycodestyleArgs": [
+        "--max-line-length=110"
+    ],
+}
