@@ -1,6 +1,7 @@
 # Create developing environment
 conda create -n PCAC python=3.9.12
 conda activate PCAC
+pip install autopep8
 conda install pytorch torchvision torchaudio pytorch-cuda=11.7 -c pytorch -c nvidia
 
 # Get data
