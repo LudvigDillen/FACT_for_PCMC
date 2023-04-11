@@ -15,6 +15,7 @@ def main():
 
     # Get the token to the first sample in the first scene
     token0 = nusc.scene[0]['first_sample_token']
+    print("cuda available:", torch.cuda.is_available())
 
     # Get the token for the LIDAR_TOP sensor in the first sample
     lidar_token0 = nusc.get('sample', token0)['data']['LIDAR_TOP']
@@ -64,11 +65,12 @@ def main():
     pc1 = torch.from_numpy(second_pc_xyz)
 
     # Calculate differential entropy
+    T0 = transformation_matrix(rot_pc0, trans_pc0)
+    T1 = transformation_matrix(rot_pc1, trans_pc1)
+
     result = differential_entropy_metric(pc0, pc1)
     print(f"Differential entropy before alignment: {result}")
 
-    T0 = transformation_matrix(rot_pc0, trans_pc0)
-    T1 = transformation_matrix(rot_pc1, trans_pc1)
     T1_upd = convert_to_same_coordinate_system(T0, T1)
     # TODO: Not sure I want this T1_upd above. I just want to align the two point clouds I have
     # with the know true transformation.

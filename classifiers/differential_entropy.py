@@ -42,19 +42,29 @@ def differential_entropy(pc: torch.Tensor) -> float:
     Returns:
     float: The entropy the point cloud.
     """
+    dim_distribution = pc.shape[0]
+    assert dim_distribution == 3, "Expected 3-dim distribution"
     N_points = pc.shape[1]
     # TODO: set it dynamically later (I Put it to 0.1 to make it go faster)
     # but if not run dynamically, it should rather be 0.5 but it goes slower.
     r = 0.1  # radius
 
-    pi2e = 2*torch.tensor(np.pi)*torch.exp(torch.tensor(1))
-    H = 0  # accumulating differential entropy
+    scaler = (2*torch.tensor(np.pi)*torch.exp(torch.tensor(1)))**dim_distribution  # (2pi*e)^dim_distribution
+
+    # TODO: Is this necessary? Is cuda available now?
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    pc = pc.to(device)
+
+    H = torch.zeros(1, device=device)
+
+    # TODO: Can I do this in faster way without the for loop?
     for k in range(N_points):
         pk = torch.unsqueeze(pc[:, k], dim=1)
         # Euclidean distance from key point to all other points in point cloud
-        dists = torch.norm(pc-pk, p=2, dim=0)
+        dists = torch.norm(pc-pk, p=2, dim=0)  # this is the slowest operation in the loop it seems
         neighboorhood_points = pc[:, dists < r]
         nk = neighboorhood_points.shape[1]  # the number of neighboring points
+
         assert nk >= 1, "ERROR"
         if nk == 1:  # there is no neighboring point
             # TODO: How to solve when there is no neighboring point,
@@ -65,17 +75,19 @@ def differential_entropy(pc: torch.Tensor) -> float:
             Sigma = torch.cov(neighboorhood_points)
             epsilon = torch.tensor(10**(-8))  # Some offset to make sure not taking log of zero
             det = torch.linalg.det(Sigma)
-            if det < -0.0001:
-                print(det)
-            print(det)
-            hpk = nk/2*torch.log(pi2e) + 1/2*torch.log(det+epsilon)
-        if torch.isinf(hpk):
-            print("something wrong")
+            hpk = 1/2*torch.log(scaler*det + epsilon)
+            # alfa 1.33 vertical angular resolution
         H = H + hpk
         if k % 100 == 0:
             print("Iteration: ", k)
 
     # TODO: Implement the entropy calculation based on the method described in the paper.
+    # 1. Implement r as function of distance to sensor (how to handle multiple sensors,
+    #                                                   average distance to the two sensors perhaps)
+    # See LaTex
+    # 2. Reject point with the lowest entropy
+    # TODO: Check speed of above when cuda is available. Can we make the above faster? They
+    # got it down to 0.246 seconds on a Intel Core i7 processor (but they used voxels and stuff)
     # TODO: Double check! Make look nicer! Did not implement all details.
 
     return H
