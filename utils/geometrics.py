@@ -1,4 +1,5 @@
 import numpy as np
+import torch
 
 
 def rot2quat(R):
@@ -60,33 +61,46 @@ def transformation_matrix(quaternion, translation):
     return transformation_matrix
 
 
-def convert_to_same_coordinate_system(T0, T1):
+def align_point_clouds(pc1: torch.Tensor, T0: torch.Tensor, T1: torch.Tensor) -> torch.Tensor:
     """
-    Convert two 4x4 transformation matrices to the same coordinate system with the first
-    transformation matrix in the origin.
+    Aligns two 3D point clouds and their corresponding transformation matrices to a common coordinate system.
 
-    Args:
-        T0 (numpy.ndarray): The first 4x4 transformation matrix (base coordinate system).
-        T1 (numpy.ndarray): The second 4x4 transformation matrix.
+    :param pc1: A point cloud represented as a 3xM Tensor (3 coordinates x M points).
+    :type pc1: torch.Tensor
 
-    Returns:
-        numpy.ndarray: The transformed second matrix in the same coordinate system as the first one.
+    :param T0: A 4x4 transformation matrix corresponding to the first point cloud.
+    :type T0: torch.Tensor
 
-    Raises:
-        ValueError: If the input matrices are not 4x4 or if the first matrix is not invertible.
+    :param T1: A 4x4 transformation matrix corresponding to the second point cloud.
+    :type T1: torch.Tensor
+
+    :return: aligned point cloud
+    :rtype: torch.Tensor
     """
-    # Check if the matrices are 4x4
-    if T0.shape != (4, 4) or T1.shape != (4, 4):
-        raise ValueError("Both input matrices must be 4x4")
+    # Ensure input tensors have the correct dimensions
+    assert pc1.dim() == 2 and pc1.size(0) == 3, "pc2 must be a 3xM Tensor"
+    assert T0.dim() == 2 and T0.size(0) == 4 and T0.size(1) == 4, "T1 must be a 4x4 Tensor"
+    assert T1.dim() == 2 and T1.size(0) == 4 and T1.size(1) == 4, "T2 must be a 4x4 Tensor"
 
-    T0_inv = np.eye(4)
-    T0_inv[:3, :3] = T0[:3, :3].T
-    T0_inv[:3, 3] = -T0[:3, :3].T@T0[:3, 3]
+    # Step 1: Compute the inverse of the first transformation matrix
+    T0_inv = torch.inverse(T0)
 
-    # Compute the inverse of the first matrix
-    assert np.allclose(T0_inv, np.linalg.inv(T0)), "Error"
+    # T0_inv = torch.eye(4, dtype=torch.float64)
+    # T0_inv[:3, :3] = T0[:3, :3].T
+    # T0_inv[:3, 3] = -T0[:3, :3].T@T0[:3, 3]
 
-    # Convert the second matrix to the same coordinate system as the first
-    transformed_T1 = T0_inv@T1
+    # assert torch.isclose(T0_inv, T0_inv_other).all(), "They should be equal"
 
-    return transformed_T1
+    # Step 2: Compute the transformation matrix to align both point clouds
+    T_align = T0_inv@T1
+
+    # Step 3: Align the second point cloud with the first point cloud
+    pc1_homogeneous = torch.cat(
+        (pc1, torch.ones(1, pc1.size(1),
+                         dtype=pc1.dtype, device=pc1.device)),
+        dim=0)  # Convert to homogeneous coordinates
+
+    # point cloud in camera system 0
+    pc1_CS0 = (T_align@pc1_homogeneous)[:3]
+
+    return pc1_CS0
