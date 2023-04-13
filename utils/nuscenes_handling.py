@@ -10,23 +10,19 @@ class NuscenesHandling:
         self.nusc = nusc
         if lidar_token is None:
             self.first_token = self.get_first_token()
-            self.lidar_token = self.get_lidar_token(self.first_token)
+            self.lidar_token0 = self.get_lidar_token(self.first_token)
         else:
-            self.lidar_token = lidar_token
-        self.lidar_dict = self.get_lidar_dict()
+            self.lidar_token0 = lidar_token
 
         # Set info PC0
-        self.pc0_CS0 = self.get_point_cloud(self.lidar_token)
-        self.lidar_pose0 = self.get_sensor_pose_in_WCS()
+        self.pc0_CS0 = self.get_point_cloud(self.lidar_token0)
+        self.lidar_pose0 = self.get_sensor_pose_in_WCS(self.lidar_token0)
         self.point_distances0 = self.get_point_distances_to_origin(self.pc0_CS0)
 
         # Set info PC1
-        next_lidar_token = self.get_next_lidar_token()
-        self.lidar_token = next_lidar_token
-        self.lidar_dict = self.get_lidar_dict()
-
-        self.pc1_CS1 = self.get_point_cloud(self.lidar_token)
-        self.lidar_pose1 = self.get_sensor_pose_in_WCS()
+        self.lidar_token1 = self.get_next_lidar_token(self.lidar_token0)
+        self.pc1_CS1 = self.get_point_cloud(self.lidar_token1)
+        self.lidar_pose1 = self.get_sensor_pose_in_WCS(self.lidar_token1)
         self.point_distances1 = self.get_point_distances_to_origin(self.pc1_CS1)
 
     def get_first_token(self):
@@ -37,8 +33,8 @@ class NuscenesHandling:
         # Get the token for the LIDAR_TOP sensor in the first sample
         return self.nusc.get('sample', token)['data']['LIDAR_TOP']
 
-    def get_lidar_dict(self):
-        return self.nusc.get('sample_data', self.lidar_token)
+    def get_lidar_dict(self, lidar_token):
+        return self.nusc.get('sample_data', lidar_token)
 
     def get_point_cloud(self, lidar_token):
         # Load the point cloud xyz coordinates from the LIDAR binary file.
@@ -51,9 +47,10 @@ class NuscenesHandling:
     def get_point_distances_to_origin(self, pc):
         return torch.norm(pc, p=2, dim=0)
 
-    def get_sensor_pose_in_WCS(self):
+    def get_sensor_pose_in_WCS(self, lidar_token):
+        lidar_dict = self.get_lidar_dict(lidar_token)
         # Load ego vehicle pose (in WCS)
-        ego_pose = self.nusc.get('ego_pose', self.lidar_dict['ego_pose_token'])
+        ego_pose = self.nusc.get('ego_pose', lidar_dict['ego_pose_token'])
         # Get translation and rotation in of ego vehicle in WCS
         rotation_ego_vehicle = np.array(ego_pose['rotation'])
         translation_ego_vehicle = np.array(ego_pose['translation'])
@@ -62,7 +59,7 @@ class NuscenesHandling:
 
         # Get lidar pose in ego vehicle CS
         calibrated_sensor_dict = self.nusc.get(
-            'calibrated_sensor', self.lidar_dict['calibrated_sensor_token'])
+            'calibrated_sensor', lidar_dict['calibrated_sensor_token'])
         lidar_rotation_CS_ego_vehicle = np.array(calibrated_sensor_dict['rotation'])
         lidar_translation_CS_ego_vehicle = np.array(calibrated_sensor_dict['translation'])
         # Get transforomation matrix of lidar sensor (ego vechicle CS)
@@ -74,21 +71,6 @@ class NuscenesHandling:
         Ts_out = torch.from_numpy(Ts).to(torch.float64)
         return Ts_out
 
-    def get_next_lidar_token(self):
-        return self.lidar_dict['next']
-
-    def set_pc1_CS0(self, pc1_CS0):
-        self.pc1_CS0 = pc1_CS0
-
-    def set_union_distances(self):
-        self.union_distances = torch.cat((self.point_distances0, self.point_distances1))
-
-    def set_pc_union(self):
-        self.pc_union = torch.cat((self.pc0_CS0, self.pc1_CS0), dim=1)
-
-
-# class PCHandling:
-#     def __init__(self, pc, distances):
-#         self.pc = pc
-#         self.distances_to_origin = distances
-#         self.N_points = pc.shape[1]
+    def get_next_lidar_token(self, lidar_token):
+        lidar_dict = self.get_lidar_dict(lidar_token)
+        return lidar_dict['next']

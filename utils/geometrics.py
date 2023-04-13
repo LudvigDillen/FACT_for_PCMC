@@ -85,12 +85,6 @@ def align_point_clouds(pc1: torch.Tensor, T0: torch.Tensor, T1: torch.Tensor) ->
     # Step 1: Compute the inverse of the first transformation matrix
     T0_inv = torch.inverse(T0)
 
-    # T0_inv = torch.eye(4, dtype=torch.float64)
-    # T0_inv[:3, :3] = T0[:3, :3].T
-    # T0_inv[:3, 3] = -T0[:3, :3].T@T0[:3, 3]
-
-    # assert torch.isclose(T0_inv, T0_inv_other).all(), "They should be equal"
-
     # Step 2: Compute the transformation matrix to align both point clouds
     T_align = T0_inv@T1
 
@@ -99,8 +93,6 @@ def align_point_clouds(pc1: torch.Tensor, T0: torch.Tensor, T1: torch.Tensor) ->
         (pc1, torch.ones(1, pc1.size(1),
                          dtype=pc1.dtype, device=pc1.device)),
         dim=0)  # Convert to homogeneous coordinates
-
-    # point cloud in camera system 0
     pc1_CS0 = (T_align@pc1_homogeneous)[:3]
 
     return pc1_CS0
