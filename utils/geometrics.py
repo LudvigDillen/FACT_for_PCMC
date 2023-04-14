@@ -65,7 +65,7 @@ def align_point_clouds(pc1: torch.Tensor, T0: torch.Tensor, T1: torch.Tensor) ->
     """
     Aligns two 3D point clouds and their corresponding transformation matrices to a common coordinate system.
 
-    :param pc1: A point cloud represented as a 3xM Tensor (3 coordinates x M points).
+    :param pc1: A point cloud represented as a Mx3 Tensor (M points x 3 coordinates).
     :type pc1: torch.Tensor
 
     :param T0: A 4x4 transformation matrix corresponding to the first point cloud.
@@ -78,7 +78,7 @@ def align_point_clouds(pc1: torch.Tensor, T0: torch.Tensor, T1: torch.Tensor) ->
     :rtype: torch.Tensor
     """
     # Ensure input tensors have the correct dimensions
-    assert pc1.dim() == 2 and pc1.size(0) == 3, "pc2 must be a 3xM Tensor"
+    assert pc1.dim() == 2 and pc1.size(1) == 3, "pc2 must be a Mx3 Tensor"
     assert T0.dim() == 2 and T0.size(0) == 4 and T0.size(1) == 4, "T1 must be a 4x4 Tensor"
     assert T1.dim() == 2 and T1.size(0) == 4 and T1.size(1) == 4, "T2 must be a 4x4 Tensor"
 
@@ -89,10 +89,12 @@ def align_point_clouds(pc1: torch.Tensor, T0: torch.Tensor, T1: torch.Tensor) ->
     T_align = T0_inv@T1
 
     # Step 3: Align the second point cloud with the first point cloud
-    pc1_homogeneous = torch.cat(
-        (pc1, torch.ones(1, pc1.size(1),
-                         dtype=pc1.dtype, device=pc1.device)),
-        dim=0)  # Convert to homogeneous coordinates
-    pc1_CS0 = (T_align@pc1_homogeneous)[:3]
+    # Convert to homogeneous coordinates
+    pc1_homogeneous = torch.cat((pc1, torch.ones(pc1.size(0), 1, dtype=pc1.dtype, device=pc1.device)), dim=1)
+    pc1_homogeneous_swap = torch.swapaxes(pc1_homogeneous, 0, 1)
+    # Convert to homogeneous coordinates
+
+    pc1_CS0_swap = (T_align@pc1_homogeneous_swap)[:3]
+    pc1_CS0 = torch.swapaxes(pc1_CS0_swap, 0, 1)
 
     return pc1_CS0

@@ -6,7 +6,7 @@ from nuscenes.utils.data_classes import LidarPointCloud
 
 
 class NuscenesHandling:
-    def __init__(self, nusc, lidar_token=None):
+    def __init__(self, nusc, downsample_factor=1, lidar_token=None):
         self.nusc = nusc
         if lidar_token is None:
             self.first_token = self.get_first_token()
@@ -15,14 +15,24 @@ class NuscenesHandling:
             self.lidar_token0 = lidar_token
 
         # Set info PC0
-        self.pc0_CS0 = self.get_point_cloud(self.lidar_token0)
         self.lidar_pose0 = self.get_sensor_pose_in_WCS(self.lidar_token0)
+        self.pc0_CS0 = self.get_point_cloud(self.lidar_token0)
+
+        # Randomly downsample tensor
+        N_samples_before = self.pc0_CS0.shape[0]
+        N_samples_after = round(N_samples_before/downsample_factor)
+        samples_to_keep = np.random.choice(N_samples_before, size=N_samples_after)
+        self.pc0_CS0 = self.pc0_CS0[samples_to_keep]  # Downsample point cloud
+
         self.point_distances0 = self.get_point_distances_to_origin(self.pc0_CS0)
 
         # Set info PC1
         self.lidar_token1 = self.get_next_lidar_token(self.lidar_token0)
-        self.pc1_CS1 = self.get_point_cloud(self.lidar_token1)
         self.lidar_pose1 = self.get_sensor_pose_in_WCS(self.lidar_token1)
+
+        self.pc1_CS1 = self.get_point_cloud(self.lidar_token1)
+        self.pc1_CS1 = self.pc1_CS1[samples_to_keep]  # Downsample point cloud
+
         self.point_distances1 = self.get_point_distances_to_origin(self.pc1_CS1)
 
     def get_first_token(self):
@@ -41,11 +51,11 @@ class NuscenesHandling:
         # It is the sensor coordinate system.
         path_to_lidar_bin_file = self.nusc.get_sample_data_path(lidar_token)
         pc = LidarPointCloud.from_file(path_to_lidar_bin_file)
-        pc_xyz = torch.from_numpy(pc.points[:3]).to(torch.float64)
+        pc_xyz = torch.swapaxes(torch.from_numpy(pc.points[:3]).to(torch.float32), 0, 1)
         return pc_xyz
 
     def get_point_distances_to_origin(self, pc):
-        return torch.norm(pc, p=2, dim=0)
+        return torch.norm(pc, p=2, dim=1)
 
     def get_sensor_pose_in_WCS(self, lidar_token):
         lidar_dict = self.get_lidar_dict(lidar_token)
@@ -68,7 +78,7 @@ class NuscenesHandling:
 
         # Get transformation matrix of lidar in WCS
         Ts = Tv@Ts_ego_vehicle
-        Ts_out = torch.from_numpy(Ts).to(torch.float64)
+        Ts_out = torch.from_numpy(Ts).to(torch.float32)
         return Ts_out
 
     def get_next_lidar_token(self, lidar_token):
