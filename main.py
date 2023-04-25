@@ -1,21 +1,23 @@
 import torch
+import time
+import nuscenes as ns
+
 from utils.other import start_debug
 from utils.geometrics import align_point_clouds
 from utils.nuscenes_handling import NuscenesHandling
 from utils.pointclouds import PC
 from classifiers.differential_entropy import differential_entropy_metric
-import time
-
-import nuscenes as ns
 
 
 def main():
     print("cuda available:", torch.cuda.is_available())
+
     # Initialize NuScenes object
     nusc = ns.nuscenes.NuScenes(version='v1.0-mini', dataroot='data/nuscenes/mini/', verbose=True)
     PCHandler = NuscenesHandling(nusc, downsample_factor=1)
     PC0 = PC(PCHandler.pc0_CS0, PCHandler.point_distances0)
     PC1 = PC(PCHandler.pc1_CS1, PCHandler.point_distances1)
+
     pc_union_dists = torch.cat((PC0.distances_to_origin, PC1.distances_to_origin))
 
     # Calculate differential entropy
@@ -25,10 +27,9 @@ def main():
     PCUnion_after_alignment = PC(pc_union_after_alignment, pc_union_dists)
     t1 = time.time()
     result = differential_entropy_metric(PC0, PC1, PCUnion_after_alignment)
-    print(f"Differential entropy after alignment: {round(result, 3)}")
+    print(f"Differential entropy after alignment: {result}")
     print(f"Execution time (sec): {round(time.time() - t1, 3)}")
     print("Finito!")
-    # TODO: Clean up the code structure. It is currently a mess
     # TODO: Compare the differential entropy metric before and after the alignment.
     # TODO: Maybe try out kd-trees.
     # TODO: Is the usage of epsilon reasonable ...

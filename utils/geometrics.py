@@ -86,15 +86,14 @@ def align_point_clouds(pc1: torch.Tensor, T0: torch.Tensor, T1: torch.Tensor) ->
     T0_inv = torch.inverse(T0)
 
     # Step 2: Compute the transformation matrix to align both point clouds
-    T_align = T0_inv@T1
+    T_align = torch.matmul(T0_inv, T1)
 
     # Step 3: Align the second point cloud with the first point cloud
     # Convert to homogeneous coordinates
     pc1_homogeneous = torch.cat((pc1, torch.ones(pc1.size(0), 1, dtype=pc1.dtype, device=pc1.device)), dim=1)
     pc1_homogeneous_swap = torch.swapaxes(pc1_homogeneous, 0, 1)
-    # Convert to homogeneous coordinates
 
-    pc1_CS0_swap = (T_align@pc1_homogeneous_swap)[:3]
+    pc1_CS0_swap = torch.matmul(T_align, pc1_homogeneous_swap)[:3]
     pc1_CS0 = torch.swapaxes(pc1_CS0_swap, 0, 1)
 
     return pc1_CS0

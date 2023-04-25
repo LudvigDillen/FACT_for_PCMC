@@ -51,7 +51,7 @@ class NuscenesHandling:
         # It is the sensor coordinate system.
         path_to_lidar_bin_file = self.nusc.get_sample_data_path(lidar_token)
         pc = LidarPointCloud.from_file(path_to_lidar_bin_file)
-        pc_xyz = torch.swapaxes(torch.from_numpy(pc.points[:3]).to(torch.float32), 0, 1)
+        pc_xyz = torch.swapaxes(torch.from_numpy(pc.points[:3]).to(torch.float64), 0, 1)
         return pc_xyz
 
     def get_point_distances_to_origin(self, pc):
@@ -78,7 +78,7 @@ class NuscenesHandling:
 
         # Get transformation matrix of lidar in WCS
         Ts = Tv@Ts_ego_vehicle
-        Ts_out = torch.from_numpy(Ts).to(torch.float32)
+        Ts_out = torch.from_numpy(Ts).to(torch.float64)
         return Ts_out
 
     def get_next_lidar_token(self, lidar_token):
