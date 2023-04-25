@@ -31,7 +31,6 @@ def main():
     print(f"Execution time (sec): {round(time.time() - t1, 3)}")
     print("Finito!")
     # TODO: Compare the differential entropy metric before and after the alignment.
-    # TODO: Maybe try out kd-trees.
     # TODO: Is the usage of epsilon reasonable ...
     # TODO: Check covariance of A vs 2A. Have checked, it is not the same ....
     # TODO: Must H_joint > H_sep? (probably not after adding epsilon, but maybe)

@@ -104,9 +104,7 @@ def differential_entropy(PC, E_reject: float) -> float:
         t32 = time.perf_counter()
         center_data_times += t32 - t31
 
-        del filtered_neighbor_mask
-        del masked_pc_batch
-        del mu
+        del filtered_neighbor_mask, masked_pc_batch, mu
         n_points_in_batch = filtered_n_neighbors.shape[0]
         covariances = (centered_data[..., None] * centered_data[..., None, :]
                        ).sum(dim=1) / (filtered_n_neighbors.unsqueeze(dim=2) - 1)
@@ -127,19 +125,35 @@ def differential_entropy(PC, E_reject: float) -> float:
         entropies_times += t5 - t4
         del n_points_in_batch
 
-        decimals = 4
-        print(f"Batch {batch_number + 1} of {num_batches}\n",
-              f"dists_time                  {np.around(dists_time, decimals)}\n",
-              f"neighborhood_times          {np.around(neighborhood_times, decimals)}\n",
-              f"mu_times                    {np.around(mu_times, decimals)}\n",
-              f"center_data_times           {np.around(center_data_times, decimals)}\n",
-              f"covariances_einsum_times    {np.around(covariances_einsum_times, decimals)}\n",
-              f"entropies_times             {np.around(entropies_times, decimals)}\n")
+        if batch_number % 10 == 0:
+            decimals = 4
+            print(f"Batch {batch_number + 1} of {num_batches}\n",
+                  f"dists_time                  {np.around(dists_time, decimals)}\n",
+                  f"neighborhood_times          {np.around(neighborhood_times, decimals)}\n",
+                  f"mu_times                    {np.around(mu_times, decimals)}\n",
+                  f"center_data_times           {np.around(center_data_times, decimals)}\n",
+                  f"covariances_einsum_times    {np.around(covariances_einsum_times, decimals)}\n",
+                  f"entropies_times             {np.around(entropies_times, decimals)}\n")
 
     sorted_entropies = torch.sort(entropies)[0]
-    j = round(E_reject*n_points)
-    H = sorted_entropies[j:].sum()  # only keep (1-E_reject) of the entropies
+    keep_inds = round(E_reject*n_points)
+    H = torch.sum(sorted_entropies[keep_inds:])  # only keep (1-E_reject) of the entropies
     return H
+
+
+def get_overlap_share(PC0, PC1):
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    pc0 = PC0.pc.to(device)
+    pc1 = PC1.pc.to(device)
+    radius0 = get_dynamic_radius(PC0.distances_to_origin).to(device)
+    del PC0, PC1
+    dists = torch.cdist(pc0, pc1)
+    del pc0, pc1
+    mask = dists < radius0
+    del radius0, dists
+    n_neighbors = torch.sum(mask, dim=1)
+    overlap_share = torch.count_nonzero(n_neighbors) / n_neighbors.shape[0]
+    return overlap_share.cpu().numpy()
 
 
 def differential_entropy_metric(PC0, PC1, PCUnion) -> float:
@@ -159,8 +173,17 @@ def differential_entropy_metric(PC0, PC1, PCUnion) -> float:
     float: The differential entropy between the two point clouds.
     """
     E_reject = 0.20  # reject the 20% smallest entropies
+    overlap_misaligned_thresh = 0.10
+    t1 = time.perf_counter()
+    overlap_share = get_overlap_share(PC0, PC1)
+    torch.cuda.synchronize()
+    t2 = time.perf_counter()
+    print(f"Overlap share: {np.around(overlap_share,2)} (eval time: {np.around(t2 - t1, 4)} sec")
+    if overlap_share < overlap_misaligned_thresh:
+        # return some large number which imply misalignment
+        return 1e10
 
-    # separate average differential entropy
+        # separate average differential entropy
     H_separate = (differential_entropy(
         PC0, E_reject) + differential_entropy(PC1, E_reject))/(PCUnion.N_points*(1-E_reject))
     # joint average differential entropy
