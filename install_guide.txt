@@ -8,3 +8,8 @@ pip3 install torch torchvision torchaudio
 wget https://www.nuscenes.org/data/v1.0-mini.tgz # replace with wanted files
 tar -xf v1.0-mini.tgz
 pip install nuscenes-devkit &> /dev/null
+
+# For visualization
+pip install open3d
+
+

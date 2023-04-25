@@ -1,12 +1,15 @@
 import torch
 import time
 import nuscenes as ns
+import numpy as np
+from scipy.spatial.transform import Rotation as Rotation
 
 from utils.other import start_debug
 from utils.geometrics import align_point_clouds
 from utils.nuscenes_handling import NuscenesHandling
 from utils.pointclouds import PC
 from classifiers.differential_entropy import differential_entropy_metric
+from visualization.point_clouds import vis_pc, vis_2pcs_aligned_vs_misaligned
 
 
 def main():
@@ -21,8 +24,13 @@ def main():
     pc_union_dists = torch.cat((PC0.distances_to_origin, PC1.distances_to_origin))
 
     # Calculate differential entropy
-    # Seems to work!
+    # Seems to work! I also checked by plotting and it seems to be aligned.
     pc1_CS0 = align_point_clouds(PCHandler.pc1_CS1, PCHandler.lidar_pose0, PCHandler.lidar_pose1)
+
+    # Some visualization: We can see that the point clouds are better aligned after the transformation
+    # vis_2pcs_aligned_vs_misaligned(PC0.pc, PC1.pc, pc1_CS0)
+    #
+
     pc_union_after_alignment = torch.cat((PCHandler.pc0_CS0, pc1_CS0), dim=0)
     PCUnion_after_alignment = PC(pc_union_after_alignment, pc_union_dists)
     t1 = time.time()
