@@ -31,14 +31,8 @@ def main():
     print(f"Execution time (sec): {round(time.time() - t1, 3)}")
     print("Finito!")
     # TODO: Compare the differential entropy metric before and after the alignment.
-    # TODO: Is the usage of epsilon reasonable ...
     # TODO: Check covariance of A vs 2A. Have checked, it is not the same ....
     # TODO: Must H_joint > H_sep? (probably not after adding epsilon, but maybe)
-    # TODO: E_reject, reject points with lowest entropy. Does this include negative entropies ...
-    # TODO: They seemed to forgot N in their implementation of the diff entropy.
-    # About -0.118 in metric with same PC (takes 34 sec without cuda)
-    #  0.55 for different PCs but aligned (33 sec)
-    #  0.16 for different PCs but non-aligned (34 sec) (not good ...)
 
 
 if __name__ == "__main__":
