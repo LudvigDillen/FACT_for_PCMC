@@ -8,32 +8,40 @@ from nuscenes.utils.data_classes import LidarPointCloud
 class NuscenesHandling:
     def __init__(self, nusc, downsample_factor=1, lidar_token=None):
         self.nusc = nusc
+
+        # Set info PC0
         if lidar_token is None:
             self.first_token = self.get_first_token()
             self.lidar_token0 = self.get_lidar_token(self.first_token)
         else:
             self.lidar_token0 = lidar_token
-
-        # Set info PC0
         self.lidar_pose0 = self.get_sensor_pose_in_WCS(self.lidar_token0)
         self.pc0_CS0 = self.get_point_cloud(self.lidar_token0)
-
-        # Randomly downsample tensor
-        N_samples_before = self.pc0_CS0.shape[0]
-        N_samples_after = round(N_samples_before/downsample_factor)
-        samples_to_keep = np.random.choice(N_samples_before, size=N_samples_after)
-        self.pc0_CS0 = self.pc0_CS0[samples_to_keep]  # Downsample point cloud
-
-        self.point_distances0 = self.get_point_distances_to_origin(self.pc0_CS0)
 
         # Set info PC1
         self.lidar_token1 = self.get_next_lidar_token(self.lidar_token0)
         self.lidar_pose1 = self.get_sensor_pose_in_WCS(self.lidar_token1)
-
         self.pc1_CS1 = self.get_point_cloud(self.lidar_token1)
+
+        # Randomly downsample point clouds
+        self.downsample_factor = downsample_factor
+        if self.downsample_factor > 1:
+            self.downsample_both_point_clouds()
+
+        self.point_distances0 = self.get_point_distances_to_origin(self.pc0_CS0)
+        self.point_distances1 = self.get_point_distances_to_origin(self.pc1_CS1)
+
+    def downsample_both_point_clouds(self):
+        N_samples_before = self.pc0_CS0.shape[0]  # Assuming both point clouds have equally many points
+        N_samples_after = round(N_samples_before/self.downsample_factor)
+        samples_to_keep = np.random.choice(N_samples_before, size=N_samples_after)
+        self.samples_to_keep = samples_to_keep
+
+        self.pc0_CS0 = self.pc0_CS0[samples_to_keep]  # Downsample point cloud
         self.pc1_CS1 = self.pc1_CS1[samples_to_keep]  # Downsample point cloud
 
-        self.point_distances1 = self.get_point_distances_to_origin(self.pc1_CS1)
+    def downsample_second_point_cloud(self):
+        self.pc1_CS1 = self.pc1_CS1[self.samples_to_keep]  # Downsample point cloud
 
     def get_first_token(self):
         # Get the token to the first sample in the first scene
@@ -84,3 +92,25 @@ class NuscenesHandling:
     def get_next_lidar_token(self, lidar_token):
         lidar_dict = self.get_lidar_dict(lidar_token)
         return lidar_dict['next']
+
+    def set_next_point_cloud_pair(self):
+        # TODO: Make sure that we can also go to the next scene ...
+        # Currently we only iterate through the current scene.
+        # I think an error will appear as we get to the end of the
+        # scene.
+
+        # Move to next point cloud pair in the scene
+        self.lidar_token0 = self.lidar_token1
+        self.lidar_pose0 = self.lidar_pose1
+        self.pc0_CS0 = self.pc1_CS1
+
+        # Set info PC1
+        self.lidar_token1 = self.get_next_lidar_token(self.lidar_token0)
+        self.lidar_pose1 = self.get_sensor_pose_in_WCS(self.lidar_token1)
+        self.pc1_CS1 = self.get_point_cloud(self.lidar_token1)
+
+        # Randomly downsample point clouds
+        if self.downsample_factor > 1:
+            self.downsample_second_point_cloud()
+
+        self.point_distances1 = self.get_point_distances_to_origin(self.pc1_CS1)
