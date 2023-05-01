@@ -66,7 +66,6 @@ def differential_entropy(PC, E_reject: float) -> float:
 
     for batch_number, pc_batch in enumerate(pc_batches):
         # Compute the distance matrix between pc_batch and pc
-
         t1 = time.perf_counter()
         dists = torch.cdist(pc_batch, pc)
         del pc_batch
@@ -78,42 +77,51 @@ def differential_entropy(PC, E_reject: float) -> float:
         neighbor_mask = (dists < radius)
         del dists
 
+        # Count the number of neighbors for each point in the batch
         n_neighbors_per_point_in_batch = torch.sum(neighbor_mask, dim=1)
-        # keep only neighborboods with more than one point
+        # Filter out neighborhoods with only one point
         inds_to_valid_neighborhoods = (n_neighbors_per_point_in_batch > 1)
         filtered_neighbor_mask = neighbor_mask[inds_to_valid_neighborhoods]
         del neighbor_mask
 
+        # Update neighbor count for valid neighborhoods
         filtered_n_neighbors = n_neighbors_per_point_in_batch[inds_to_valid_neighborhoods].unsqueeze(dim=1)
-
         del inds_to_valid_neighborhoods
         del n_neighbors_per_point_in_batch
 
+        # Apply the filtered neighbor mask to the point cloud batch
         masked_pc_batch = (pc.unsqueeze(dim=0))*(filtered_neighbor_mask.unsqueeze(dim=2))
         torch.cuda.synchronize()
         t3 = time.perf_counter()
         neighborhood_times += t3 - t2
 
+        # Compute the mean of the masked point cloud batch
         mu = torch.sum(masked_pc_batch, dim=1) / filtered_n_neighbors
         torch.cuda.synchronize()
         t31 = time.perf_counter()
         mu_times += t31-t3
 
+        # Center the data by subtracting the mean
         centered_data = (masked_pc_batch - mu.unsqueeze(dim=1))*(filtered_neighbor_mask.unsqueeze(dim=2))
         torch.cuda.synchronize()
         t32 = time.perf_counter()
         center_data_times += t32 - t31
 
         del filtered_neighbor_mask, masked_pc_batch, mu
-        n_points_in_batch = filtered_n_neighbors.shape[0]
+
+        # Calculate covariance matrices
         covariances = (centered_data[..., None] * centered_data[..., None, :]
                        ).sum(dim=1) / (filtered_n_neighbors.unsqueeze(dim=2) - 1)
-
         torch.cuda.synchronize()
         t4 = time.perf_counter()
         covariances_einsum_times += t4 - t32
         del centered_data
+
+        # Get the number of points in the batch
+        n_points_in_batch = filtered_n_neighbors.shape[0]
         del filtered_n_neighbors
+
+        # Compute determinants of covariance matrices
         determinants = torch.linalg.det(covariances)
         del covariances
         to_ind += n_points_in_batch
@@ -190,4 +198,5 @@ def differential_entropy_metric(PC0, PC1, PCUnion) -> float:
     H_joint = differential_entropy(PCUnion, E_reject)/(PCUnion.N_points*(1-E_reject))
 
     metric = H_joint - H_separate  # this is our alignment quality measure for the enitre point cloud
+    print(f"H joint {H_joint} H sep {H_separate}")
     return metric
