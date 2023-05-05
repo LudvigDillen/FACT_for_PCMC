@@ -153,7 +153,7 @@ class NuscenesHandling:
             n_samples += len(PC_scene)
         return n_samples
 
-    def get_entire_sub_dataset(self):
+    def get_entire_sub_dataset(self, n_scenes='all'):
         """
         Here we return the entire sub-dataset. E.g. the mini-dataset or part1-dataset of
         the Nuscenes dataset.
@@ -187,13 +187,18 @@ class NuscenesHandling:
                 PC_scene = []
                 self.scene_read = False
                 print(f"We have collected {self.scene_counter} scenes")
+                # We might just want to read a few scenes
+                if n_scenes != 'all':
+                    if n_scenes >= self.scene_counter:
+                        break
             if self.dataset_read == True:
                 print("We have collected all data from the dataset")
-                print(f"Total number of samples: {self.get_number_of_samples_in_scenes(PC_scenes)}")
-                print(f"Total number of scenes:  {len(PC_scenes)}")
                 break
 
             # Old PC1 is the new PC0
             PC0 = PC1
             count += 1
+
+        print(f"Total number of samples: {self.get_number_of_samples_in_scenes(PC_scenes)}")
+        print(f"Total number of scenes:  {len(PC_scenes)}")
         return PC_scenes

@@ -11,8 +11,8 @@ def get_dynamic_radius(d):
 
     r = d*torch.sin(alpha_rad)
     r_out = r
-    r_out[r <= rmin] = rmin
-    r_out[r >= rmax] = rmax
+    r_out[r < rmin] = rmin
+    r_out[r > rmax] = rmax
     return r_out
 
 
@@ -63,6 +63,7 @@ def differential_entropy(PC, E_reject: float) -> float:
     center_data_times = 0
     covariances_einsum_times = 0
     entropies_times = 0
+    print_timings = False
 
     for batch_number, pc_batch in enumerate(pc_batches):
         # Compute the distance matrix between pc_batch and pc
@@ -133,7 +134,7 @@ def differential_entropy(PC, E_reject: float) -> float:
         entropies_times += t5 - t4
         del n_points_in_batch
 
-        if batch_number % 10 == 0:
+        if print_timings and batch_number % 10 == 0:
             decimals = 4
             print(f"Batch {batch_number + 1} of {num_batches}\n",
                   f"dists_time                  {np.around(dists_time, decimals)}\n",
@@ -146,25 +147,42 @@ def differential_entropy(PC, E_reject: float) -> float:
     sorted_entropies = torch.sort(entropies)[0]
     keep_inds = round(E_reject*n_points)
     H = torch.sum(sorted_entropies[keep_inds:])  # only keep (1-E_reject) of the entropies
-    return H
+    return H.cpu().numpy()
 
 
 def get_overlap_share(PC0, PC1):
+    """
+    We get the overlap share from the perspective of PC0. What is the ratio of points in PC0 neighbors
+    TODO: Continue writing this docstring and figure out how to handle when pc0 and pc1:s shape does not match.
+    """
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     pc0 = PC0.pc.to(device)
     pc1 = PC1.pc.to(device)
-    radius0 = get_dynamic_radius(PC0.distances_to_origin).to(device)
+    radius0 = get_dynamic_radius(PC0.distances_to_origin).to(device).unsqueeze(dim=1)
+    n_points = PC0.N_points
     del PC0, PC1
-    dists = torch.cdist(pc0, pc1)
-    del pc0, pc1
-    mask = dists < radius0
-    del radius0, dists
-    n_neighbors = torch.sum(mask, dim=1)
-    overlap_share = torch.count_nonzero(n_neighbors) / n_neighbors.shape[0]
-    return overlap_share.cpu().numpy()
+
+    batch_size = 8**4
+    pc0_batches = torch.split(pc0, batch_size, dim=0)
+    del pc0
+
+    n_non_empty_neighborhoods = 0
+    to_ind = 0
+    from_ind = 0
+    for pc0_batch in pc0_batches:
+        dists = torch.cdist(pc0_batch, pc1)
+        n_points_in_batch = pc0_batch.shape[0]
+        to_ind += n_points_in_batch
+        lower_elements = dists < radius0[from_ind:to_ind]
+        n_non_empty_neighborhoods += torch.sum(lower_elements.any(dim=1)).item()
+        from_ind = to_ind
+
+    del radius0, dists, pc1, pc0_batches, lower_elements
+    overlap_share = n_non_empty_neighborhoods / n_points
+    return overlap_share
 
 
-def differential_entropy_metric(PC0, PC1, PCUnion) -> float:
+def differential_entropy_metric(PC0, PC1, PCUnion, misaligned) -> float:
     """
     Calculate the differential entropy between two point clouds using the method described in the
     paper "CorAl – Are the point clouds Correctly Aligned?".
@@ -186,7 +204,7 @@ def differential_entropy_metric(PC0, PC1, PCUnion) -> float:
     overlap_share = get_overlap_share(PC0, PC1)
     torch.cuda.synchronize()
     t2 = time.perf_counter()
-    print(f"Overlap share: {np.around(overlap_share,2)} (eval time: {np.around(t2 - t1, 4)} sec")
+    print(f"\nOverlap share: {np.around(overlap_share,2)} (eval time: {np.around(t2 - t1, 4)} sec)")
     if overlap_share < overlap_misaligned_thresh:
         # return some large number which imply misalignment
         return 1e10
@@ -198,5 +216,9 @@ def differential_entropy_metric(PC0, PC1, PCUnion) -> float:
     H_joint = differential_entropy(PCUnion, E_reject)/(PCUnion.N_points*(1-E_reject))
 
     metric = H_joint - H_separate  # this is our alignment quality measure for the enitre point cloud
-    print(f"H joint {H_joint} H sep {H_separate}")
+    # display result
+    print(f"Diff joint:    {np.round(H_joint, 3)}")
+    print(f"Diff separate: {np.round(H_separate, 3)}")
+    print(f"Diff metric:   {np.round(metric, 3)}")
+    print(f"Is misaligned: {misaligned}")
     return metric

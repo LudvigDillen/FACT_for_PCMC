@@ -43,27 +43,21 @@ def main():
     nusc = ns.nuscenes.NuScenes(version='v1.0-mini', dataroot='data/nuscenes/mini/', verbose=True)
     PCHandler = NuscenesHandling(nusc, downsample_factor=1)
 
-    PC_scenes = PCHandler.get_entire_sub_dataset()
-    # Create aligned and misaligned point cloud pairs similarly as in CorAl 2021
-
-    exit()
-    pc_union_dists = torch.cat((PC0.distances_to_origin, PC1.distances_to_origin))
-
-    # Calculate differential entropy
-    # Seems to work! I also checked by plotting and it seems to be aligned.
-    pc1_CS0 = align_point_clouds(PCHandler.pc1_CS1, PCHandler.lidar_pose0, PCHandler.lidar_pose1)
+    PC_scenes = PCHandler.get_entire_sub_dataset(n_scenes=1)
 
     # Some visualization: We can see that the point clouds are better aligned after the transformation
     # vis_2pcs_aligned_vs_misaligned(PC0.pc, PC1.pc, pc1_CS0)
     ##
-    # exit()
 
-    pc_union_after_alignment = torch.cat((PCHandler.pc0_CS0, pc1_CS0), dim=0)
-    PCUnion_after_alignment = PC(pc_union_after_alignment, pc_union_dists)
-    t1 = time.time()
-    result = differential_entropy_metric(PC0, PC1, PCUnion_after_alignment)
-    print(f"Differential entropy after alignment: {np.around(result.cpu().numpy(), decimals=3)}")
-    print(f"Execution time (sec): {round(time.time() - t1, 3)}")
+    for PC_scene in PC_scenes:
+        for count, PC_pair in enumerate(PC_scene):
+            if count >= 3:
+                print("I dont have the time to run this on the entire dataset")
+                break
+            t1 = time.time()
+            result = differential_entropy_metric(
+                PC_pair.PC0, PC_pair.PC1, PC_pair.PCUnion, PC_pair.misaligned)
+            print(f"Execution time (sec): {round(time.time() - t1, 3)}")
     print("Finito!")
     # TODO: Compare the differential entropy metric before and after the alignment.
     # TODO: Check covariance of A vs 2A. Have checked, it is not the same ....

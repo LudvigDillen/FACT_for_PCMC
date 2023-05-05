@@ -33,9 +33,12 @@ class PCPair:
         pc1_CS0 = align_point_clouds(PCHandler.pc1_CS1, PCHandler.lidar_pose0, PCHandler.lidar_pose1)
         if self.misaligned:
             pc1_CS0 = self.perform_random_perturbation_CorAl(pc1_CS0)
-        pc_union_after_alignment = torch.cat((PCHandler.pc0_CS0, pc1_CS0), dim=0)
-        PCUnion_after_alignment = PC(pc_union_after_alignment, pc_union_dists)
-        self.PCUnion = PCUnion_after_alignment
+
+        # pc_union may be the concatenation of either two aligned point clouds or two misaligned point clouds.
+        # This will depend on if we randomly peturb one of the aligned point cloud or not.
+        # This happen with the peturb probality handed to the constructor of the class.
+        pc_union = torch.cat((PCHandler.pc0_CS0, pc1_CS0), dim=0)
+        self.PCUnion = PC(pc_union, pc_union_dists)
 
     def perform_random_perturbation_CorAl(self, pc, angular_offset=0.01, translational_offset=0.1):
         """
