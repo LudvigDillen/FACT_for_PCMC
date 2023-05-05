@@ -49,16 +49,32 @@ def main():
     # vis_2pcs_aligned_vs_misaligned(PC0.pc, PC1.pc, pc1_CS0)
     ##
 
+    metrics_aligned = []
+    metrics_misaligned = []
+
     for PC_scene in PC_scenes:
-        for count, PC_pair in enumerate(PC_scene):
-            if count >= 3:
-                print("I dont have the time to run this on the entire dataset")
-                break
+        for count, PC_pair in enumerate(reversed(PC_scene)):
+            # if count >= 10:
+            #     print("I dont have the time to run this on the entire dataset")
+            #     break
             t1 = time.time()
             result = differential_entropy_metric(
                 PC_pair.PC0, PC_pair.PC1, PC_pair.PCUnion, PC_pair.misaligned)
+
+            if PC_pair.misaligned:
+                metrics_misaligned.append(result)
+            else:
+                metrics_aligned.append(result)
+            if len(metrics_aligned) > 0:
+                print(f"Mean abs metric aligned    {np.around(np.mean(np.abs(metrics_aligned)), 4)}",
+                      f"(N = {len(metrics_aligned)})")
+            if len(metrics_misaligned) > 0:
+                print(f"Mean abs metric misaligned {np.around(np.mean(np.abs(metrics_misaligned)), 4)}",
+                      f"(N = {len(metrics_misaligned)})")
             print(f"Execution time (sec): {round(time.time() - t1, 3)}")
     print("Finito!")
+    # TODO: Add plot of misalignment vs alignment metric lists ... to see if we can discriminate
+
     # TODO: Compare the differential entropy metric before and after the alignment.
     # TODO: Check covariance of A vs 2A. Have checked, it is not the same ....
     # TODO: Must H_joint > H_sep? (probably not after adding epsilon, but maybe)

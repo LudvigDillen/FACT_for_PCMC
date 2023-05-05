@@ -6,13 +6,18 @@ import time
 def get_dynamic_radius(d):
     alpha = torch.tensor(1.33, dtype=torch.float32)  # vertical angular resolution degrees
     alpha_rad = torch.deg2rad(alpha)
-    rmin = torch.tensor(0.2, dtype=torch.float32)
-    rmax = torch.tensor(1.0, dtype=torch.float32)
 
-    r = d*torch.sin(alpha_rad)
+    # Adjust the size of the neighborhood since we use a mobile lidar instead of a TLS
+    scale_factor = 5
+    rmin = scale_factor*torch.tensor(0.2, dtype=torch.float32)
+    rmax = scale_factor*torch.tensor(1.0, dtype=torch.float32)
+
+    r = scale_factor*d*torch.sin(alpha_rad)
     r_out = r
+
     r_out[r < rmin] = rmin
     r_out[r > rmax] = rmax
+
     return r_out
 
 
@@ -42,7 +47,7 @@ def differential_entropy(PC, E_reject: float) -> float:
     del PC
 
     # Some offset to make sure not taking log of zero
-    epsilon = torch.tensor(10**(-7), dtype=torch.float64).to(device)
+    epsilon = torch.tensor(10**(-8), dtype=torch.float64).to(device)
     scaler = ((2*torch.tensor(np.pi, dtype=torch.float64)*torch.exp(torch.tensor(1, dtype=torch.float64))
                )**dim_distribution).to(device)  # (2pi*e)^dim_distribution
 
@@ -152,8 +157,9 @@ def differential_entropy(PC, E_reject: float) -> float:
 
 def get_overlap_share(PC0, PC1):
     """
-    We get the overlap share from the perspective of PC0. What is the ratio of points in PC0 neighbors
-    TODO: Continue writing this docstring and figure out how to handle when pc0 and pc1:s shape does not match.
+    We get the overlap share from the perspective of PC0. 
+    return: overlap_share
+        the share of points in PC0 that has at least one point from PC1 in its neighborhood.
     """
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     pc0 = PC0.pc.to(device)
@@ -209,11 +215,14 @@ def differential_entropy_metric(PC0, PC1, PCUnion, misaligned) -> float:
         # return some large number which imply misalignment
         return 1e10
 
-        # separate average differential entropy
-    H_separate = (differential_entropy(
-        PC0, E_reject) + differential_entropy(PC1, E_reject))/(PCUnion.N_points*(1-E_reject))
+    N_pts_used = PCUnion.N_points*(1-E_reject)
+    # separate average differential entropy
+    H_PC0 = differential_entropy(PC0, E_reject)
+    H_PC1 = differential_entropy(PC1, E_reject)
+
+    H_separate = (H_PC0 + H_PC1)/(N_pts_used)
     # joint average differential entropy
-    H_joint = differential_entropy(PCUnion, E_reject)/(PCUnion.N_points*(1-E_reject))
+    H_joint = differential_entropy(PCUnion, E_reject)/(N_pts_used)
 
     metric = H_joint - H_separate  # this is our alignment quality measure for the enitre point cloud
     # display result
