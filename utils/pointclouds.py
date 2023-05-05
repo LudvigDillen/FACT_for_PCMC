@@ -42,13 +42,34 @@ class PCPair:
         This function a point cloud perturb it with an angular and translational offset.
 
         :param pc: point cloud
-        :param angular_offset: float, angular offset in radians around the sensor's vertical axis (default: 0.01 rad)
-        :param translational_offset: float, distance of random translational offset in meters (default: 0.1 m)
+        :param angular_offset: float, angular offset in radians around the sensor's vertical axis
+                               (default: 0.01 rad)
+        :param translational_offset: float, distance of random translational offset (x,y)-coord in meters
+                                     (default: 0.1 m)
         :return: perturbed point cloud
         """
-        # TODO: Perturb point cloud around sensor's vertical axis
-        print(pc.shape)
-        print("Continue implementation here (utils/pointclouds.py)")
-        # TODO: Perturb point cloud with a distance 0.1 meter from the ground truth
-        perturbed_point_cloud = pc
+        # Define rotation with angle "angular_offset" around the up-vector
+        cos_off = torch.cos(torch.tensor(angular_offset))
+        sin_off = torch.sin(torch.tensor(angular_offset))
+        R_peturb = torch.tensor([[cos_off,  -sin_off,   0],
+                                 [sin_off,  cos_off,    0],
+                                 [0,        0,          1]])
+
+        # Define random translation offset of 0.1m in (x,y)-plane
+        random_xy_offset = torch.rand((2, 1))
+        scaled_random_xy_offset = translational_offset*random_xy_offset/torch.norm(random_xy_offset)
+        z_offset = torch.tensor(0)  # there should be no offset in y-direction
+        t_peturb = torch.vstack((scaled_random_xy_offset, z_offset)).squeeze()
+
+        # Define rigid transformation matrix in homogeneuous coordinates
+        T_peturb = torch.eye(4, dtype=pc.dtype)
+        T_peturb[:3, :3] = R_peturb
+        T_peturb[:3, 3] = t_peturb
+
+        # Peturb point cloud
+        n_points = pc.shape[0]
+        homog_ones = torch.ones(n_points)
+        pc_homog_swapped = torch.vstack((torch.swapaxes(pc, 0, 1), homog_ones))
+        perturbed_point_cloud = torch.swapaxes(torch.matmul(T_peturb, pc_homog_swapped)[:3], 0, 1)
+
         return perturbed_point_cloud

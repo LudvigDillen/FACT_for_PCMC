@@ -3,6 +3,8 @@ import time
 import nuscenes as ns
 import numpy as np
 from scipy.spatial.transform import Rotation as Rotation
+# rom sklearn import train_test_split
+
 
 from utils.other import start_debug
 from utils.geometrics import align_point_clouds
@@ -16,12 +18,12 @@ def main():
     print("cuda available:", torch.cuda.is_available())
     # TODO: 2023-04-27 (Gather data into lists e.g.)
     # 1. Gather data into lists (DONE!)
-    # 2. Split data up into training and test set
-    # 3. Perform random perturbations or register data with ICP e.g.
-    # 3.1 With ICP we can compare the estimate transformation by with the ground truth to classify
+    # (HAVE NOW AUTOMATICALLY PETURBED AS THEY DO IN CORAL)
+    # 2. Perform random perturbations or register data with ICP e.g.
+    # 2.1 With ICP we can compare the estimate transformation by with the ground truth to classify
     #     the data as either aligned or misaligned. This data is then quite realistic and can be
     #     used to train our classifier (select suitable parameters).
-    # 3.2 Align point clouds with ground truth and then apply a small offset and then register
+    # 2.2 Align point clouds with ground truth and then apply a small offset and then register
     #     with ICP. This can lead to misalignments which are harder to detect as the relative
     #     error transformation is smaller. Thus, we might challenge the model a bit more which is
     #     good. Furthermore, ICP is a very interesting registration model to use for three reasons,
@@ -29,6 +31,7 @@ def main():
     #       2. It easily get stuck in local minima which is the realistic/common point when registration
     #          methods stop to iterate.
     #       3. It is common and well known, and useful as a benchmark registration method in that sense.
+    # 3. Split data up into training and test set
 
     # TODO: How to choose model parameters
     # 1. Use some optimization in PyTorch to backpropagate the parameters of the logistic regression
@@ -41,6 +44,7 @@ def main():
     PCHandler = NuscenesHandling(nusc, downsample_factor=1)
 
     PC_scenes = PCHandler.get_entire_sub_dataset()
+    # Create aligned and misaligned point cloud pairs similarly as in CorAl 2021
 
     exit()
     pc_union_dists = torch.cat((PC0.distances_to_origin, PC1.distances_to_origin))

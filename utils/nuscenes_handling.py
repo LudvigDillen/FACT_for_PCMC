@@ -174,8 +174,8 @@ class NuscenesHandling:
 
             # Load in second point cloud
             PC1 = PC(self.pc1_CS1, self.point_distances1)
-            # Set point cloud pair and their union
-            currentPCPair = PCPair(PC0, PC1, self)
+            # Set point cloud pair and their union, and perform possible perturbation
+            currentPCPair = PCPair(PC0, PC1, self, perturb_probability=0.5)
             # Append pair to list
             PC_scene.append(currentPCPair)
             # Iterate to next pair in scene
