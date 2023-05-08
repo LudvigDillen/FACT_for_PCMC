@@ -13,7 +13,7 @@ from visualization.point_clouds import vis_pc, vis_2pcs_aligned_vs_misaligned
 from classifiers.regression import perform_logistic_regression
 
 
-def main():
+def differential_entropy_classification():
     print("cuda available:", torch.cuda.is_available())
     # TODO: 2023-04-27 (Gather data into lists e.g.)
     # 1. Gather data into lists (DONE!)
@@ -62,7 +62,7 @@ def main():
 
     for PC_scene in PC_scenes:
         for count, PC_pair in enumerate(PC_scene):
-            if count >= 10:
+            if count >= 5:
                 print("I dont have the time to run this on the entire dataset")
                 break
             t1 = time.time()
@@ -83,17 +83,19 @@ def main():
                 print(f"Mean abs metric misaligned {np.around(np.mean(np.abs(metrics_misaligned)), 4)}",
                       f"(N = {len(metrics_misaligned)})")
             print(f"Execution time (sec): {round(time.time() - t1, 3)}")
-
+    input_data = np.array(input_data)
+    labels = np.array(labels)
     X_train, X_test, y_train, y_test = train_test_split(input_data, labels, test_size=0.33, random_state=42)
-    perform_logistic_regression(X_train, X_test, y_train, y_test)
+    model = perform_logistic_regression(X_train, X_test, y_train, y_test)
     print("Finito!")
     # TODO: Add plot of misalignment vs alignment metric lists ... to see if we can discriminate
 
     # TODO: Compare the differential entropy metric before and after the alignment.
     # TODO: Check covariance of A vs 2A. Have checked, it is not the same ....
     # TODO: Must H_joint > H_sep? (probably not after adding epsilon, but maybe)
+    return model, X_train, X_test, y_train, y_test
 
 
 if __name__ == "__main__":
     start_debug()
-    main()
+    differential_entropy_classification()

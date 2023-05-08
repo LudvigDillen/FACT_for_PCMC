@@ -86,3 +86,4 @@ def perform_logistic_regression(X_train, X_test, y_train, y_test, epochs=200_000
 
                 print(f"Iteration: {epoch+1}. \nTest - Loss: {loss_test.item()}. Accuracy: {accuracy_test}")
                 print(f"Train -  Loss: {loss.item()}. Accuracy: {accuracy}\n")
+    return model
