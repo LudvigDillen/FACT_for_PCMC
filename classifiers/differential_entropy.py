@@ -11,13 +11,11 @@ def get_dynamic_radius(d):
     scale_factor = 5
     rmin = scale_factor*torch.tensor(0.2, dtype=torch.float32)
     rmax = scale_factor*torch.tensor(1.0, dtype=torch.float32)
-
     r = scale_factor*d*torch.sin(alpha_rad)
-    r_out = r
 
+    r_out = r
     r_out[r < rmin] = rmin
     r_out[r > rmax] = rmax
-
     return r_out
 
 
@@ -230,4 +228,4 @@ def differential_entropy_metric(PC0, PC1, PCUnion, misaligned) -> float:
     print(f"Diff separate: {np.round(H_separate, 3)}")
     print(f"Diff metric:   {np.round(metric, 3)}")
     print(f"Is misaligned: {misaligned}")
-    return metric
+    return metric, H_joint, H_separate

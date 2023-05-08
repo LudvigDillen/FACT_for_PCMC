@@ -3,15 +3,14 @@ import time
 import nuscenes as ns
 import numpy as np
 from scipy.spatial.transform import Rotation as Rotation
-# rom sklearn import train_test_split
+from sklearn.model_selection import train_test_split
 
 
 from utils.other import start_debug
-from utils.geometrics import align_point_clouds
 from utils.nuscenes_handling import NuscenesHandling
-from utils.pointclouds import PC
 from classifiers.differential_entropy import differential_entropy_metric
 from visualization.point_clouds import vis_pc, vis_2pcs_aligned_vs_misaligned
+from classifiers.regression import perform_logistic_regression
 
 
 def main():
@@ -36,6 +35,8 @@ def main():
     # TODO: How to choose model parameters
     # 1. Use some optimization in PyTorch to backpropagate the parameters of the logistic regression
     #    model (beta0, beta1, beta2).
+    # 1.1 When I start implementing this, I start by fixating all parameters except the betas. I might
+    #     later add a few of them to the loss function, but we'll see.
     # 2. Optimize of the other parameters alpha (even though it is given by the dataset), epsilon,
     #    and E_reject by optimizing over a grid of values (grid search).
 
@@ -52,14 +53,24 @@ def main():
     metrics_aligned = []
     metrics_misaligned = []
 
+    input_data = []
+    labels = []
+
+    # TODO:
+    # 1. I'll start by gathering all the x1, x2 values and their repsective label.
+    # Kudos to
+
     for PC_scene in PC_scenes:
-        for count, PC_pair in enumerate(reversed(PC_scene)):
-            # if count >= 10:
-            #     print("I dont have the time to run this on the entire dataset")
-            #     break
+        for count, PC_pair in enumerate(PC_scene):
+            if count >= 10:
+                print("I dont have the time to run this on the entire dataset")
+                break
             t1 = time.time()
-            result = differential_entropy_metric(
+            result, H_joint, H_separate = differential_entropy_metric(
                 PC_pair.PC0, PC_pair.PC1, PC_pair.PCUnion, PC_pair.misaligned)
+            # Gather input to the logistic regression
+            input_data.append([H_joint, H_separate])
+            labels.append(PC_pair.misaligned)
 
             if PC_pair.misaligned:
                 metrics_misaligned.append(result)
@@ -72,6 +83,9 @@ def main():
                 print(f"Mean abs metric misaligned {np.around(np.mean(np.abs(metrics_misaligned)), 4)}",
                       f"(N = {len(metrics_misaligned)})")
             print(f"Execution time (sec): {round(time.time() - t1, 3)}")
+
+    X_train, X_test, y_train, y_test = train_test_split(input_data, labels, test_size=0.33, random_state=42)
+    perform_logistic_regression(X_train, X_test, y_train, y_test)
     print("Finito!")
     # TODO: Add plot of misalignment vs alignment metric lists ... to see if we can discriminate
 
