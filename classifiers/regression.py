@@ -19,7 +19,8 @@ class LogisticRegression(torch.nn.Module):
         return outputs
 
 
-def perform_logistic_regression(X_train, X_test, y_train, y_test, epochs=200_000, learning_rate=0.05):
+def perform_logistic_regression(
+        X_train, X_test, y_train, y_test, epochs=200_000, learning_rate=0.05, verbose=True):
     """
     Perform logistic regression to predict alignment based on input features.
 
@@ -49,7 +50,8 @@ def perform_logistic_regression(X_train, X_test, y_train, y_test, epochs=200_000
 
     losses = []
     losses_test = []
-    for epoch in tqdm(range(int(epochs)), desc='Training Epochs'):
+    accuracy_test = 0
+    for epoch in tqdm(range(1, int(epochs)+1), desc='Training Epochs'):
         optimizer.zero_grad()  # Setting our stored gradients equal to zero
         outputs = model(X_train)
         loss = criterion(torch.squeeze(outputs), y_train)
@@ -57,8 +59,8 @@ def perform_logistic_regression(X_train, X_test, y_train, y_test, epochs=200_000
         loss.backward()  # Computes the gradient of the given tensor w.r.t. the weights/bias
 
         optimizer.step()  # Updates weights and biases with the optimizer (SGD)
-
-        if (epoch+1) % 10000 == 0:
+        last_epoch = (epoch == int(epochs))
+        if epoch % 10000 == 0 or last_epoch:
             with torch.no_grad():
                 # Calculating the loss and accuracy for the test dataset
                 # Get z for test data
@@ -83,7 +85,7 @@ def perform_logistic_regression(X_train, X_test, y_train, y_test, epochs=200_000
                 # Get accuracy train
                 accuracy = 100 * correct/total
                 losses.append(loss.item())
-
-                print(f"Iteration: {epoch+1}. \nTest - Loss: {loss_test.item()}. Accuracy: {accuracy_test}")
-                print(f"Train -  Loss: {loss.item()}. Accuracy: {accuracy}\n")
-    return model
+                if verbose:
+                    print(f"Iteration: {epoch}. \nTest - Loss: {loss_test.item()}. Accuracy: {accuracy_test}")
+                    print(f"Train -  Loss: {loss.item()}. Accuracy: {accuracy}\n")
+    return model, accuracy_test

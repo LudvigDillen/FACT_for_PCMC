@@ -1,18 +1,21 @@
 import torch
 import numpy as np
 import time
+from sklearn.model_selection import train_test_split
 
 
-def get_dynamic_radius(d):
-    alpha = torch.tensor(1.33, dtype=torch.float32)  # vertical angular resolution degrees
+from classifiers.regression import perform_logistic_regression
+from utils.data_handling import read_nuscenes_data
+
+
+def get_dynamic_radius(d, params):
+    # Unpack parameters
+    rmin = torch.tensor(params["rmin"])
+    rmax = torch.tensor(params["rmax"])
+    alpha = torch.tensor(params["alpha"])
+    #
     alpha_rad = torch.deg2rad(alpha)
-
-    # Adjust the size of the neighborhood since we use a mobile lidar instead of a TLS
-    scale_factor = 5
-    rmin = scale_factor*torch.tensor(0.2, dtype=torch.float32)
-    rmax = scale_factor*torch.tensor(1.0, dtype=torch.float32)
-    r = scale_factor*d*torch.sin(alpha_rad)
-
+    r = d*torch.sin(alpha_rad)
     r_out = r
     r_out[r < rmin] = rmin
     r_out[r > rmax] = rmax
@@ -20,7 +23,7 @@ def get_dynamic_radius(d):
 
 
 @torch.no_grad()
-def differential_entropy(PC, E_reject: float) -> float:
+def differential_entropy(PC, params: dict) -> float:
     """
     Calculate the differential_entropy of the point cloud using the method described in the
     paper "CorAl – Are the point clouds Correctly Aligned?".
@@ -28,7 +31,7 @@ def differential_entropy(PC, E_reject: float) -> float:
     Parameters:
     PC (PC class): The first point cloud as a PyTorch tensor with shape (n, 3), where n is the
                    number of points.
-    E_reject (float): Percentage of lowest entropies hpk to reject.
+    params (dict): Parameter dictionary.
 
     Returns:
     float: The entropy the point cloud.
@@ -41,11 +44,11 @@ def differential_entropy(PC, E_reject: float) -> float:
     pc = PC.pc.to(device)
     n_points = PC.N_points
     # Get dynamic radius
-    radius = get_dynamic_radius(PC.distances_to_origin).to(device)
+    radius = get_dynamic_radius(PC.distances_to_origin, params).to(device)
     del PC
 
     # Some offset to make sure not taking log of zero
-    epsilon = torch.tensor(10**(-8), dtype=torch.float64).to(device)
+    epsilon = torch.exp(torch.tensor(params["log_epsilon"]))
     scaler = ((2*torch.tensor(np.pi, dtype=torch.float64)*torch.exp(torch.tensor(1, dtype=torch.float64))
                )**dim_distribution).to(device)  # (2pi*e)^dim_distribution
 
@@ -148,12 +151,12 @@ def differential_entropy(PC, E_reject: float) -> float:
                   f"entropies_times             {np.around(entropies_times, decimals)}\n")
 
     sorted_entropies = torch.sort(entropies)[0]
-    keep_inds = round(E_reject*n_points)
+    keep_inds = round(params["E_reject"]*n_points)
     H = torch.sum(sorted_entropies[keep_inds:])  # only keep (1-E_reject) of the entropies
     return H.cpu().numpy()
 
 
-def get_overlap_share(PC0, PC1):
+def get_overlap_share(PC0, PC1, params):
     """
     We get the overlap share from the perspective of PC0. 
     return: overlap_share
@@ -162,7 +165,7 @@ def get_overlap_share(PC0, PC1):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     pc0 = PC0.pc.to(device)
     pc1 = PC1.pc.to(device)
-    radius0 = get_dynamic_radius(PC0.distances_to_origin).to(device).unsqueeze(dim=1)
+    radius0 = get_dynamic_radius(PC0.distances_to_origin, params).to(device).unsqueeze(dim=1)
     n_points = PC0.N_points
     del PC0, PC1
 
@@ -186,7 +189,7 @@ def get_overlap_share(PC0, PC1):
     return overlap_share
 
 
-def differential_entropy_metric(PC0, PC1, PCUnion, misaligned) -> float:
+def differential_entropy_metric(PC0, PC1, PCUnion, misaligned, params, verbose=True) -> float:
     """
     Calculate the differential entropy between two point clouds using the method described in the
     paper "CorAl – Are the point clouds Correctly Aligned?".
@@ -202,30 +205,79 @@ def differential_entropy_metric(PC0, PC1, PCUnion, misaligned) -> float:
     Returns:
     float: The differential entropy between the two point clouds.
     """
-    E_reject = 0.20  # reject the 20% smallest entropies
     overlap_misaligned_thresh = 0.10
     t1 = time.perf_counter()
-    overlap_share = get_overlap_share(PC0, PC1)
+    overlap_share = get_overlap_share(PC0, PC1, params)
     torch.cuda.synchronize()
     t2 = time.perf_counter()
-    print(f"\nOverlap share: {np.around(overlap_share,2)} (eval time: {np.around(t2 - t1, 4)} sec)")
+    if verbose:
+        print(f"\nOverlap share: {np.around(overlap_share,2)} (eval time: {np.around(t2 - t1, 4)} sec)")
     if overlap_share < overlap_misaligned_thresh:
         # return some large number which imply misalignment
-        return 1e10
+        H_separate = np.array([0])
+        H_joint = np.array([1e10])
+        metric = H_joint - H_separate
+        return metric, H_joint, H_separate
 
-    N_pts_used = PCUnion.N_points*(1-E_reject)
+    N_pts_used = PCUnion.N_points*(1-params["E_reject"])
     # separate average differential entropy
-    H_PC0 = differential_entropy(PC0, E_reject)
-    H_PC1 = differential_entropy(PC1, E_reject)
+    H_PC0 = differential_entropy(PC0, params)
+    H_PC1 = differential_entropy(PC1, params)
 
     H_separate = (H_PC0 + H_PC1)/(N_pts_used)
     # joint average differential entropy
-    H_joint = differential_entropy(PCUnion, E_reject)/(N_pts_used)
+    H_joint = differential_entropy(PCUnion, params)/(N_pts_used)
 
     metric = H_joint - H_separate  # this is our alignment quality measure for the enitre point cloud
     # display result
-    print(f"Diff joint:    {np.round(H_joint, 3)}")
-    print(f"Diff separate: {np.round(H_separate, 3)}")
-    print(f"Diff metric:   {np.round(metric, 3)}")
-    print(f"Is misaligned: {misaligned}")
+    if verbose:
+        print(f"Diff joint:    {np.round(H_joint, 3)}")
+        print(f"Diff separate: {np.round(H_separate, 3)}")
+        print(f"Diff metric:   {np.round(metric, 3)}")
+        print(f"Is misaligned: {misaligned}")
     return metric, H_joint, H_separate
+
+
+def differential_entropy_dataset(PC_scenes, params, verbose=True):
+    metrics_aligned = []
+    metrics_misaligned = []
+
+    input_data = []
+    labels = []
+    for PC_scene in PC_scenes:
+        for count, PC_pair in enumerate(PC_scene):
+            if count >= 10:
+                if verbose:
+                    print("I dont have the time to run this on the entire dataset")
+                break
+            t1 = time.time()
+            result, H_joint, H_separate = differential_entropy_metric(
+                PC_pair.PC0, PC_pair.PC1, PC_pair.PCUnion, PC_pair.misaligned, params, verbose)
+            # Gather input to the logistic regression
+            input_data.append([H_joint, H_separate])
+            labels.append(PC_pair.misaligned)
+
+            if PC_pair.misaligned:
+                metrics_misaligned.append(result)
+            else:
+                metrics_aligned.append(result)
+            if verbose:
+                if len(metrics_aligned) > 0:
+                    print(f"Mean abs metric aligned    {np.around(np.mean(np.abs(metrics_aligned)), 4)}",
+                          f"(N = {len(metrics_aligned)})")
+                if len(metrics_misaligned) > 0:
+                    print(f"Mean abs metric misaligned {np.around(np.mean(np.abs(metrics_misaligned)), 4)}",
+                          f"(N = {len(metrics_misaligned)})")
+                print(f"Execution time (sec): {round(time.time() - t1, 3)}")
+    input_data = np.array(input_data)
+    labels = np.array(labels)
+    X_train, X_test, y_train, y_test = train_test_split(input_data, labels, test_size=0.33, random_state=42)
+    model, accuracy_test = perform_logistic_regression(X_train, X_test, y_train, y_test, verbose=verbose)
+    return model, accuracy_test, X_train, X_test, y_train, y_test
+
+
+def differential_entropy_test_accuracy(params, PC_scenes):
+    model, accuracy_test, X_train, X_test, y_train, y_test = differential_entropy_dataset(
+        PC_scenes, params, verbose=False)
+    print(f"Accuracy: {accuracy_test} with parameters\n {params}")
+    return accuracy_test

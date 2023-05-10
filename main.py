@@ -1,19 +1,13 @@
 import torch
-import time
-import nuscenes as ns
-import numpy as np
-from scipy.spatial.transform import Rotation as Rotation
-from sklearn.model_selection import train_test_split
 
 
 from utils.other import start_debug
-from utils.nuscenes_handling import NuscenesHandling
-from classifiers.differential_entropy import differential_entropy_metric
-from visualization.point_clouds import vis_pc, vis_2pcs_aligned_vs_misaligned
-from classifiers.regression import perform_logistic_regression
+from classifiers.differential_entropy import differential_entropy_dataset
+from utils.optimize_parameters import optimize_with_ax
+from utils.data_handling import read_nuscenes_data
 
 
-def differential_entropy_classification():
+def main():
     print("cuda available:", torch.cuda.is_available())
     # TODO: 2023-04-27 (Gather data into lists e.g.)
     # 1. Gather data into lists (DONE!)
@@ -40,62 +34,28 @@ def differential_entropy_classification():
     # 2. Optimize of the other parameters alpha (even though it is given by the dataset), epsilon,
     #    and E_reject by optimizing over a grid of values (grid search).
 
-    # Initialize NuScenes object
-    nusc = ns.nuscenes.NuScenes(version='v1.0-mini', dataroot='data/nuscenes/mini/', verbose=True)
-    PCHandler = NuscenesHandling(nusc, downsample_factor=1)
-
-    PC_scenes = PCHandler.get_entire_sub_dataset(n_scenes=1)
-
     # Some visualization: We can see that the point clouds are better aligned after the transformation
     # vis_2pcs_aligned_vs_misaligned(PC0.pc, PC1.pc, pc1_CS0)
     ##
-
-    metrics_aligned = []
-    metrics_misaligned = []
-
-    input_data = []
-    labels = []
-
-    # TODO:
-    # 1. I'll start by gathering all the x1, x2 values and their repsective label.
-    # Kudos to
-
-    for PC_scene in PC_scenes:
-        for count, PC_pair in enumerate(PC_scene):
-            if count >= 5:
-                print("I dont have the time to run this on the entire dataset")
-                break
-            t1 = time.time()
-            result, H_joint, H_separate = differential_entropy_metric(
-                PC_pair.PC0, PC_pair.PC1, PC_pair.PCUnion, PC_pair.misaligned)
-            # Gather input to the logistic regression
-            input_data.append([H_joint, H_separate])
-            labels.append(PC_pair.misaligned)
-
-            if PC_pair.misaligned:
-                metrics_misaligned.append(result)
-            else:
-                metrics_aligned.append(result)
-            if len(metrics_aligned) > 0:
-                print(f"Mean abs metric aligned    {np.around(np.mean(np.abs(metrics_aligned)), 4)}",
-                      f"(N = {len(metrics_aligned)})")
-            if len(metrics_misaligned) > 0:
-                print(f"Mean abs metric misaligned {np.around(np.mean(np.abs(metrics_misaligned)), 4)}",
-                      f"(N = {len(metrics_misaligned)})")
-            print(f"Execution time (sec): {round(time.time() - t1, 3)}")
-    input_data = np.array(input_data)
-    labels = np.array(labels)
-    X_train, X_test, y_train, y_test = train_test_split(input_data, labels, test_size=0.33, random_state=42)
-    model = perform_logistic_regression(X_train, X_test, y_train, y_test)
+    PC_scenes = read_nuscenes_data(n_scenes=1)
+    params = {
+        "rmin": 1.0,
+        "rmax": 5.0,
+        "log_epsilon": -18.0,
+        "alpha": 5.0,
+        "E_reject": 0.20
+    }
+    differential_entropy_dataset(PC_scenes, params, verbose=True)
     print("Finito!")
     # TODO: Add plot of misalignment vs alignment metric lists ... to see if we can discriminate
 
     # TODO: Compare the differential entropy metric before and after the alignment.
     # TODO: Check covariance of A vs 2A. Have checked, it is not the same ....
     # TODO: Must H_joint > H_sep? (probably not after adding epsilon, but maybe)
-    return model, X_train, X_test, y_train, y_test
+    return None
 
 
 if __name__ == "__main__":
     start_debug()
-    differential_entropy_classification()
+    main()
+    # optimize_with_ax()

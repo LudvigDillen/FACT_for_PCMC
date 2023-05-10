@@ -30,14 +30,14 @@ class PCPair:
                                          "be necessary in that case.")
 
         pc_union_dists = torch.cat((self.PC0.distances_to_origin, self.PC1.distances_to_origin))
-        pc1_CS0 = align_point_clouds(PCHandler.pc1_CS1, PCHandler.lidar_pose0, PCHandler.lidar_pose1)
+        self.pc1_CS0 = align_point_clouds(PCHandler.pc1_CS1, PCHandler.lidar_pose0, PCHandler.lidar_pose1)
         if self.misaligned:
-            pc1_CS0 = self.perform_random_perturbation_CorAl(pc1_CS0)
+            self.pc1_CS0 = self.perform_random_perturbation_CorAl(self.pc1_CS0)
 
         # pc_union may be the concatenation of either two aligned point clouds or two misaligned point clouds.
         # This will depend on if we randomly peturb one of the aligned point cloud or not.
         # This happen with the peturb probality handed to the constructor of the class.
-        pc_union = torch.cat((PCHandler.pc0_CS0, pc1_CS0), dim=0)
+        pc_union = torch.cat((PCHandler.pc0_CS0, self.pc1_CS0), dim=0)
         self.PCUnion = PC(pc_union, pc_union_dists)
 
     def perform_random_perturbation_CorAl(self, pc, angular_offset=0.01, translational_offset=0.1):
