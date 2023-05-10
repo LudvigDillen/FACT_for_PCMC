@@ -4,7 +4,8 @@ import torch
 from utils.other import start_debug
 from classifiers.differential_entropy import differential_entropy_dataset
 from utils.optimize_parameters import optimize_with_ax
-from utils.data_handling import read_nuscenes_data
+from utils.data_handling import read_nuscenes_data, gather_data
+from classifiers.regression import perform_logistic_regression
 
 
 def main():
@@ -24,20 +25,22 @@ def main():
     #       2. It easily get stuck in local minima which is the realistic/common point when registration
     #          methods stop to iterate.
     #       3. It is common and well known, and useful as a benchmark registration method in that sense.
-    # 3. Split data up into training and test set
+    # 3. Split data up into training and test set (DONE!)
 
     # TODO: How to choose model parameters
     # 1. Use some optimization in PyTorch to backpropagate the parameters of the logistic regression
-    #    model (beta0, beta1, beta2).
+    #    model (beta0, beta1, beta2). (DONE!)
     # 1.1 When I start implementing this, I start by fixating all parameters except the betas. I might
-    #     later add a few of them to the loss function, but we'll see.
+    #     later add a few of them to the loss function, but we'll see. (DONE!)
     # 2. Optimize of the other parameters alpha (even though it is given by the dataset), epsilon,
-    #    and E_reject by optimizing over a grid of values (grid search).
+    #    and E_reject by optimizing over a grid of values (grid search). (DONE!)
 
     # Some visualization: We can see that the point clouds are better aligned after the transformation
     # vis_2pcs_aligned_vs_misaligned(PC0.pc, PC1.pc, pc1_CS0)
     ##
-    PC_scenes = read_nuscenes_data(n_scenes=1)
+    PC_scenes = read_nuscenes_data()
+    PC_scenes_training, PC_scenes_test = gather_data(PC_scenes, samples_training=10, samples_test=10)
+
     params = {
         "rmin": 1.0,
         "rmax": 5.0,
@@ -45,17 +48,17 @@ def main():
         "alpha": 5.0,
         "E_reject": 0.20
     }
-    differential_entropy_dataset(PC_scenes, params, verbose=True)
+    X_train, y_train = differential_entropy_dataset(PC_scenes_training, params)
+    X_test, y_test = differential_entropy_dataset(PC_scenes_test, params)
+    model, accuracy_test = perform_logistic_regression(X_train, X_test, y_train, y_test, verbose=True)
+    print(f"Accuracy: {accuracy_test} with parameters\n {params}")
     print("Finito!")
-    # TODO: Add plot of misalignment vs alignment metric lists ... to see if we can discriminate
-
     # TODO: Compare the differential entropy metric before and after the alignment.
-    # TODO: Check covariance of A vs 2A. Have checked, it is not the same ....
-    # TODO: Must H_joint > H_sep? (probably not after adding epsilon, but maybe)
+    # TODO: Must H_joint > H_sep? No, it mustn't, but in practice it usually is.
     return None
 
 
 if __name__ == "__main__":
     start_debug()
-    main()
-    # optimize_with_ax()
+    # main()
+    optimize_with_ax()

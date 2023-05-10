@@ -1,11 +1,9 @@
 import torch
 import numpy as np
 import time
-from sklearn.model_selection import train_test_split
 
 
 from classifiers.regression import perform_logistic_regression
-from utils.data_handling import read_nuscenes_data
 
 
 def get_dynamic_radius(d, params):
@@ -271,13 +269,12 @@ def differential_entropy_dataset(PC_scenes, params, verbose=True):
                 print(f"Execution time (sec): {round(time.time() - t1, 3)}")
     input_data = np.array(input_data)
     labels = np.array(labels)
-    X_train, X_test, y_train, y_test = train_test_split(input_data, labels, test_size=0.33, random_state=42)
-    model, accuracy_test = perform_logistic_regression(X_train, X_test, y_train, y_test, verbose=verbose)
-    return model, accuracy_test, X_train, X_test, y_train, y_test
+    return input_data, labels
 
 
-def differential_entropy_test_accuracy(params, PC_scenes):
-    model, accuracy_test, X_train, X_test, y_train, y_test = differential_entropy_dataset(
-        PC_scenes, params, verbose=False)
+def differential_entropy_test_accuracy(params, PC_scenes_training, PC_scenes_test):
+    X_train, y_train = differential_entropy_dataset(PC_scenes_training, params, verbose=False)
+    X_test, y_test = differential_entropy_dataset(PC_scenes_test, params, verbose=False)
+    model, accuracy_test = perform_logistic_regression(X_train, X_test, y_train, y_test, verbose=False)
     print(f"Accuracy: {accuracy_test} with parameters\n {params}")
     return accuracy_test

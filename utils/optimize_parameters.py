@@ -1,14 +1,15 @@
 from ax import optimize
 
 from classifiers.differential_entropy import differential_entropy_test_accuracy
-from utils.data_handling import read_nuscenes_data
+from utils.data_handling import read_nuscenes_data, gather_data
 
 
 def optimize_with_ax():
-    PC_scenes = read_nuscenes_data(n_scenes=1)
+    PC_scenes = read_nuscenes_data()
+    PC_scenes_training, PC_scenes_test = gather_data(PC_scenes, samples_training=5, samples_test=5)
 
     def evaluation_function_wrapper(params):
-        return differential_entropy_test_accuracy(params, PC_scenes)
+        return differential_entropy_test_accuracy(params, PC_scenes_training, PC_scenes_test)
 
     best_parameters, best_values, experiment, model = optimize(
         parameters=[
