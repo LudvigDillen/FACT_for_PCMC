@@ -189,7 +189,7 @@ class NuscenesHandling:
                 print(f"We have collected {self.scene_counter} scenes")
                 # We might just want to read a few scenes
                 if n_scenes != 'all':
-                    if n_scenes >= self.scene_counter:
+                    if self.scene_counter >= n_scenes:
                         break
             if self.dataset_read == True:
                 print("We have collected all data from the dataset")
