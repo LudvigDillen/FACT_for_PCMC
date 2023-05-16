@@ -2,7 +2,6 @@ import torch
 import numpy as np
 import time
 
-
 from classifiers.regression import perform_logistic_regression
 
 
@@ -72,6 +71,7 @@ def differential_entropy(PC, params: dict) -> float:
     for batch_number, pc_batch in enumerate(pc_batches):
         # Compute the distance matrix between pc_batch and pc
         t1 = time.perf_counter()
+        torch.cuda.synchronize()
         dists = torch.cdist(pc_batch, pc)
         del pc_batch
         torch.cuda.synchronize()
@@ -229,10 +229,8 @@ def differential_entropy_metric(PC0, PC1, PCUnion, misaligned, params, verbose=T
     metric = H_joint - H_separate  # this is our alignment quality measure for the enitre point cloud
     # display result
     if verbose:
-        print(f"Diff joint:    {np.round(H_joint, 3)}")
-        print(f"Diff separate: {np.round(H_separate, 3)}")
-        print(f"Diff metric:   {np.round(metric, 3)}")
-        print(f"Is misaligned: {misaligned}")
+        print(f"[joint|sep|metric|misaligned]: [{np.round(H_joint, 3)}|{np.round(H_separate, 3)}|{np.round(metric, 3)}|{misaligned}]",
+              flush=True)
     return metric, H_joint, H_separate
 
 
@@ -243,11 +241,7 @@ def differential_entropy_dataset(PC_scenes, params, verbose=True):
     input_data = []
     labels = []
     for PC_scene in PC_scenes:
-        for count, PC_pair in enumerate(PC_scene):
-            if count >= 10:
-                if verbose:
-                    print("I dont have the time to run this on the entire dataset")
-                break
+        for PC_pair in PC_scene:
             t1 = time.time()
             result, H_joint, H_separate = differential_entropy_metric(
                 PC_pair.PC0, PC_pair.PC1, PC_pair.PCUnion, PC_pair.misaligned, params, verbose)
@@ -266,15 +260,15 @@ def differential_entropy_dataset(PC_scenes, params, verbose=True):
                 if len(metrics_misaligned) > 0:
                     print(f"Mean abs metric misaligned {np.around(np.mean(np.abs(metrics_misaligned)), 4)}",
                           f"(N = {len(metrics_misaligned)})")
-                print(f"Execution time (sec): {round(time.time() - t1, 3)}")
+                print(f"Execution time: {round(time.time() - t1, 3)} sec", flush=True)
     input_data = np.array(input_data)
     labels = np.array(labels)
     return input_data, labels
 
 
-def differential_entropy_test_accuracy(params, PC_scenes_training, PC_scenes_test):
-    X_train, y_train = differential_entropy_dataset(PC_scenes_training, params, verbose=False)
-    X_test, y_test = differential_entropy_dataset(PC_scenes_test, params, verbose=False)
-    model, accuracy_test = perform_logistic_regression(X_train, X_test, y_train, y_test, verbose=False)
-    print(f"Accuracy: {accuracy_test} with parameters\n {params}")
+def differential_entropy_test_accuracy(params, PC_scenes_training, PC_scenes_test, verbose=False):
+    X_train, y_train = differential_entropy_dataset(PC_scenes_training, params, verbose=verbose)
+    X_test, y_test = differential_entropy_dataset(PC_scenes_test, params, verbose=verbose)
+    model, accuracy_test = perform_logistic_regression(X_train, X_test, y_train, y_test, verbose=verbose)
+    print(f"Accuracy: {accuracy_test} with parameters\n {params}", flush=True)
     return accuracy_test

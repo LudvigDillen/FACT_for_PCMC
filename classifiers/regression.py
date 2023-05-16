@@ -20,7 +20,7 @@ class LogisticRegression(torch.nn.Module):
 
 
 def perform_logistic_regression(
-        X_train, X_test, y_train, y_test, epochs=200_000, learning_rate=0.05, verbose=True):
+        X_train, X_test, y_train, y_test, epochs=300_000, learning_rate=0.04, verbose=True):
     """
     Perform logistic regression to predict alignment based on input features.
 
@@ -51,7 +51,8 @@ def perform_logistic_regression(
     losses = []
     losses_test = []
     accuracy_test = 0
-    for epoch in tqdm(range(1, int(epochs)+1), desc='Training Epochs'):
+    #for epoch in tqdm(range(1, int(epochs)+1), desc='Training Epochs'):
+    for epoch in range(1, int(epochs)+1):
         optimizer.zero_grad()  # Setting our stored gradients equal to zero
         outputs = model(X_train)
         loss = criterion(torch.squeeze(outputs), y_train)
@@ -86,6 +87,9 @@ def perform_logistic_regression(
                 accuracy = 100 * correct/total
                 losses.append(loss.item())
                 if verbose:
-                    print(f"Iteration: {epoch}. \nTest - Loss: {loss_test.item()}. Accuracy: {accuracy_test}")
-                    print(f"Train -  Loss: {loss.item()}. Accuracy: {accuracy}\n")
+                    loss_train_print = np.around(loss.item(), 4)
+                    loss_test_print = np.around(loss_test.item(), 4)
+                    print(f"Iteration: {epoch}", flush=True)
+                    print(f"[Train|Test]: Loss = [{loss_train_print}|{loss_test_print}], Acc. = [{accuracy}|{accuracy_test}]",
+                          flush=True)
     return model, accuracy_test

@@ -17,6 +17,8 @@ def sample_from_scene(scene, samples):
     """
     Sample from scene with distant samples.
     """
+    if samples == 0:
+        return []
     N_samples_in_scene = len(scene)
     step_length = int(N_samples_in_scene/samples)
     sampled_scene = []
