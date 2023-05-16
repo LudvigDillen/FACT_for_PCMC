@@ -18,16 +18,21 @@ class NuscenesHandling:
         self.setup_new_scene_data(lidar_token)
 
     def downsample_both_point_clouds(self):
-        N_samples_before = self.pc0_CS0.shape[0]  # Assuming both point clouds have equally many points
+        N_samples_before = self.pc0_CS0.shape[0]
         N_samples_after = round(N_samples_before/self.downsample_factor)
         samples_to_keep = np.random.choice(N_samples_before, size=N_samples_after)
-        self.samples_to_keep = samples_to_keep
-
         self.pc0_CS0 = self.pc0_CS0[samples_to_keep]  # Downsample point cloud
+
+        N_samples_before = self.pc1_CS1.shape[0]
+        N_samples_after = round(N_samples_before/self.downsample_factor)
+        samples_to_keep = np.random.choice(N_samples_before, size=N_samples_after)
         self.pc1_CS1 = self.pc1_CS1[samples_to_keep]  # Downsample point cloud
 
     def downsample_second_point_cloud(self):
-        self.pc1_CS1 = self.pc1_CS1[self.samples_to_keep]  # Downsample point cloud
+        N_samples_before = self.pc1_CS1.shape[0]
+        N_samples_after = round(N_samples_before/self.downsample_factor)
+        samples_to_keep = np.random.choice(N_samples_before, size=N_samples_after)
+        self.pc1_CS1 = self.pc1_CS1[samples_to_keep]  # Downsample point cloud
 
     def setup_new_scene_data(self, lidar_token=None):
         # Set info PC0
