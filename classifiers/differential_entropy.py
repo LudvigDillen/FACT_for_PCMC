@@ -267,8 +267,11 @@ def differential_entropy_dataset(PC_scenes, params, verbose=True):
 
 
 def differential_entropy_test_accuracy(params, PC_scenes_training, PC_scenes_test, verbose=False):
+    print("\nGetting training data\n")
     X_train, y_train = differential_entropy_dataset(PC_scenes_training, params, verbose=verbose)
+    print("\nGetting test data\n")
     X_test, y_test = differential_entropy_dataset(PC_scenes_test, params, verbose=verbose)
+    print("\nPerform logistic regression\n")
     model, accuracy_test = perform_logistic_regression(X_train, X_test, y_train, y_test, verbose=verbose)
     print(f"Accuracy: {accuracy_test} with parameters\n {params}", flush=True)
     return accuracy_test

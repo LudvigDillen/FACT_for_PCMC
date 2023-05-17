@@ -20,7 +20,7 @@ class LogisticRegression(torch.nn.Module):
 
 
 def perform_logistic_regression(
-        X_train, X_test, y_train, y_test, epochs=300_000, learning_rate=0.04, verbose=True):
+        X_train, X_test, y_train, y_test, epochs=100_000, learning_rate=0.03, verbose=True):
     """
     Perform logistic regression to predict alignment based on input features.
 
@@ -61,7 +61,7 @@ def perform_logistic_regression(
 
         optimizer.step()  # Updates weights and biases with the optimizer (SGD)
         last_epoch = (epoch == int(epochs))
-        if epoch % 10000 == 0 or last_epoch:
+        if epoch % 5000 == 0 or last_epoch:
             with torch.no_grad():
                 # Calculating the loss and accuracy for the test dataset
                 # Get z for test data
@@ -89,7 +89,9 @@ def perform_logistic_regression(
                 if verbose:
                     loss_train_print = np.around(loss.item(), 4)
                     loss_test_print = np.around(loss_test.item(), 4)
+                    accuracy_train_print = np.around(accuracy, 2)
+                    accuracy_test_print = np.around(accuracy_test, 2)
                     print(f"Iteration: {epoch}", flush=True)
-                    print(f"[Train|Test]: Loss = [{loss_train_print}|{loss_test_print}], Acc. = [{accuracy}|{accuracy_test}]",
-                          flush=True)
+                    print((f"[Train|Test]: Loss = [{loss_train_print}|{loss_test_print}]",
+                           f"Acc. = [{accuracy_train_print}|{accuracy_test_print}]"), flush=True)
     return model, accuracy_test
