@@ -14,6 +14,7 @@ def plot_point_cloud(
         (-0.75, -0.75, -0.75),
         (0.75, 0.75, 0.75),
     ),
+    grid_1d: bool = False
 ):
     """
     Render a point cloud as a plot to the given image path.
@@ -60,5 +61,6 @@ def plot_point_cloud(
                 ax.set_xlim3d(fixed_bounds[0][0], fixed_bounds[1][0])
                 ax.set_ylim3d(fixed_bounds[0][1], fixed_bounds[1][1])
                 ax.set_zlim3d(fixed_bounds[0][2], fixed_bounds[1][2])
-
+        if grid_1d:
+            break
     return fig
