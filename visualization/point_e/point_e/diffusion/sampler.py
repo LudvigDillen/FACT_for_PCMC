@@ -7,7 +7,7 @@ from typing import Any, Callable, Dict, Iterator, List, Sequence, Tuple
 import torch
 import torch.nn as nn
 
-from point_e.util.point_cloud import PointCloud
+from visualization.point_e.point_e.util.point_cloud import PointCloud
 
 from .gaussian_diffusion import GaussianDiffusion
 from .k_diffusion import karras_sample_progressive
