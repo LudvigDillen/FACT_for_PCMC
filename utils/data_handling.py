@@ -34,18 +34,18 @@ def gather_data(PC_scenes, samples_training, samples_test):
     possible (almost at least).
     """
     N_scenes = len(PC_scenes)
-    assert N_scenes > 1, "ERROR: We can't do division into training and test data if we do not have at least 2 scenes"
+    assert N_scenes > 1, ("ERROR: We can't do division into training and test"
+                          "data if we do not have at least 2 scenes")
     total_samples = samples_training + samples_test
     scenes_training = round(N_scenes*samples_training/total_samples)
     scenes_test = round(N_scenes*samples_test/total_samples)
     assert scenes_training > 0, "ERROR: We must have at least 1 training scene"
     assert scenes_test > 0, "ERROR: We must have at least 1 test scene"
 
-    # Becomes necessary if both are rounded down from X.5 to X.0. 
+    # Becomes necessary if both are rounded down from X.5 to X.0.
     if scenes_training + scenes_test != N_scenes:
         scenes_training += 1
     assert scenes_training + scenes_test == N_scenes, "Error in division of data between training and test"
-
 
     samples_per_scene_training = list_of_samples_per_scene(samples_training, scenes_training)
     samples_per_scene_test = list_of_samples_per_scene(samples_test, scenes_test)

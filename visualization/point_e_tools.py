@@ -30,14 +30,14 @@ def get_point_e_model(text="an orange car"):
     upsampler_model.load_state_dict(load_checkpoint('upsample', device))
 
     sampler = PointCloudSampler(
-    device=device,
-    models=[base_model, upsampler_model],
-    diffusions=[base_diffusion, upsampler_diffusion],
-    num_points=[1024, 4096 - 1024],
-    aux_channels=['R', 'G', 'B'],
-    guidance_scale=[3.0, 0.0],
-    model_kwargs_key_filter=('texts', ''), # Do not condition the upsampler at all
-)
+        device=device,
+        models=[base_model, upsampler_model],
+        diffusions=[base_diffusion, upsampler_diffusion],
+        num_points=[1024, 4096 - 1024],
+        aux_channels=['R', 'G', 'B'],
+        guidance_scale=[3.0, 0.0],
+        model_kwargs_key_filter=('texts', ''),  # Do not condition the upsampler at all
+    )
 
     # Set a prompt to condition on.
     prompt = text
@@ -55,15 +55,17 @@ def scatter_point(x, y, z, ax, col="r", size=0.50):
     # Add a 3D point (x, y, z)
     ax.scatter([x], [y], [z], c=col, marker='o', s=20)
     # Add dotted lines from the point to the respective axes
-    ax.plot([x, x], [y, y], [z, -size], col + '--', linewidth=2, alpha=1.0) # to x-axis
-    ax.plot([x, x], [y, size], [z, z], col + '--', linewidth=2, alpha=1.0) # to y-axis
-    ax.plot([x, -size], [y, y], [z, z], col + '--', linewidth=2, alpha=1.0) # to z-axis
+    ax.plot([x, x], [y, y], [z, -size], col + '--', linewidth=2, alpha=1.0)  # to x-axis
+    ax.plot([x, x], [y, size], [z, z], col + '--', linewidth=2, alpha=1.0)  # to y-axis
+    ax.plot([x, -size], [y, y], [z, z], col + '--', linewidth=2, alpha=1.0)  # to z-axis
     return ax
+
 
 def scatter_spheres(x, y, z, ax, col="r", size=0.50):
     ax.scatter([x], [y], [z], c=col, marker='o', s=20)  # Increase the size of the point
 
-    # Add "dotted" lines from the point to the respective axes by creating a series of small spheres along the line
+    # Add "dotted" lines from the point to the respective axes by creating a series of small spheres along
+    # the line
     t = np.linspace(-size, size, num=50)  # Adjust num to add more points along the line
     ax.scatter(np.full_like(t, x), np.full_like(t, y), t, c=col, marker='o', s=3, alpha=1.0)  # to x-axis
     ax.scatter(t, np.full_like(t, y), np.full_like(t, z), c=col, marker='o', s=3, alpha=1.0)  # to y-axis

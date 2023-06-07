@@ -186,7 +186,7 @@ class NuscenesHandling:
             # Iterate to next pair in scene
             self.set_next_point_cloud_pair()
 
-            if self.scene_read == True:
+            if self.scene_read:
                 # Append scene to list of scenes
                 PC_scenes.append(PC_scene)
                 PC_scene = []
@@ -196,7 +196,7 @@ class NuscenesHandling:
                 if n_scenes != 'all':
                     if self.scene_counter >= n_scenes:
                         break
-            if self.dataset_read == True:
+            if self.dataset_read:
                 print("We have collected all data from the dataset")
                 break
 

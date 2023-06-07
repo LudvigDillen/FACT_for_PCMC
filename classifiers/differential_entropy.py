@@ -3,6 +3,7 @@ import numpy as np
 import time
 
 from classifiers.regression import perform_logistic_regression
+from utils.visibility import keep_covisible_points
 
 
 def get_dynamic_radius(d, params):
@@ -229,7 +230,8 @@ def differential_entropy_metric(PC0, PC1, PCUnion, misaligned, params, verbose=T
     metric = H_joint - H_separate  # this is our alignment quality measure for the enitre point cloud
     # display result
     if verbose:
-        print(f"[joint|sep|metric|misaligned]: [{np.round(H_joint, 3)}|{np.round(H_separate, 3)}|{np.round(metric, 3)}|{misaligned}]",
+        print("[joint|sep|metric|misaligned]:",
+              f"[{np.round(H_joint, 3)}|{np.round(H_separate, 3)}|{np.round(metric, 3)}|{misaligned}]",
               flush=True)
     return metric, H_joint, H_separate
 
@@ -243,8 +245,12 @@ def differential_entropy_dataset(PC_scenes, params, verbose=True):
     for PC_scene in PC_scenes:
         for PC_pair in PC_scene:
             t1 = time.time()
+            PC0_covisible, PC1_covisible, PCUnion_covisible = keep_covisible_points(
+                PC_pair.PC0, PC_pair.PC1, PC_pair.PCUnion, PC_pair.pose0, PC_pair.pose1)
             result, H_joint, H_separate = differential_entropy_metric(
-                PC_pair.PC0, PC_pair.PC1, PC_pair.PCUnion, PC_pair.misaligned, params, verbose)
+                PC0_covisible, PC1_covisible, PCUnion_covisible, PC_pair.misaligned, params, verbose)
+            # result, H_joint, H_separate = differential_entropy_metric(
+            #     PC_pair.PC0, PC_pair.PC1, PC_pair.PCUnion, PC_pair.misaligned, params, verbose)
             # Gather input to the logistic regression
             input_data.append([H_joint, H_separate])
             labels.append(PC_pair.misaligned)

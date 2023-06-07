@@ -1,6 +1,6 @@
 import torch
 import random
-from utils.geometrics import align_point_clouds
+from utils.geometrics import change_coordinate_system
 
 
 class PC:
@@ -15,7 +15,9 @@ class PCPair:
     def __init__(self, PC0, PC1, PCHandler=None, perturb_probability=0.5):
         # Set point cloud pair
         self.PC0 = PC0
+        self.pose0 = PCHandler.lidar_pose0
         self.PC1 = PC1
+        self.pose1 = PCHandler.lidar_pose1
 
         # Draw random value between 0 and 1 if we should perturb or not perturb the point cloud.
         peturb_point_cloud = (random.random() < perturb_probability)
@@ -30,9 +32,11 @@ class PCPair:
                                          "be necessary in that case.")
 
         pc_union_dists = torch.cat((self.PC0.distances_to_origin, self.PC1.distances_to_origin))
-        self.pc1_CS0 = align_point_clouds(PCHandler.pc1_CS1, PCHandler.lidar_pose0, PCHandler.lidar_pose1)
+        self.pc1_CS0 = change_coordinate_system(PCHandler.pc1_CS1, PCHandler.lidar_pose0,
+                                                PCHandler.lidar_pose1)
         if self.misaligned:
-            self.pc1_CS0 = self.perform_random_perturbation_CorAl(self.pc1_CS0)
+            self.pc1_CS0 = self.perform_random_perturbation_CorAl(self.pc1_CS0, angular_offset=0.03,
+                                                                  translational_offset=0.3)
 
         # pc_union may be the concatenation of either two aligned point clouds or two misaligned point clouds.
         # This will depend on if we randomly peturb one of the aligned point cloud or not.

@@ -61,9 +61,10 @@ def transformation_matrix(quaternion, translation):
     return transformation_matrix
 
 
-def align_point_clouds(pc1: torch.Tensor, T0: torch.Tensor, T1: torch.Tensor) -> torch.Tensor:
+def change_coordinate_system(pc1: torch.Tensor, T0: torch.Tensor, T1: torch.Tensor) -> torch.Tensor:
     """
-    Aligns two 3D point clouds and their corresponding transformation matrices to a common coordinate system.
+    Moves a 3D point cloud with with pose T1 to the local coordinate system of another point
+    cloud with pose T0.
 
     :param pc1: A point cloud represented as a Mx3 Tensor (M points x 3 coordinates).
     :type pc1: torch.Tensor
@@ -74,7 +75,7 @@ def align_point_clouds(pc1: torch.Tensor, T0: torch.Tensor, T1: torch.Tensor) ->
     :param T1: A 4x4 transformation matrix corresponding to the second point cloud.
     :type T1: torch.Tensor
 
-    :return: aligned point cloud
+    :return: point cloud in the local coordinate system of pc0 with pose T0
     :rtype: torch.Tensor
     """
     # Ensure input tensors have the correct dimensions
@@ -88,7 +89,7 @@ def align_point_clouds(pc1: torch.Tensor, T0: torch.Tensor, T1: torch.Tensor) ->
     # Step 2: Compute the transformation matrix to align both point clouds
     T_align = torch.matmul(T0_inv, T1)
 
-    # Step 3: Align the second point cloud with the first point cloud
+    # Step 3: Move the second point cloud to the coordinate system of the first point cloud
     # Convert to homogeneous coordinates
     pc1_homogeneous = torch.cat((pc1, torch.ones(pc1.size(0), 1, dtype=pc1.dtype, device=pc1.device)), dim=1)
     pc1_homogeneous_swap = torch.swapaxes(pc1_homogeneous, 0, 1)

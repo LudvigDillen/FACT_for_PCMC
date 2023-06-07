@@ -51,7 +51,7 @@ def perform_logistic_regression(
     losses = []
     losses_test = []
     accuracy_test = 0
-    #for epoch in tqdm(range(1, int(epochs)+1), desc='Training Epochs'):
+    # for epoch in tqdm(range(1, int(epochs)+1), desc='Training Epochs'):
     for epoch in range(1, int(epochs)+1):
         optimizer.zero_grad()  # Setting our stored gradients equal to zero
         outputs = model(X_train)
