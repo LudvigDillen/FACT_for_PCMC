@@ -7,12 +7,19 @@ from nuscenes.utils.data_classes import LidarPointCloud
 
 
 class NuscenesHandling:
-    def __init__(self, nusc, downsample_factor=1, lidar_token=None):
+    def __init__(self, nusc, downsample_factor=1, lidar_token=None, part_dir="", part_counter=0):
         self.nusc = nusc
         self.scene_counter = 0
         self.number_of_scenes_in_dataset = len(self.nusc.scene)
         self.dataset_read = False
         self.scene_read = False
+        self.part_dir = part_dir
+        self.part_counter = part_counter
+
+        # Specify where the raw LiDAR data is
+        self.data_folder0 = "samples/"
+        self.data_folder1 = "sweeps/"
+
         # Randomly downsample point clouds
         self.downsample_factor = downsample_factor
         self.setup_new_scene_data(lidar_token)
@@ -85,6 +92,21 @@ class NuscenesHandling:
         # Load the point cloud xyz coordinates from the LIDAR binary file.
         # It is the sensor coordinate system.
         path_to_lidar_bin_file = self.nusc.get_sample_data_path(lidar_token)
+        # Now go into the sub-folder of data
+        both_sub_files_exist = (self.data_folder0 in path_to_lidar_bin_file and
+                                self.data_folder1 in path_to_lidar_bin_file)
+        assert not both_sub_files_exist, (
+            "You cannot name a part of the file-path to something with " +
+            f"{self.data_folder0} or {self.data_folder1} except where that data is stored")
+
+        if self.data_folder0 in path_to_lidar_bin_file:
+            keyword = self.data_folder0
+        elif self.data_folder1 in path_to_lidar_bin_file:
+            keyword = self.data_folder1
+        else:
+            exit("ERROR: Did not find the data! " +
+                 f"The string should contain either the keyword {self.data_folder0} or {self.data_folder1}.")
+        path_to_lidar_bin_file = path_to_lidar_bin_file.replace(keyword, self.part_dir + keyword, 1)
         pc = LidarPointCloud.from_file(path_to_lidar_bin_file)
         pc_xyz = torch.swapaxes(torch.from_numpy(pc.points[:3]).to(torch.float64), 0, 1)
         return pc_xyz
@@ -120,19 +142,25 @@ class NuscenesHandling:
         lidar_dict = self.get_lidar_dict(lidar_token)
         return lidar_dict['next']
 
-    def set_next_point_cloud_pair(self):
+    def set_next_point_cloud_pair(self, n_samples_jump=0):
         """
         Iteratate to next point cloud in the dataset. If the scene is finished, we go on to
         the next scene. If all as scenes are read, then we have read the entire dataset. Then,
         we have collected all the data we need/want.
         """
         # Move to next point cloud pair in the scene
-        self.lidar_token0 = self.lidar_token1
-        self.lidar_pose0 = self.lidar_pose1
-        self.pc0_CS0 = self.pc1_CS1
+        assert n_samples_jump >= 0, "ERROR: n_samples_jump>=0. Can't skip a negative amount of samples"
+        assert isinstance(n_samples_jump, int), "ERROR: n_samples_jump must be an integer"
+
+        if n_samples_jump <= 1:
+            self.lidar_token0 = self.lidar_token1
+            self.lidar_pose0 = self.lidar_pose1
+            self.pc0_CS0 = self.pc1_CS1
+            self.point_distances0 = self.point_distances1
 
         # Set info PC1
-        self.lidar_token1 = self.get_next_lidar_token(self.lidar_token0)
+        self.lidar_token1 = self.get_next_lidar_token(self.lidar_token1)
+
         end_of_scene = (self.lidar_token1 == '')
         if end_of_scene:
             self.scene_read = True
@@ -143,14 +171,19 @@ class NuscenesHandling:
             else:
                 self.setup_new_scene_data(lidar_token=None)
             return None
-        self.lidar_pose1 = self.get_sensor_pose_in_WCS(self.lidar_token1)
-        self.pc1_CS1 = self.get_point_cloud(self.lidar_token1)
 
-        # Randomly downsample point clouds
-        if self.downsample_factor > 1:
-            self.downsample_second_point_cloud()
+        if n_samples_jump <= 1:
+            self.lidar_pose1 = self.get_sensor_pose_in_WCS(self.lidar_token1)
+            self.pc1_CS1 = self.get_point_cloud(self.lidar_token1)
 
-        self.point_distances1 = self.get_point_distances_to_origin(self.pc1_CS1)
+            # Randomly downsample point clouds
+            if self.downsample_factor > 1:
+                self.downsample_second_point_cloud()
+
+            self.point_distances1 = self.get_point_distances_to_origin(self.pc1_CS1)
+
+        if n_samples_jump > 0:
+            self.set_next_point_cloud_pair(n_samples_jump=n_samples_jump-1)
 
     def get_number_of_samples_in_scenes(self, PC_scenes):
         n_samples = 0
@@ -158,10 +191,30 @@ class NuscenesHandling:
             n_samples += len(PC_scene)
         return n_samples
 
-    def get_entire_sub_dataset(self, n_scenes='all'):
+    def get_number_lidar_samples_in_scene(self):
+        # TODO: I do not have to call this function several timesd per scene which I do right now.
+
+        scene = self.nusc.scene[self.scene_counter]
+        # Get the first and last sample in the scene
+        first_sample = self.nusc.get('sample', scene['first_sample_token'])
+        last_sample = self.nusc.get('sample', scene['last_sample_token'])
+
+        # Get the timestamps of the first and last sample
+        first_timestamp = first_sample['timestamp']
+        last_timestamp = last_sample['timestamp']
+
+        # Get the Lidar data from the scene
+        lidar_data = [d for d in self.nusc.sample_data if d['sensor_modality'] == 'lidar' and
+                      first_timestamp <= d['timestamp'] <= last_timestamp]
+
+        # Get the number of Lidar sweeps in the scene 
+        num_lidar_sweeps = len(lidar_data)
+        return num_lidar_sweeps
+
+    def get_entire_scenes(self, n_scenes='all'):
         """
-        Here we return the entire sub-dataset. E.g. the mini-dataset or part1-dataset of
-        the Nuscenes dataset.
+        Here we return "n_scenes" complete scenes of the sub-dataset.
+        E.g. the mini-dataset or part1-dataset of the Nuscenes dataset.
 
         Data format:
             A list of scenes. Each scenes correspond to roughly 20s recoreded lidar data
@@ -202,6 +255,70 @@ class NuscenesHandling:
 
             # Old PC1 is the new PC0
             PC0 = PC1
+            count += 1
+
+        print(f"Total number of samples: {self.get_number_of_samples_in_scenes(PC_scenes)}")
+        print(f"Total number of scenes:  {len(PC_scenes)}")
+        return PC_scenes
+
+    def sample_from_scenes(self, n_samples, n_scenes='all'):
+        """
+        Here we return the sample from the dataset s.t. we evenly distribute the sample of the number
+        of scenes we want to utilize.
+
+        Data format:
+            A list of scenes. Each scenes correspond to roughly 20s recoreded lidar data
+            at 20 Hz. This means that each scene contains around 400 point clouds. We have
+            divided in so that the list consists of the class PCPairs which contains the
+            one point cloud pair and the corresponding union point cloud.
+        """
+        PC_scenes = []
+        PC_scene = []
+        count = 0
+
+        # HACK: Avoid circular imports
+        from utils.data_handling import list_of_samples_per_scene, calculate_sample_gaps
+        samples_per_scene = list_of_samples_per_scene(n_samples, n_scenes)
+
+        skip_sample_index = 0
+        skip_samples_list = calculate_sample_gaps(self.get_number_lidar_samples_in_scene(),
+                                                  samples_per_scene[self.scene_counter])
+
+        while True:
+            if count % 50 == 0 and count != 0:
+                print(f"We have collected {count} number of samples")
+
+            # Load in first point cloud
+            PC0 = PC(self.pc0_CS0, self.point_distances0)
+            # Load in second point cloud
+            PC1 = PC(self.pc1_CS1, self.point_distances1)
+            # Set point cloud pair and their union, and perform possible perturbation
+            currentPCPair = PCPair(PC0, PC1, self, perturb_probability=0.5)
+            # Append pair to list
+            PC_scene.append(currentPCPair)
+            # Iterate to next pair in scene
+            self.set_next_point_cloud_pair(n_samples_jump=skip_samples_list[skip_sample_index])
+            skip_sample_index += 1
+
+            if self.scene_read:
+                # Append scene to list of scenes
+                PC_scenes.append(PC_scene)
+                PC_scene = []
+                self.scene_read = False
+                print(f"We have collected {self.scene_counter} scenes")
+                # We might just want to read a few scenes
+                if n_scenes != 'all':
+                    if self.scene_counter >= n_scenes:
+                        break
+                if self.dataset_read is False:
+                    skip_sample_index = 0
+                    skip_samples_list = calculate_sample_gaps(self.get_number_lidar_samples_in_scene(),
+                                                              samples_per_scene[self.scene_counter])
+
+            if self.dataset_read:
+                print("We have collected all data from the dataset")
+                break
+
             count += 1
 
         print(f"Total number of samples: {self.get_number_of_samples_in_scenes(PC_scenes)}")

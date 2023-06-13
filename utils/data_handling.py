@@ -3,13 +3,16 @@ import nuscenes as ns
 from utils.nuscenes_handling import NuscenesHandling
 
 
-def read_nuscenes_data(data_folder='data/nuscenes/mini/', version='v1.0-mini', n_scenes='all',
-                       downsample_factor=1):
+def read_nuscenes_data(data_folder='data/nuscenes/mini/', version='v1.0-mini',
+                       downsample_factor=1, part_dir="",  n_scenes='all', n_samples='all'):
     # Initialize NuScenes object
     nusc = ns.nuscenes.NuScenes(version=version, dataroot=data_folder, verbose=True)
-    PCHandler = NuscenesHandling(nusc, downsample_factor=downsample_factor)
+    PCHandler = NuscenesHandling(nusc, downsample_factor=downsample_factor, part_dir=part_dir)
 
-    PC_scenes = PCHandler.get_entire_sub_dataset(n_scenes=n_scenes)
+    if n_samples == 'all':
+        PC_scenes = PCHandler.get_entire_scenes(n_scenes=n_scenes)
+    else:
+        PC_scenes = PCHandler.sample_from_scenes(n_samples=n_samples, n_scenes=n_scenes)
     return PC_scenes
 
 
@@ -25,6 +28,13 @@ def sample_from_scene(scene, samples):
     for i in range(int(step_length/2), N_samples_in_scene, step_length):
         sampled_scene.append(scene[i])
     return sampled_scene
+
+
+def split_data(PC_scenes, scenes_training):
+    n_scenes = len(PC_scenes)
+    PC_scenes_training = PC_scenes[0:scenes_training]
+    PC_scenes_test = PC_scenes[scenes_training:n_scenes]
+    return PC_scenes_training, PC_scenes_test
 
 
 def gather_data(PC_scenes, samples_training, samples_test):
@@ -70,3 +80,18 @@ def list_of_samples_per_scene(N, M):
         result[i] += 1
     assert sum(result) == N, "ERROR: Division of data gone wrong"
     return result
+
+
+def calculate_sample_gaps(N, M):
+    """
+    Calculate a list of the number of samples between every two samples in the same scene.
+    """
+    if M > N:
+        raise ValueError("M must be less than or equal to N")
+
+    interval = (N - 1) / (M - 1)
+
+    samples = [round(i * interval) for i in range(M)]
+    distances = [0] + [samples[i+1] - samples[i] - 1 for i in range(len(samples)-1)]
+
+    return distances
