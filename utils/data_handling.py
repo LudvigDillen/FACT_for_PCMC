@@ -72,6 +72,24 @@ def gather_data(PC_scenes, samples_training, samples_test):
 
 
 def list_of_samples_per_scene(N, M):
+    """
+    Given a total number of samples N and a number of scenes M, calculate and return a list that indicates
+    how many samples belong to each scene. The samples are distributed as evenly as possible across the
+    scenes. If N is not evenly divisible by M, the extra samples are distributed one by one to the scenes,
+    starting from the first.
+
+    Parameters:
+    N (int): The total number of samples.
+    M (int): The number of scenes.
+
+    Returns:
+    list of int: A list of size M where each element indicates the number of samples in the corresponding
+                 scene.
+
+    Raises:
+    AssertionError: If the sum of the elements in the returned list is not equal to N, an AssertionError is
+                    raised.
+    """
     base = N // M
     remainder = N % M
 
@@ -84,10 +102,30 @@ def list_of_samples_per_scene(N, M):
 
 def calculate_sample_gaps(N, M):
     """
-    Calculate a list of the number of samples between every two samples in the same scene.
+    Given a total number of samples N and a number of selected samples M, calculate and return a list of the
+    number of samples between every two consecutive selected samples. The samples are selected such that they
+    are distributed as evenly as possible across the total range.
+
+    If M == 1, the function returns [0], as there is only one sample and therefore no gaps between samples.
+
+    Parameters:
+    N (int): The total number of samples.
+    M (int): The number of samples to select.
+
+    Returns:
+    list of int: A list of the number of samples between each pair of consecutive selected samples.
+                 The first element is always 0, representing the number of samples before the first
+                 selected sample.
+
+    Raises:
+    ValueError: If M > N, a ValueError is raised, as it's not possible to select more samples than are
+                available.
     """
     if M > N:
         raise ValueError("M must be less than or equal to N")
+
+    if M == 1:
+        return [0]
 
     interval = (N - 1) / (M - 1)
 
