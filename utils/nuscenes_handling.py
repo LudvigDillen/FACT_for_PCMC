@@ -7,18 +7,18 @@ from nuscenes.utils.data_classes import LidarPointCloud
 
 
 class NuscenesHandling:
-    def __init__(self, nusc, downsample_factor=1, lidar_token=None, part_dir="", part_counter=0):
+    def __init__(self, nusc, downsample_factor=1, lidar_token=None, part_dir="", part_counter=0):  # TODO: REMOVE som in args
         self.nusc = nusc
         self.scene_counter = 0
         self.number_of_scenes_in_dataset = len(self.nusc.scene)
         self.dataset_read = False
         self.scene_read = False
-        self.part_dir = part_dir
-        self.part_counter = part_counter
+        self.part_dir = part_dir  # TODO: REMOVE
+        self.part_counter = part_counter  # TODO: REMOVE
 
         # Specify where the raw LiDAR data is
-        self.data_folder0 = "samples/"
-        self.data_folder1 = "sweeps/"
+        self.data_folder0 = "samples/"  # TODO: REMOVE
+        self.data_folder1 = "sweeps/"  # TODO: REMOVE
 
         # Randomly downsample point clouds
         self.downsample_factor = downsample_factor
@@ -92,21 +92,21 @@ class NuscenesHandling:
         # Load the point cloud xyz coordinates from the LIDAR binary file.
         # It is the sensor coordinate system.
         path_to_lidar_bin_file = self.nusc.get_sample_data_path(lidar_token)
-        # Now go into the sub-folder of data
-        both_sub_files_exist = (self.data_folder0 in path_to_lidar_bin_file and
-                                self.data_folder1 in path_to_lidar_bin_file)
-        assert not both_sub_files_exist, (
-            "You cannot name a part of the file-path to something with " +
-            f"{self.data_folder0} or {self.data_folder1} except where that data is stored")
+        # # Now go into the sub-folder of data
+        # both_sub_files_exist = (self.data_folder0 in path_to_lidar_bin_file and
+        #                         self.data_folder1 in path_to_lidar_bin_file)
+        # assert not both_sub_files_exist, (
+        #     "You cannot name a part of the file-path to something with " +
+        #     f"{self.data_folder0} or {self.data_folder1} except where that data is stored")
 
-        if self.data_folder0 in path_to_lidar_bin_file:
-            keyword = self.data_folder0
-        elif self.data_folder1 in path_to_lidar_bin_file:
-            keyword = self.data_folder1
-        else:
-            exit("ERROR: Did not find the data! " +
-                 f"The string should contain either the keyword {self.data_folder0} or {self.data_folder1}.")
-        path_to_lidar_bin_file = path_to_lidar_bin_file.replace(keyword, self.part_dir + keyword, 1)
+        # if self.data_folder0 in path_to_lidar_bin_file:
+        #     keyword = self.data_folder0
+        # elif self.data_folder1 in path_to_lidar_bin_file:
+        #     keyword = self.data_folder1
+        # else:
+        #     exit("ERROR: Did not find the data! " +
+        #          f"The string should contain either the keyword {self.data_folder0} or {self.data_folder1}.")
+        # path_to_lidar_bin_file = path_to_lidar_bin_file.replace(keyword, self.part_dir + keyword, 1)
         pc = LidarPointCloud.from_file(path_to_lidar_bin_file)
         pc_xyz = torch.swapaxes(torch.from_numpy(pc.points[:3]).to(torch.float64), 0, 1)
         return pc_xyz
@@ -142,6 +142,24 @@ class NuscenesHandling:
         lidar_dict = self.get_lidar_dict(lidar_token)
         return lidar_dict['next']
 
+    def check_end_of_scene(self, lidar_token):
+        return (lidar_token == '')
+
+    def check_end_of_dataset(self):
+        return (self.scene_counter >= self.number_of_scenes_in_dataset)
+
+    def count_scene(self):
+        self.scene_read = True
+        self.scene_counter += 1
+
+    def update_dataset_status(self):
+        self.count_scene()
+        self.check_end_of_dataset()
+        if self.check_end_of_dataset():
+            self.dataset_read = True
+        else:
+            self.setup_new_scene_data(lidar_token=None)
+
     def set_next_point_cloud_pair(self, n_samples_jump=0):
         """
         Iteratate to next point cloud in the dataset. If the scene is finished, we go on to
@@ -161,15 +179,8 @@ class NuscenesHandling:
         # Set info PC1
         self.lidar_token1 = self.get_next_lidar_token(self.lidar_token1)
 
-        end_of_scene = (self.lidar_token1 == '')
-        if end_of_scene:
-            self.scene_read = True
-            self.scene_counter += 1
-            end_of_dataset = (self.scene_counter >= self.number_of_scenes_in_dataset)
-            if end_of_dataset:
-                self.dataset_read = True
-            else:
-                self.setup_new_scene_data(lidar_token=None)
+        if self.check_end_of_scene(self.lidar_token1):
+            self.update_dataset_status()
             return None
 
         if n_samples_jump <= 1:
@@ -192,8 +203,6 @@ class NuscenesHandling:
         return n_samples
 
     def get_number_lidar_samples_in_scene(self):
-        # TODO: I do not have to call this function several timesd per scene which I do right now.
-
         scene = self.nusc.scene[self.scene_counter]
         # Get the first and last sample in the scene
         first_sample = self.nusc.get('sample', scene['first_sample_token'])
@@ -261,7 +270,7 @@ class NuscenesHandling:
         print(f"Total number of scenes:  {len(PC_scenes)}")
         return PC_scenes
 
-    def sample_from_scenes(self, n_samples, n_scenes='all'):
+    def sample_from_scenes(self, n_samples, n_scenes='all', part_dirs=""):
         """
         Here we return the sample from the dataset s.t. we evenly distribute the sample of the number
         of scenes we want to utilize.
@@ -278,12 +287,13 @@ class NuscenesHandling:
 
         # HACK: Avoid circular imports
         from utils.data_handling import list_of_samples_per_scene, calculate_sample_gaps
+
         samples_per_scene = list_of_samples_per_scene(n_samples, n_scenes)
 
         skip_sample_index = 0
         skip_samples_list = calculate_sample_gaps(self.get_number_lidar_samples_in_scene(),
                                                   samples_per_scene[self.scene_counter])
-
+        n_skip_samples = len(skip_samples_list)
         while True:
             if count % 50 == 0 and count != 0:
                 print(f"We have collected {count} number of samples")
@@ -299,6 +309,8 @@ class NuscenesHandling:
             # Iterate to next pair in scene
             self.set_next_point_cloud_pair(n_samples_jump=skip_samples_list[skip_sample_index])
             skip_sample_index += 1
+            if skip_sample_index == n_skip_samples and skip_samples_list[skip_sample_index-1] == 0:
+                self.update_dataset_status()
 
             if self.scene_read:
                 # Append scene to list of scenes
@@ -314,6 +326,7 @@ class NuscenesHandling:
                     skip_sample_index = 0
                     skip_samples_list = calculate_sample_gaps(self.get_number_lidar_samples_in_scene(),
                                                               samples_per_scene[self.scene_counter])
+                    n_skip_samples = len(skip_samples_list)
 
             if self.dataset_read:
                 print("We have collected all data from the dataset")

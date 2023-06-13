@@ -4,15 +4,20 @@ from utils.nuscenes_handling import NuscenesHandling
 
 
 def read_nuscenes_data(data_folder='data/nuscenes/mini/', version='v1.0-mini',
-                       downsample_factor=1, part_dir="",  n_scenes='all', n_samples='all'):
+                       downsample_factor=1, part_dirs="",  n_scenes='all', n_samples='all'):
     # Initialize NuScenes object
     nusc = ns.nuscenes.NuScenes(version=version, dataroot=data_folder, verbose=True)
-    PCHandler = NuscenesHandling(nusc, downsample_factor=downsample_factor, part_dir=part_dir)
+    # Initialize which folder to start reading from # TODO: Clean up ...
+    if part_dirs != "":
+        first_part_dir = part_dirs[0]
+    else:
+        first_part_dir = ""
+    PCHandler = NuscenesHandling(nusc, downsample_factor=downsample_factor, part_dir=first_part_dir)
 
     if n_samples == 'all':
         PC_scenes = PCHandler.get_entire_scenes(n_scenes=n_scenes)
     else:
-        PC_scenes = PCHandler.sample_from_scenes(n_samples=n_samples, n_scenes=n_scenes)
+        PC_scenes = PCHandler.sample_from_scenes(n_samples=n_samples, n_scenes=n_scenes, part_dirs=part_dirs)
     return PC_scenes
 
 
