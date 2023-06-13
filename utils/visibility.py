@@ -36,7 +36,7 @@ def visible_points(pc: np.array, viewpoint: np.array, param_radius: float) -> np
 
     Notes
     -----
-    Visibility of points is determined according to the method presented in "Direct Visibility of Point Sets". 
+    Visibility of points is determined according to the method presented in "Direct Visibility of Point Sets".
     """
     # TODO: There are two drawbacks with this function.
     # 1. It does not take the orientation into account. This is necessary to model the points that
@@ -64,8 +64,14 @@ def visible_points(pc: np.array, viewpoint: np.array, param_radius: float) -> np
     R = 10**(param_radius)*np.max(pc_dist)
     # Perform spherical flipping
     flipped_pc_vp = pc_vp + 2*((R-pc_dist)/pc_dist)[:, np.newaxis]*pc_vp
+    # Add viewpoint to the set
+    input_convex_hull = np.append(flipped_pc_vp, viewpoint[np.newaxis, :], axis=0)
     # Compute the convex hull
-    visible_inds = ConvexHull(flipped_pc_vp).vertices
+    visible_inds = ConvexHull(input_convex_hull).vertices
+    # Remove the potential viewpoint from the inds list
+    n_points = input_convex_hull.shape[0]
+    if n_points in visible_inds:
+        visible_inds = visible_inds[0:-1]
     return visible_inds
 
 
