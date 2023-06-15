@@ -1,13 +1,12 @@
-import nuscenes as ns
-
 from utils.nuscenes_handling import NuscenesHandling
 
 
-def read_nuscenes_data(n_samples, data_folder='data/nuscenes/', version='v1.0-trainval',
-                       downsample_factor=1, n_scenes='all'):
-    # Initialize NuScenes object
-    nusc = ns.nuscenes.NuScenes(version=version, dataroot=data_folder, verbose=True)
-    PCHandler = NuscenesHandling(nusc, downsample_factor=downsample_factor)
+def read_nuscenes_data(nusc, n_samples, downsample_factor=1, n_scenes='all',
+                       T_close_thresh=0, lidar_token=None, scene_counter=0):
+    # Read data
+    PCHandler = NuscenesHandling(nusc, downsample_factor=downsample_factor,
+                                 T_close_thresh=T_close_thresh, lidar_token=lidar_token,
+                                 scene_counter=scene_counter)
     PC_scenes = PCHandler.sample_from_scenes(n_samples=n_samples, n_scenes=n_scenes)
     return PC_scenes
 
