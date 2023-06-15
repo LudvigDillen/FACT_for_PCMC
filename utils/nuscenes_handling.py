@@ -7,15 +7,20 @@ from nuscenes.utils.data_classes import LidarPointCloud
 
 
 class NuscenesHandling:
-    def __init__(self, nusc, downsample_factor=1, lidar_token=None):
+    def __init__(self, nusc, downsample_factor=1, lidar_token=None, T_close_thresh=0,
+                 scene_counter=0):
         self.nusc = nusc
-        self.scene_counter = 0
+        self.scene_counter_init = scene_counter
+        self.scene_counter = scene_counter
         self.number_of_scenes_in_dataset = len(self.nusc.scene)
         self.dataset_read = False
         self.scene_read = False
 
-        # Randomly downsample point clouds
-        self.downsample_factor = downsample_factor
+        # Set settings
+        self.T_close_thresh = T_close_thresh
+        self.downsample_factor = downsample_factor  # Randomly downsample point clouds
+
+        # Setup scene data
         self.setup_new_scene_data(lidar_token)
 
     def downsample_both_point_clouds(self):
@@ -88,7 +93,14 @@ class NuscenesHandling:
         path_to_lidar_bin_file = self.nusc.get_sample_data_path(lidar_token)
         pc = LidarPointCloud.from_file(path_to_lidar_bin_file)
         pc_xyz = torch.swapaxes(torch.from_numpy(pc.points[:3]).to(torch.float64), 0, 1)
-        return pc_xyz
+        if self.T_close_thresh != 0:
+            pc_xyz_filtered = self.remove_close_points_from_pc(pc_xyz, self.T_close_thresh)
+        return pc_xyz_filtered
+
+    def remove_close_points_from_pc(self, pc, T_close_thresh=1.5):
+        # Pre-Process data
+        pc_filtered = pc[torch.norm(pc, dim=1) >= T_close_thresh]
+        return pc_filtered
 
     def get_point_distances_to_origin(self, pc):
         return torch.norm(pc, p=2, dim=1)
@@ -133,7 +145,6 @@ class NuscenesHandling:
 
     def update_dataset_status(self):
         self.count_scene()
-        self.check_end_of_dataset()
         if self.check_end_of_dataset():
             self.dataset_read = True
         else:
@@ -220,8 +231,9 @@ class NuscenesHandling:
         samples_per_scene = list_of_samples_per_scene(n_samples, n_scenes)
 
         skip_sample_index = 0
-        skip_samples_list = calculate_sample_gaps(self.get_number_lidar_samples_in_scene(),
-                                                  samples_per_scene[self.scene_counter])
+        skip_samples_list = calculate_sample_gaps(
+            self.get_number_lidar_samples_in_scene(),
+            samples_per_scene[self.scene_counter-self.scene_counter_init])
         n_skip_samples = len(skip_samples_list)
         while True:
             if count % 50 == 0 and count != 0:
@@ -246,15 +258,16 @@ class NuscenesHandling:
                 PC_scenes.append(PC_scene)
                 PC_scene = []
                 self.scene_read = False
-                print(f"We have collected {self.scene_counter} scenes")
+                print(f"We have collected {self.scene_counter-self.scene_counter_init} scenes")
                 # We might just want to read a few scenes
                 if n_scenes != 'all':
-                    if self.scene_counter >= n_scenes:
+                    if self.scene_counter-self.scene_counter_init >= n_scenes:
                         break
                 if self.dataset_read is False:
                     skip_sample_index = 0
-                    skip_samples_list = calculate_sample_gaps(self.get_number_lidar_samples_in_scene(),
-                                                              samples_per_scene[self.scene_counter])
+                    skip_samples_list = calculate_sample_gaps(
+                        self.get_number_lidar_samples_in_scene(),
+                        samples_per_scene[self.scene_counter-self.scene_counter_init])
                     n_skip_samples = len(skip_samples_list)
 
             if self.dataset_read:

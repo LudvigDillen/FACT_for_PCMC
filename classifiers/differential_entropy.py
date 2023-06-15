@@ -157,7 +157,7 @@ def differential_entropy(PC, params: dict) -> float:
 
 def get_overlap_share(PC0, PC1, params):
     """
-    We get the overlap share from the perspective of PC0. 
+    We get the overlap share from the perspective of PC0.
     return: overlap_share
         the share of points in PC0 that has at least one point from PC1 in its neighborhood.
     """
@@ -245,10 +245,13 @@ def differential_entropy_dataset(PC_scenes, params, verbose=True):
     for PC_scene in PC_scenes:
         for PC_pair in PC_scene:
             t1 = time.time()
+            # Calculate the co-visible points
             PC0_covisible, PC1_covisible, PCUnion_covisible = keep_covisible_points(
                 PC_pair.PC0, PC_pair.PC1, PC_pair.PCUnion, PC_pair.pose0, PC_pair.pose1)
+            # Feed in the new co-visible points only
             result, H_joint, H_separate = differential_entropy_metric(
                 PC0_covisible, PC1_covisible, PCUnion_covisible, PC_pair.misaligned, params, verbose)
+            # Uncomment to run without differential entropy
             # result, H_joint, H_separate = differential_entropy_metric(
             #     PC_pair.PC0, PC_pair.PC1, PC_pair.PCUnion, PC_pair.misaligned, params, verbose)
             # Gather input to the logistic regression
