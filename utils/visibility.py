@@ -75,46 +75,10 @@ def visible_points(pc: np.array, viewpoint: np.array, param_radius: float) -> np
     return visible_inds
 
 
-# def keep_covisible_points(PC0, PC1, PC_union, T0, T1):
-#     param_radius = 3.7
-#     zero_vec = np.zeros((3))
-
-#     # Start with some checks, remove this code later
-#     vis_points = visible_points(PC0.pc, zero_vec, param_radius)
-#     N_cov_points = len(vis_points)
-#     print(f"visible points {N_cov_points} of total {PC0.N_points}")
-#     vis_points = visible_points(PC1.pc, zero_vec, param_radius)
-#     N_cov_points = len(vis_points)
-#     print(f"visible points {N_cov_points} of total {PC1.N_points}")
-
-#     # Now, check the covisible points between the two point clouds
-#     viewpoint1_CS0 = torch.matmul(torch.linalg.inv(T0), T1)
-#     t_vec = viewpoint1_CS0[:3, 3]
-#     vis_points = visible_points(PC0.pc, t_vec, param_radius)
-#     N_cov_points = len(vis_points)
-#     print(f"visible points {N_cov_points} of total {PC0.N_points}")
-
-#     viewpoint0_CS1 = torch.matmul(torch.linalg.inv(T1), T0)
-#     t_vec = viewpoint0_CS1[:3, 3]
-#     vis_points = visible_points(PC1.pc, t_vec, param_radius)
-#     N_cov_points = len(vis_points)
-#     print(f"visible points {N_cov_points} of total {PC1.N_points}")
-
-#     # Do actual implementation ... (below ...)
-#     visible_mask = np.array(0, PC_union.N_points)
-#     vis_points_pose0 = visible_points(PC_union.pc, zero_vec, param_radius)
-#     N_vis_points_pose0 = len(vis_points_pose0)
-#     print(f"visible points {N_vis_points_pose0} of total {PC_union.N_points}")
-#     vis_points_pose1 = visible_points(PC_union.pc, viewpoint1_CS0, param_radius)
-#     N_vis_points_pose1 = len(vis_points_pose1)
-#     print(f"visible points {N_vis_points_pose1} of total {PC_union.N_points}")
-#     PC_pair_covisible = None
-#     return PC_pair_covisible, None, None
-
 def keep_covisible_points(PC0, PC1, PC_union, T0, T1):
     # We assume here that no non-covisible point will be become visible when adding
     # additional points to the point cloud. This will not necessarily be true in
-    # practice but it should hold in theory. Hence, we only need to study the 
+    # practice but it should hold in theory. Hence, we only need to study the
     # joint point cloud.
 
     param_radius = 3.7
