@@ -69,13 +69,13 @@ def visible_points(pc: np.array, viewpoint: np.array, param_radius: float) -> np
     # Compute the convex hull
     visible_inds = ConvexHull(input_convex_hull).vertices
     # Remove the potential viewpoint from the inds list
-    n_points = input_convex_hull.shape[0]
+    n_points = flipped_pc_vp.shape[0]
     if n_points in visible_inds:
         visible_inds = visible_inds[0:-1]
     return visible_inds
 
 
-def keep_covisible_points(PC0, PC1, PC_union, T0, T1):
+def covisible_inds(PC0, PC_union, T0, T1):
     # We assume here that no non-covisible point will be become visible when adding
     # additional points to the point cloud. This will not necessarily be true in
     # practice but it should hold in theory. Hence, we only need to study the
@@ -106,7 +106,11 @@ def keep_covisible_points(PC0, PC1, PC_union, T0, T1):
     visible_inds = ind_list[visible_mask != 0]
     visible_inds_pc0 = visible_inds[visible_inds < PC0.N_points]
     visible_inds_pc1 = visible_inds[visible_inds >= PC0.N_points] - PC0.N_points
+    return visible_inds, visible_inds_pc0, visible_inds_pc1
 
+
+def keep_covisible_points(PC0, PC1, PC_union, T0, T1):
+    visible_inds, visible_inds_pc0, visible_inds_pc1 = covisible_inds(PC0, PC_union, T0, T1)
     PC_union_covisible = PC(PC_union.pc[visible_inds], PC_union.distances_to_origin[visible_inds])
     PC0_covisible = PC(PC0.pc[visible_inds_pc0], PC0.distances_to_origin[visible_inds_pc0])
     PC1_covisible = PC(PC1.pc[visible_inds_pc1], PC1.distances_to_origin[visible_inds_pc1])
