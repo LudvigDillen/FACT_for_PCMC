@@ -236,7 +236,7 @@ def differential_entropy_metric(PC0, PC1, PCUnion, misaligned, params, verbose=T
     return metric, H_joint, H_separate
 
 
-def differential_entropy_dataset(PC_scenes, params, verbose=True):
+def differential_entropy_dataset(PC_scenes, params, verbose=True, hpr_radius=3.25):
     metrics_aligned = []
     metrics_misaligned = []
 
@@ -247,7 +247,7 @@ def differential_entropy_dataset(PC_scenes, params, verbose=True):
             t1 = time.time()
             # Calculate the co-visible points
             PC0_covisible, PC1_covisible, PCUnion_covisible = keep_covisible_points(
-                PC_pair.PC0, PC_pair.PC1, PC_pair.PCUnion, PC_pair.pose0, PC_pair.pose1)
+                PC_pair.PC0, PC_pair.PC1, PC_pair.PCUnion, PC_pair.pose0, PC_pair.pose1, hpr_radius)
             # Feed in the new co-visible points only
             result, H_joint, H_separate = differential_entropy_metric(
                 PC0_covisible, PC1_covisible, PCUnion_covisible, PC_pair.misaligned, params, verbose)

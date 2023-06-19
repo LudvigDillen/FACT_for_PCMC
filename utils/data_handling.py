@@ -165,7 +165,7 @@ def get_diff_entropy_features(scenes_lower, scenes_upper, n_scenes_per_loop, par
             scene_counter=scene_counter, verbose=params.verbose)
         # Compute the differential entropy features for the scenes
         X_loop, y_loop = differential_entropy_dataset(
-            PC_scenes, params.params_diff_entropy, verbose=params.verbose)
+            PC_scenes, params.params_diff_entropy, verbose=params.verbose, hpr_radius=params.hpr_radius)
         # Append the features and labels to the storage arrays
         X = np.concatenate((X, X_loop), axis=0)
         y = np.concatenate((y, y_loop), axis=0)

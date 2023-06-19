@@ -7,7 +7,7 @@ from scipy.spatial import ConvexHull
 from utils.pointclouds import PC
 
 
-def visible_points(pc: np.array, viewpoint: np.array, param_radius: float) -> np.array:
+def visible_points(pc: np.array, viewpoint: np.array, hpr_radius: float) -> np.array:
     """
     Returns the indices of points in a given point cloud that are visible from a specified viewpoint. 
 
@@ -23,7 +23,7 @@ def visible_points(pc: np.array, viewpoint: np.array, param_radius: float) -> np
         A array representing the viewpoint from which visibility is assessed. This is a single 3D coordinate
         in the format (x, y, z).
 
-    param_radius: float
+    hpr_radius: float
         An parameter affecting the radius used in the spherical flipping. A smaller value may cause more
         visible points to labeled as non-visible while a larger value may cause non-visible points to be
         labeled as visible. See more info in the referenced paper on this.
@@ -61,7 +61,7 @@ def visible_points(pc: np.array, viewpoint: np.array, param_radius: float) -> np
     # Calculate distance from origin to all points
     pc_dist = np.linalg.norm(pc_vp, axis=1)
     # Choosing dynamic radius
-    R = 10**(param_radius)*np.max(pc_dist)
+    R = 10**(hpr_radius)*np.max(pc_dist)
     # Perform spherical flipping
     flipped_pc_vp = pc_vp + 2*((R-pc_dist)/pc_dist)[:, np.newaxis]*pc_vp
     # Add viewpoint to the set
@@ -75,7 +75,7 @@ def visible_points(pc: np.array, viewpoint: np.array, param_radius: float) -> np
     return visible_inds
 
 
-def covisible_inds_np(pc0, pc_union, T0, T1, param_radius=3.7):
+def covisible_inds_np(pc0, pc_union, T0, T1, hpr_radius=3.25):
     # We assume here that no non-covisible point will be become visible when adding
     # additional points to the point cloud. This will not necessarily be true in
     # practice but it should hold in theory. Hence, we only need to study the
@@ -86,7 +86,7 @@ def covisible_inds_np(pc0, pc_union, T0, T1, param_radius=3.7):
     zero_vec = np.zeros((3))
     ind_list = np.arange(0, union_n_points)
 
-    vis_points_pose0 = visible_points(pc_union, zero_vec, param_radius)
+    vis_points_pose0 = visible_points(pc_union, zero_vec, hpr_radius)
     # init with zeros (regard all point as not visible)
     visible_mask0 = np.zeros(union_n_points)
     # Set the visible points to 1
@@ -95,7 +95,7 @@ def covisible_inds_np(pc0, pc_union, T0, T1, param_radius=3.7):
     visible_mask0[ind_list < pc0_n_points] = 1
 
     viewpoint1_CS0 = np.matmul(np.linalg.inv(T0), T1)[:3, 3]
-    vis_points_pose1 = visible_points(pc_union, viewpoint1_CS0, param_radius)
+    vis_points_pose1 = visible_points(pc_union, viewpoint1_CS0, hpr_radius)
     # init with zeros (regard all point as not visible)
     visible_mask1 = np.zeros(union_n_points)
     # Set the visible points to 1
@@ -110,14 +110,16 @@ def covisible_inds_np(pc0, pc_union, T0, T1, param_radius=3.7):
     return visible_inds, visible_inds_pc0, visible_inds_pc1
 
 
-def covisible_inds(PC0, PC_union, T0, T1):
+def covisible_inds(PC0, PC_union, T0, T1, hpr_radius=3.25):
     visible_inds, visible_inds_pc0, visible_inds_pc1 = covisible_inds_np(
-        PC0.pc.cpu().numpy(), PC_union.pc.cpu().numpy(), T0.cpu().numpy(), T1.cpu().numpy())
+        PC0.pc.cpu().numpy(), PC_union.pc.cpu().numpy(), T0.cpu().numpy(), T1.cpu().numpy(),
+        hpr_radius=hpr_radius)
     return visible_inds, visible_inds_pc0, visible_inds_pc1
 
 
-def keep_covisible_points(PC0, PC1, PC_union, T0, T1):
-    visible_inds, visible_inds_pc0, visible_inds_pc1 = covisible_inds(PC0, PC_union, T0, T1)
+def keep_covisible_points(PC0, PC1, PC_union, T0, T1, hpr_radius=3.25):
+    visible_inds, visible_inds_pc0, visible_inds_pc1 = covisible_inds(
+        PC0, PC_union, T0, T1, hpr_radius=hpr_radius)
     PC_union_covisible = PC(PC_union.pc[visible_inds], PC_union.distances_to_origin[visible_inds])
     PC0_covisible = PC(PC0.pc[visible_inds_pc0], PC0.distances_to_origin[visible_inds_pc0])
     PC1_covisible = PC(PC1.pc[visible_inds_pc1], PC1.distances_to_origin[visible_inds_pc1])

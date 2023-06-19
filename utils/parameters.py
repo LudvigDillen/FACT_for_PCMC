@@ -1,7 +1,7 @@
 class Params:
     def __init__(self, nusc, n_scenes, n_samples_per_scene, train_ratio,
                  downsample_factor, T_close_thresh, params_diff_entropy,
-                 verbose=False):
+                 verbose=False, hpr_radius=3.25):
         """
         nusc: The NuScenes class variable.
         n_scenes (int): The total number of scenes.
@@ -11,6 +11,7 @@ class Params:
         T_close_thresh (float): Threshold for considering a sample as "close".
         params_diff_entropy (dict): Parameters for the differential entropy calculation.
         verbose (bool): If True, print additional information.
+        hpr_radius (float): Proportional to the radius of the HPR operator.
         """
         # Set dataset parameters
         self.nusc = nusc
@@ -27,6 +28,9 @@ class Params:
 
         # Set display parameters
         self.verbose = verbose
+
+        # Set co-visibility parameters
+        self.hpr_radius = hpr_radius
 
     def set_params_diff_entropy(self, params_diff_entropy):
         self.params_diff_entropy = params_diff_entropy
