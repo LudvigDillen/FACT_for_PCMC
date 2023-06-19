@@ -134,28 +134,56 @@ def calculate_sample_gaps(N, M):
     return distances
 
 
-def get_diff_entropy_features(scenes_lower, scenes_upper, n_scenes_per_loop, n_samples_per_scene,
-                              nusc, downsample_factor, T_close_thresh, params, verbose):
+def get_diff_entropy_features(scenes_lower, scenes_upper, n_scenes_per_loop, params):
+    """
+    Extract differential entropy features from a range of scenes.
+
+    Parameters:
+    scenes_lower (int): The starting scene index.
+    scenes_upper (int): The ending scene index.
+    n_scenes_per_loop (int): The number of scenes to process in each loop.
+    params (see the class Params in utils.parameters)
+
+    Returns:
+    X (np.array): The differential entropy features extracted from the scenes.
+    y (np.array): The corresponding labels.
+    """
     # Prepare storage for features
     X = np.empty((0, 2))
     y = np.empty((0))
     for scene_counter in range(scenes_lower, scenes_upper, n_scenes_per_loop):
+        # Determine the number of scenes to read in this loop
         if scene_counter + n_scenes_per_loop > scenes_upper:
             read_n_scenes = scenes_upper - scene_counter
         else:
             read_n_scenes = n_scenes_per_loop
-        read_n_samples = read_n_scenes*n_samples_per_scene
+        read_n_samples = read_n_scenes*params.n_samples_per_scene
         # Load data sequentially
-        PC_scenes = read_nuscenes_data(nusc, n_scenes=read_n_scenes, n_samples=read_n_samples,
-                                       downsample_factor=downsample_factor, T_close_thresh=T_close_thresh,
-                                       scene_counter=scene_counter, verbose=verbose)
-        X_loop, y_loop = differential_entropy_dataset(PC_scenes, params, verbose=verbose)
+        PC_scenes = read_nuscenes_data(
+            params.nusc, n_scenes=read_n_scenes, n_samples=read_n_samples,
+            downsample_factor=params.downsample_factor, T_close_thresh=params.T_close_thresh,
+            scene_counter=scene_counter, verbose=params.verbose)
+        # Compute the differential entropy features for the scenes
+        X_loop, y_loop = differential_entropy_dataset(
+            PC_scenes, params.params_diff_entropy, verbose=params.verbose)
+        # Append the features and labels to the storage arrays
         X = np.concatenate((X, X_loop), axis=0)
         y = np.concatenate((y, y_loop), axis=0)
     return X, y
 
 
 def get_n_scenes_per_loop(n_samples_per_scene, n_training_scenes, n_scenes):
+    """
+    Determine the number of scenes to process in each loop.
+
+    Parameters:
+    n_samples_per_scene (int): The number of samples to take from each scene.
+    n_training_scenes (int): The number of scenes allocated for training.
+    n_scenes (int): The total number of scenes.
+
+    Returns:
+    n_scenes_per_loop (int): The number of scenes to process in each loop.
+    """
     n_test_scenes = n_scenes - n_training_scenes
     smallest_loop = min(n_test_scenes, n_training_scenes)
 
@@ -164,18 +192,29 @@ def get_n_scenes_per_loop(n_samples_per_scene, n_training_scenes, n_scenes):
     return n_scenes_per_loop
 
 
-def run_differential_entropy_on_dataset(n_scenes, n_samples_per_scene, train_ratio, nusc,
-                                        downsample_factor, T_close_thresh, params, verbose=True):
-    n_training_scenes = round(train_ratio*n_scenes)
-    n_scenes_per_loop = get_n_scenes_per_loop(n_samples_per_scene, n_training_scenes, n_scenes)
+def run_differential_entropy_on_dataset(params):
+    """
+    Run differential entropy feature extraction on a dataset.
 
+    Parameters:
+    params (see the class Params in utils.parameters)
+
+    Returns:
+    X_train (np.array): The differential entropy features extracted from the training scenes.
+    y_train (np.array): The corresponding labels for the training data.
+    X_test (np.array): The differential entropy features extracted from the test scenes.
+    y_test (np.array): The corresponding labels for the test data.
+    """
+    n_training_scenes = round(params.train_ratio*params.n_scenes)
+    # Determine the number of scenes to process in each loop
+    n_scenes_per_loop = get_n_scenes_per_loop(params.n_samples_per_scene, n_training_scenes, params.n_scenes)
+
+    # Extract features from the training scenes
     X_train, y_train = get_diff_entropy_features(
-        scenes_lower=0, scenes_upper=n_training_scenes, n_scenes_per_loop=n_scenes_per_loop,
-        n_samples_per_scene=n_samples_per_scene, nusc=nusc, downsample_factor=downsample_factor,
-        T_close_thresh=T_close_thresh, params=params, verbose=verbose)
+        scenes_lower=0, scenes_upper=n_training_scenes, n_scenes_per_loop=n_scenes_per_loop, params=params)
 
+    # Extract features from the test scenes
     X_test, y_test = get_diff_entropy_features(
-        scenes_lower=n_training_scenes, scenes_upper=n_scenes, n_scenes_per_loop=n_scenes_per_loop,
-        n_samples_per_scene=n_samples_per_scene, nusc=nusc, downsample_factor=downsample_factor,
-        T_close_thresh=T_close_thresh, params=params, verbose=verbose)
+        scenes_lower=n_training_scenes, scenes_upper=params.n_scenes, n_scenes_per_loop=n_scenes_per_loop,
+        params=params)
     return X_train, y_train, X_test, y_test
