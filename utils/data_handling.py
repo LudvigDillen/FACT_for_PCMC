@@ -1,12 +1,16 @@
+import numpy as np
+
 from utils.nuscenes_handling import NuscenesHandling
+from classifiers.differential_entropy import differential_entropy_dataset
 
 
 def read_nuscenes_data(nusc, n_samples, downsample_factor=1, n_scenes='all',
-                       T_close_thresh=0, lidar_token=None, scene_counter=0):
+                       T_close_thresh=0, lidar_token=None, scene_counter=0,
+                       verbose=True):
     # Read data
     PCHandler = NuscenesHandling(nusc, downsample_factor=downsample_factor,
                                  T_close_thresh=T_close_thresh, lidar_token=lidar_token,
-                                 scene_counter=scene_counter)
+                                 scene_counter=scene_counter, verbose=verbose)
     PC_scenes = PCHandler.sample_from_scenes(n_samples=n_samples, n_scenes=n_scenes)
     return PC_scenes
 
@@ -128,3 +132,50 @@ def calculate_sample_gaps(N, M):
     distances = [0] + [samples[i+1] - samples[i] - 1 for i in range(len(samples)-1)]
 
     return distances
+
+
+def get_diff_entropy_features(scenes_lower, scenes_upper, n_scenes_per_loop, n_samples_per_scene,
+                              nusc, downsample_factor, T_close_thresh, params, verbose):
+    # Prepare storage for features
+    X = np.empty((0, 2))
+    y = np.empty((0))
+    for scene_counter in range(scenes_lower, scenes_upper, n_scenes_per_loop):
+        if scene_counter + n_scenes_per_loop > scenes_upper:
+            read_n_scenes = scenes_upper - scene_counter
+        else:
+            read_n_scenes = n_scenes_per_loop
+        read_n_samples = read_n_scenes*n_samples_per_scene
+        # Load data sequentially
+        PC_scenes = read_nuscenes_data(nusc, n_scenes=read_n_scenes, n_samples=read_n_samples,
+                                       downsample_factor=downsample_factor, T_close_thresh=T_close_thresh,
+                                       scene_counter=scene_counter, verbose=verbose)
+        X_loop, y_loop = differential_entropy_dataset(PC_scenes, params, verbose=verbose)
+        X = np.concatenate((X, X_loop), axis=0)
+        y = np.concatenate((y, y_loop), axis=0)
+    return X, y
+
+
+def get_n_scenes_per_loop(n_samples_per_scene, n_training_scenes, n_scenes):
+    n_test_scenes = n_scenes - n_training_scenes
+    smallest_loop = min(n_test_scenes, n_training_scenes)
+
+    n_scenes_per_loop = max(round(100/n_samples_per_scene), 1)
+    n_scenes_per_loop = min(n_scenes_per_loop, smallest_loop)
+    return n_scenes_per_loop
+
+
+def run_differential_entropy_on_dataset(n_scenes, n_samples_per_scene, train_ratio, nusc,
+                                        downsample_factor, T_close_thresh, params, verbose=True):
+    n_training_scenes = round(train_ratio*n_scenes)
+    n_scenes_per_loop = get_n_scenes_per_loop(n_samples_per_scene, n_training_scenes, n_scenes)
+
+    X_train, y_train = get_diff_entropy_features(
+        scenes_lower=0, scenes_upper=n_training_scenes, n_scenes_per_loop=n_scenes_per_loop,
+        n_samples_per_scene=n_samples_per_scene, nusc=nusc, downsample_factor=downsample_factor,
+        T_close_thresh=T_close_thresh, params=params, verbose=verbose)
+
+    X_test, y_test = get_diff_entropy_features(
+        scenes_lower=n_training_scenes, scenes_upper=n_scenes, n_scenes_per_loop=n_scenes_per_loop,
+        n_samples_per_scene=n_samples_per_scene, nusc=nusc, downsample_factor=downsample_factor,
+        T_close_thresh=T_close_thresh, params=params, verbose=verbose)
+    return X_train, y_train, X_test, y_test

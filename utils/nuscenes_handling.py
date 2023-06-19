@@ -8,7 +8,7 @@ from nuscenes.utils.data_classes import LidarPointCloud
 
 class NuscenesHandling:
     def __init__(self, nusc, downsample_factor=1, lidar_token=None, T_close_thresh=0,
-                 scene_counter=0):
+                 scene_counter=0, verbose=True):
         self.nusc = nusc
         self.scene_counter_init = scene_counter
         self.scene_counter = scene_counter
@@ -19,6 +19,7 @@ class NuscenesHandling:
         # Set settings
         self.T_close_thresh = T_close_thresh
         self.downsample_factor = downsample_factor  # Randomly downsample point clouds
+        self.verbose = verbose
 
         # Setup scene data
         self.setup_new_scene_data(lidar_token)
@@ -258,7 +259,8 @@ class NuscenesHandling:
                 PC_scenes.append(PC_scene)
                 PC_scene = []
                 self.scene_read = False
-                print(f"We have collected {self.scene_counter-self.scene_counter_init} scenes")
+                if self.verbose:
+                    print(f"We have collected {self.scene_counter-self.scene_counter_init} scenes")
                 # We might just want to read a few scenes
                 if n_scenes != 'all':
                     if self.scene_counter-self.scene_counter_init >= n_scenes:
