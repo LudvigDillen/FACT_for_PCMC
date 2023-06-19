@@ -75,37 +75,44 @@ def visible_points(pc: np.array, viewpoint: np.array, param_radius: float) -> np
     return visible_inds
 
 
-def covisible_inds(PC0, PC_union, T0, T1):
+def covisible_inds_np(pc0, pc_union, T0, T1, param_radius=3.7):
     # We assume here that no non-covisible point will be become visible when adding
     # additional points to the point cloud. This will not necessarily be true in
     # practice but it should hold in theory. Hence, we only need to study the
-    # joint point cloud.
+    # joint point clouds
+    pc0_n_points = pc0.shape[0]
+    union_n_points = pc_union.shape[0]
 
-    param_radius = 3.7
     zero_vec = np.zeros((3))
-    ind_list = np.arange(0, PC_union.N_points)
+    ind_list = np.arange(0, union_n_points)
 
-    vis_points_pose0 = visible_points(PC_union.pc, zero_vec, param_radius)
+    vis_points_pose0 = visible_points(pc_union, zero_vec, param_radius)
     # init with zeros (regard all point as not visible)
-    visible_mask0 = np.zeros(PC_union.N_points)
+    visible_mask0 = np.zeros(union_n_points)
     # Set the visible points to 1
     visible_mask0[vis_points_pose0] = 1
     # All points from PC0 should be marked as visible
-    visible_mask0[ind_list < PC0.N_points] = 1
+    visible_mask0[ind_list < pc0_n_points] = 1
 
-    viewpoint0_CS1 = torch.matmul(torch.linalg.inv(T1), T0)[:3, 3]
-    vis_points_pose1 = visible_points(PC_union.pc, viewpoint0_CS1, param_radius)
+    viewpoint1_CS0 = np.matmul(np.linalg.inv(T0), T1)[:3, 3]
+    vis_points_pose1 = visible_points(pc_union, viewpoint1_CS0, param_radius)
     # init with zeros (regard all point as not visible)
-    visible_mask1 = np.zeros(PC_union.N_points)
+    visible_mask1 = np.zeros(union_n_points)
     # Set the visible points to 1
     visible_mask1[vis_points_pose1] = 1
     # All points from PC1 should be marked as visible
-    visible_mask1[ind_list >= PC0.N_points] = 1
+    visible_mask1[ind_list >= pc0_n_points] = 1
 
     visible_mask = visible_mask0*visible_mask1
     visible_inds = ind_list[visible_mask != 0]
-    visible_inds_pc0 = visible_inds[visible_inds < PC0.N_points]
-    visible_inds_pc1 = visible_inds[visible_inds >= PC0.N_points] - PC0.N_points
+    visible_inds_pc0 = visible_inds[visible_inds < pc0_n_points]
+    visible_inds_pc1 = visible_inds[visible_inds >= pc0_n_points] - pc0_n_points
+    return visible_inds, visible_inds_pc0, visible_inds_pc1
+
+
+def covisible_inds(PC0, PC_union, T0, T1):
+    visible_inds, visible_inds_pc0, visible_inds_pc1 = covisible_inds_np(
+        PC0.pc.cpu().numpy(), PC_union.pc.cpu().numpy(), T0.cpu().numpy(), T1.cpu().numpy())
     return visible_inds, visible_inds_pc0, visible_inds_pc1
 
 
