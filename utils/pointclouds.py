@@ -9,6 +9,33 @@ class PC:
         self.distances_to_origin = distances
         self.N_points = pc.shape[0]
         self.N_dim = pc.shape[1]
+        self.points = [Point() for _ in range(self.N_points)]  # create a Point object for each point
+
+
+class Point:
+    def __init__(self):
+        return None
+
+    def set_label(self, label):
+        self.label = label  # should be 0 or 1
+
+    def set_joint_diff_entropy(self, value):
+        self.metric_jdf = value
+
+    def set_sep_diff_entropy(self, value):
+        self.metric_sdf = value
+
+    def set_wasserstein_dist(self, value):
+        self.metric_wd = value
+
+    def set_covisibility_weight(self, weight):
+        self.weight_c = weight
+
+    def set_static_point_weight(self, weight):
+        self.weight_s = weight
+
+    def set_cardinality_ratio(self, ratio):
+        self.ratio_c = ratio
 
 
 class PCPair:
