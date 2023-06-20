@@ -4,26 +4,24 @@ from utils.geometrics import change_coordinate_system
 
 
 class PC:
-    def __init__(self, pc, distances):
+    def __init__(self, pc, distances, label):
         self.pc = pc
         self.distances_to_origin = distances
         self.N_points = pc.shape[0]
         self.N_dim = pc.shape[1]
-        self.points = [Point() for _ in range(self.N_points)]  # create a Point object for each point
-
-
-class Point:
-    def __init__(self):
-        return None
-
-    def set_label(self, label):
-        self.label = label  # should be 0 or 1
+        """
+        For the label we have that:
+            0 means PC0
+            1 means PC1
+            2 means PCUnion
+        """
+        self.label = label
 
     def set_joint_diff_entropy(self, value):
-        self.metric_jdf = value
+        self.metric_jde = value
 
     def set_sep_diff_entropy(self, value):
-        self.metric_sdf = value
+        self.metric_sde = value
 
     def set_wasserstein_dist(self, value):
         self.metric_wd = value
@@ -34,8 +32,11 @@ class Point:
     def set_static_point_weight(self, weight):
         self.weight_s = weight
 
-    def set_cardinality_ratio(self, ratio):
-        self.ratio_c = ratio
+    def set_cardinality_joint_weight(self, ratio):
+        self.weight_cj = ratio
+
+    def set_cardinality_sep_weight(self, ratio):
+        self.weight_cs = ratio
 
 
 class PCPair:
@@ -69,7 +70,7 @@ class PCPair:
         # This will depend on if we randomly peturb one of the aligned point cloud or not.
         # This happen with the peturb probality handed to the constructor of the class.
         pc_union = torch.cat((PCHandler.pc0_CS0, self.pc1_CS0), dim=0)
-        self.PCUnion = PC(pc_union, pc_union_dists)
+        self.PCUnion = PC(pc_union, pc_union_dists, label=2)
 
     def perform_random_perturbation_CorAl(self, pc, angular_offset=0.01, translational_offset=0.1):
         """

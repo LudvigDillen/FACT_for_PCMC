@@ -241,9 +241,9 @@ class NuscenesHandling:
                 print(f"We have collected {count} number of samples")
 
             # Load in first point cloud
-            PC0 = PC(self.pc0_CS0, self.point_distances0)
+            PC0 = PC(self.pc0_CS0, self.point_distances0, label=0)
             # Load in second point cloud
-            PC1 = PC(self.pc1_CS1, self.point_distances1)
+            PC1 = PC(self.pc1_CS1, self.point_distances1, label=1)
             # Set point cloud pair and their union, and perform possible perturbation
             currentPCPair = PCPair(PC0, PC1, self, perturb_probability=0.5)
             # Append pair to list
@@ -278,6 +278,7 @@ class NuscenesHandling:
 
             count += 1
 
+        PC_scenes = np.array(PC_scenes)
         print(f"Total number of samples: {self.get_number_of_samples_in_scenes(PC_scenes)}")
         print(f"Total number of scenes:  {len(PC_scenes)}")
         return PC_scenes
