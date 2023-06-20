@@ -1,16 +1,25 @@
 import numpy as np
 
 
+def generate_random_data(gauss_dim, N_pts):
+    return np.random.rand(gauss_dim, N_pts)
+
+
+def generate_specified_data():
+    A = np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1]])
+    B = np.array([[1, 1, 1], [2, 2, 2], [3, 3, 3], [4, 4, 4]])
+
+
 def diff_entropy_for_mean_pk(gauss_dim, N_pts, scaler, N, epsilon):
     concave_count = 0
     for i in range(N):
-        A = np.random.rand(gauss_dim, N_pts)
+        A = generate_random_data(gauss_dim, N_pts)
         pkA = A[:, 0][:, np.newaxis]  # just take a point a call it our pk
         centered_dataA = A - pkA
         covA = (centered_dataA@(centered_dataA.T)) / N_pts
         entropyA = np.log(scaler*np.linalg.det(covA + epsilon))
 
-        B = np.random.rand(gauss_dim, N_pts)
+        B = generate_random_data(gauss_dim, N_pts)
         pkB = B[:, 0][:, np.newaxis]  # just take a point a call it our pk
         centered_dataB = B - pkB
         covB = (centered_dataB@(centered_dataB.T)) / N_pts
@@ -30,10 +39,10 @@ def diff_entropy_for_mean_pk(gauss_dim, N_pts, scaler, N, epsilon):
 def diff_entropy_mean_of_points_in_sphere(gauss_dim, N_pts, scaler, N, epsilon):
     concave_count = 0
     for i in range(N):
-        A = np.random.rand(gauss_dim, N_pts)
+        A = generate_random_data(gauss_dim, N_pts)
         covA = np.cov(A)*(N_pts-1)/N_pts
         entropyA = np.log(scaler*np.linalg.det(covA+epsilon))
-        B = np.random.rand(gauss_dim, N_pts)
+        B = generate_random_data(gauss_dim, N_pts)
         covB = np.cov(B)*(N_pts-1)/N_pts
         entropyB = np.log(scaler*np.linalg.det(covB+epsilon))
 
@@ -42,6 +51,8 @@ def diff_entropy_mean_of_points_in_sphere(gauss_dim, N_pts, scaler, N, epsilon):
         covAB = np.cov(AB)
         H_joint = np.log(scaler*np.linalg.det(covAB+epsilon))
 
+        print(f"joint {np.around(H_joint,2)}")
+        print(f"sep   {np.around(H_sep,2)}")
         if H_sep < H_joint:
             concave_count += 1
     return concave_count/N
@@ -51,7 +62,7 @@ def main():
     gauss_dim = 3
     scaler = (2*np.pi*np.exp(1))**gauss_dim
     N_pts = 10
-    N = 10000
+    N = 10
     epsilon = 0
 
     print(
