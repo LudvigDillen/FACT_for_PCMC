@@ -1,10 +1,7 @@
 from ax import optimize
 
-
-from classifiers.differential_entropy import differential_entropy_test_accuracy
+from features.differential_entropy import differential_entropy_test_accuracy
 from utils.data_handling import read_nuscenes_data, gather_data
-
-
 
 
 def optimize_with_ax(samples_training=5, samples_test=5, verbose=False, total_trials=20):
