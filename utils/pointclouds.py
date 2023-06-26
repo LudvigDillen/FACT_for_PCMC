@@ -1,6 +1,78 @@
 import torch
 import random
+import os
+import numpy as np
+from torch.utils.data import Dataset
+import json
+
+from PointTransformers.pointnet_util import farthest_point_sample, pc_normalize
 from utils.geometrics import change_coordinate_system
+
+###### Things to remember
+# Only extract features for 'npoint' of the points. Select the npoints using farthest point sampling. (Speed)
+
+# Fill up PCAC_data_train/test.txt with info in the data loading ..
+
+
+class PCAC_dataset(torch.utils.data.Dataset):
+    def __init__(self, root='/home/luddi824/thesis/PCAC/data/PCAC_data', npoint=1024, split='train',
+                 uniform=False, normal_channel=True, cache_size=15000):
+        self.root = root
+        self.npoint = npoint
+        self.uniform = uniform
+        self.catfile = os.path.join(self.root, 'PCAC_data_class_names.txt')
+
+        self.cat = [line.rstrip() for line in open(self.catfile)]
+        self.classes = dict(zip(self.cat, range(len(self.cat))))
+        self.normal_channel = normal_channel
+
+        shape_ids = {}
+        shape_ids['train'] = [line.rstrip() for line in open(os.path.join(self.root, 'PCAC_data_train.txt'))]
+        shape_ids['test'] = [line.rstrip() for line in open(os.path.join(self.root, 'PCAC_data_test.txt'))]
+
+        assert (split == 'train' or split == 'test')
+        shape_names = ['_'.join(x.split('_')[0:-1]) for x in shape_ids[split]]
+        # list of (shape_name, shape_txt_file_path) tuple
+        self.datapath = [(shape_names[i], os.path.join(self.root, shape_names[i], shape_ids[split][i]) + '.txt') for i
+                         in range(len(shape_ids[split]))]
+        print('The size of %s data is %d' % (split, len(self.datapath)))
+
+        self.cache_size = cache_size  # how many data points to cache in memory
+        self.cache = {}  # from index to (point_set, cls) tuple
+
+    def __len__(self):
+        return len(self.datapath)
+
+    def _get_item(self, index):
+        if index in self.cache:
+            point_set, cls = self.cache[index]
+        else:
+            fn = self.datapath[index]
+            cls = self.classes[self.datapath[index][0]]
+            cls = np.array([cls]).astype(np.int32)
+            point_set = np.loadtxt(fn[1], delimiter=',').astype(np.float32)
+            if self.uniform:
+                point_set = farthest_point_sample(point_set, self.npoints)
+            else:
+                point_set = point_set[0:self.npoints, :]
+
+            point_set[:, 0:3] = pc_normalize(point_set[:, 0:3])
+
+            if not self.normal_channel:
+                point_set = point_set[:, 0:3]
+
+            if len(self.cache) < self.cache_size:
+                self.cache[index] = (point_set, cls)
+
+        return point_set, cls
+
+    def __getitem__(self, index):
+        return self._get_item(index)
+
+    def __len__(self):
+        # This method should return the total size/length of the dataset.
+        # For example, if you're reading from an array, you'd do "return len(self.my_array)"
+        return len(self.dataset)
 
 
 class PC:
@@ -108,3 +180,24 @@ class PCPair:
         perturbed_point_cloud = torch.swapaxes(torch.matmul(T_peturb, pc_homog_swapped)[:3], 0, 1)
 
         return perturbed_point_cloud
+
+
+def farthest_point_sample_PC_scenes(PC_scenes, n_points):
+    n_point_clouds = 2*PC_scenes.size  # PC0 and PC1 for every point cloud
+    # Find the least points of the current pcs
+    min_points = int(1e10)
+    for i in range(PC_scenes.shape[0]):
+        for j in range(PC_scenes.shape[1]):
+            pc0_points = PC_scenes[i][j].PC0.pc.shape[0]
+            if pc0_points < min_points:
+                min_points = pc0_points
+            pc1_points = PC_scenes[i][j].PC1.pc.shape[0]
+            if pc1_points < min_points:
+                min_points = pc0_points
+    # Go on with creating a downsampling each point cloud so it has least points
+    # Farthest point sample every point cloud down to n_points
+    # Add some index which keeps track of the farthest point sampled points
+    # Return something s.t. when we e.g. evaluate differential_entropy, the whole
+    # neighborhood is considered from the full point cloud, but only points that are
+    # downsampled with furthest point sampling will be the point we consider the 
+    # neighborhood from

@@ -1,7 +1,7 @@
 import numpy as np
 
 from utils.nuscenes_handling import NuscenesHandling
-from classifiers.differential_entropy import differential_entropy_dataset, differential_entropy_pointwise
+from features.differential_entropy import differential_entropy_dataset, differential_entropy_pointwise
 
 
 def read_nuscenes_data(nusc, n_samples, downsample_factor=1, n_scenes='all',

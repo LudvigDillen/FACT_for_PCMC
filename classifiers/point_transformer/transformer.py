@@ -1,5 +1,6 @@
 """
-This code is taken from: https://github.com/qq456cvb/Point-Transformers/blob/master/models/Hengshuang/model.py
+This code is taken from:
+https://github.com/qq456cvb/Point-Transformers/blob/master/models/Hengshuang/transformer.py
 and is based on the paper Point Transformer by Hengshuang et al.
 Paper: https://openaccess.thecvf.com/content/ICCV2021/papers/Zhao_Point_Transformer_ICCV_2021_paper.pdf
 """

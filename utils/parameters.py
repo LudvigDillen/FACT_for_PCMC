@@ -1,7 +1,8 @@
 class Params:
     def __init__(self, nusc, n_scenes, n_samples_per_scene, train_ratio,
                  downsample_factor, T_close_thresh, params_diff_entropy,
-                 verbose=False, hpr_radius=3.25, preprocess=True, pointwise=True):
+                 verbose=False, hpr_radius=3.25, preprocess=True, pointwise=True,
+                 n_points=1024):
         """
         nusc: The NuScenes class variable.
         n_scenes (int): The total number of scenes.
@@ -15,6 +16,9 @@ class Params:
         preprocess (bool): whether to preprocess the point cloud or not
         pointwise (bool): Whether to process pointcloud pointwise or not. Must be true
                           if we want to feed it to the DNN.
+        n_points (int): How many points we should evaluate each metric for, note
+                        that the hole point cloud is considered when stuying each
+                        sampled points' neighborhood.
         """
         # Set dataset parameters
         self.nusc = nusc
@@ -35,6 +39,7 @@ class Params:
         # Set preprocess settings and parameters
         self.preprocess = preprocess
         self.pointwise = pointwise
+        self.n_points = n_points
 
         # Set co-visibility parameters
         self.hpr_radius = hpr_radius
