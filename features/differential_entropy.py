@@ -4,6 +4,7 @@ import time
 
 from classifiers.regression import perform_logistic_regression
 from utils.visibility import keep_covisible_points
+from PointTransformers.pointnet_util import farthest_point_sample
 
 
 def get_dynamic_radius(d, params):
@@ -213,6 +214,7 @@ def differential_entropy_pointwise(PC_scenes, params, hpr_radius=3.25, preproces
                 PC0_in, PC1_in, PCUnion_in = keep_covisible_points(
                     PC0_in, PC1_in, PCUnion_in, PC_pair.pose0, PC_pair.pose1, hpr_radius)
 
+            # 
             # separate differential entropies
             entropies_PC0 = differential_entropy(PC0_in, params)
             entropies_PC1 = differential_entropy(PC1_in, params)
