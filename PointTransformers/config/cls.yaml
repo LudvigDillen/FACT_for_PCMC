@@ -1,0 +1,35 @@
+batch_size: 28
+epoch: 2  # 500
+learning_rate: 0.0005
+gpu: 0
+num_point: 1024
+optimizer: Adam
+weight_decay: 0.0001
+normal: true
+model:
+  nneighbor: 16
+  nblocks: 4
+  transformer_dim: 512
+  name: Hengshuang
+
+
+
+# batch_size: 16  # 16
+# epoch: 500  # 200
+# learning_rate: 0.0005  # 1e-3
+# gpu: 0  # 1
+# num_point: 1024
+# optimizer: Adam
+# weight_decay: 1e-4
+# normal: True
+
+# defaults:
+#   - model: Hengshuang
+
+# hydra:
+#   run:
+#     dir: log/cls/${model.name}
+
+#   sweep:
+#     dir: log/cls
+#     subdir: ${model.name}
