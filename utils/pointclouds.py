@@ -2,8 +2,6 @@ import torch
 import random
 import os
 import numpy as np
-from torch.utils.data import Dataset
-import json
 
 from PointTransformers.pointnet_util import farthest_point_sample, pc_normalize
 from utils.geometrics import change_coordinate_system
@@ -110,6 +108,10 @@ class PC:
     def set_cardinality_sep_weight(self, ratio):
         self.weight_cs = ratio
 
+    def set_fps_inds(self, fps_inds):
+        self.fps_inds = fps_inds
+        self.fps_N_points = len(fps_inds)
+
 
 class PCPair:
     def __init__(self, PC0, PC1, PCHandler=None, perturb_probability=0.5):
@@ -182,22 +184,54 @@ class PCPair:
         return perturbed_point_cloud
 
 
-def farthest_point_sample_PC_scenes(PC_scenes, n_points):
-    n_point_clouds = 2*PC_scenes.size  # PC0 and PC1 for every point cloud
+def farthest_point_sample_PC_scenes(PC_scenes, fps_N_points):
     # Find the least points of the current pcs
-    min_points = int(1e10)
-    for i in range(PC_scenes.shape[0]):
-        for j in range(PC_scenes.shape[1]):
-            pc0_points = PC_scenes[i][j].PC0.pc.shape[0]
-            if pc0_points < min_points:
-                min_points = pc0_points
-            pc1_points = PC_scenes[i][j].PC1.pc.shape[0]
-            if pc1_points < min_points:
-                min_points = pc0_points
-    # Go on with creating a downsampling each point cloud so it has least points
-    # Farthest point sample every point cloud down to n_points
-    # Add some index which keeps track of the farthest point sampled points
-    # Return something s.t. when we e.g. evaluate differential_entropy, the whole
+    from utils.data_handling import min_points_in_PC_scenes
+
+    min_points = min_points_in_PC_scenes(PC_scenes)
+    assert fps_N_points < min_points, "Cannot fps_downsample point cloud because we have invalid sizes"
+
+    # Obtain pointcloud data in format [B, min_points, 3] through random downsampling
+    downsampled_PC_scenes = downsample_PC_scenes_to_N_points(PC_scenes, min_points)
+    # Obtain pointcloud data in format [B, fps_N_points, 3] through farthest point sampling
+    fps_inds = farthest_point_sample(downsampled_PC_scenes, fps_N_points)
+    # Set new indices
+    N_scenes, N_samples_per_scenes = PC_scenes.shape
+    k = 0
+    for i in range(N_scenes):
+        for j in range(N_samples_per_scenes):
+            PC_scenes[i][j].PC0.set_fps_inds(fps_inds[k])
+            k += 1
+            PC_scenes[i][j].PC1.set_fps_inds(fps_inds[k])
+            k += 1
+    print("Fps inds set :)")
+    print("hej")
+
+    # when we e.g. evaluate differential_entropy, the whole
     # neighborhood is considered from the full point cloud, but only points that are
-    # downsampled with furthest point sampling will be the point we consider the 
-    # neighborhood from
+    # downsampled with furthest point sampling will be the points we consider the
+    # neighborhoods from
+    return None
+
+
+def downsample_PC_scenes_to_N_points(PC_scenes, N_points):
+    """
+    Return a torch tensor of size [B, N_points, 3], where B is the number of separate point clouds
+    in PC_scenes (2*PC_scenes.size)
+    """
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    downsampled_PC_scenes = torch.empty((2*PC_scenes.size, N_points, 3), device=device)
+
+    i = 0
+    for PC_scene in PC_scenes:
+        for PC_sample in PC_scene:
+            for j in range(2):
+                if j == 0:
+                    PC = PC_sample.PC0
+                else:
+                    PC = PC_sample.PC1
+                pc_points = PC.N_points
+                samples_to_keep = np.random.choice(pc_points, size=N_points)
+                downsampled_PC_scenes[i] = PC.pc[samples_to_keep].to(device)
+                i += 1
+    return downsampled_PC_scenes

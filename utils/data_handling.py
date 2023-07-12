@@ -2,6 +2,7 @@ import numpy as np
 
 from utils.nuscenes_handling import NuscenesHandling
 from features.differential_entropy import differential_entropy_dataset, differential_entropy_pointwise
+from utils.pointclouds import farthest_point_sample_PC_scenes
 
 
 def read_nuscenes_data(nusc, n_samples, downsample_factor=1, n_scenes='all',
@@ -170,6 +171,7 @@ def run_dnn(scenes_lower, scenes_upper, n_scenes_per_loop, params):
             downsample_factor=params.downsample_factor, T_close_thresh=params.T_close_thresh,
             scene_counter=scene_counter, verbose=params.verbose)
         # Compute the differential entropy features for the scenes
+        farthest_point_sample_PC_scenes(PC_scenes, params.fps_N_points)
         # Feature extraction
         PC_scenes_with_features = feature_extraction(PC_scenes, params)
         if first_iter:
@@ -293,3 +295,21 @@ def setup_inputs_to_dnn(params):
         scenes_lower=n_training_scenes, scenes_upper=params.n_scenes, n_scenes_per_loop=n_scenes_per_loop,
         params=params)
     return all_PC_scenes_train, all_PC_scenes_test
+
+
+def min_points_in_PC_scenes(PC_scenes):
+    """
+    Return the number of points in the point cloud that has the least points in the PC_scenes
+    container.
+    """
+    min_points = int(1e10)
+    for i in range(PC_scenes.shape[0]):
+        for j in range(PC_scenes.shape[1]):
+            pc0_points = PC_scenes[i][j].PC0.pc.shape[0]
+            if pc0_points < min_points:
+                min_points = pc0_points
+
+            pc1_points = PC_scenes[i][j].PC1.pc.shape[0]
+            if pc1_points < min_points:
+                min_points = pc1_points
+    return min_points
