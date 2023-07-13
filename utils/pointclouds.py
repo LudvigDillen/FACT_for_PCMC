@@ -74,9 +74,11 @@ class PCAC_dataset(torch.utils.data.Dataset):
 
 
 class PC:
-    def __init__(self, pc, distances, label):
-        self.pc = pc
-        self.distances_to_origin = distances
+    def __init__(self, pc, distances, label, device):
+        self.device = device
+
+        self.pc = pc.to(device)
+        self.distances_to_origin = distances.to(device)
         self.N_points = pc.shape[0]
         self.N_dim = pc.shape[1]
         """
@@ -86,6 +88,8 @@ class PC:
             2 means PCUnion
         """
         self.label = label
+        # initiate the fps_inds tensor as all points in the point cloud (i.e. that means no downsampling)
+        self.fps_inds = torch.arange(0, self.N_points, dtype=torch.int).to(device)
 
     def set_joint_diff_entropy(self, value):
         self.metric_jde = value
@@ -114,77 +118,85 @@ class PC:
 
 
 class PCPair:
-    def __init__(self, PC0, PC1, PCHandler=None, perturb_probability=0.5):
+    def __init__(self, PC0, PC1, device, PCHandler, perturb_probability=0.5):
         # Set point cloud pair
         self.PC0 = PC0
-        self.pose0 = PCHandler.lidar_pose0
+        self.pose0 = PCHandler.lidar_pose0.to(device)
         self.PC1 = PC1
-        self.pose1 = PCHandler.lidar_pose1
+        self.pose1 = PCHandler.lidar_pose1.to(device)
+
+        self.device = device
 
         # Draw random value between 0 and 1 if we should perturb or not perturb the point cloud.
         peturb_point_cloud = (random.random() < perturb_probability)
         self.misaligned = peturb_point_cloud  # The ground truth if the point cloud pair is aligned or not
         # If CorAl is implemented we also store the union point cloud
-        self.set_union_of_point_clouds(PCHandler)
+        self.set_union_of_point_clouds()
 
-    def set_union_of_point_clouds(self, PCHandler):
-        assert (PCHandler is not None), ("ERROR: We assume that the differential entropy method is being"
-                                         "implemented! This can be changed, but in that case functionality",
-                                         "for that has to be added. Th union of the point clouds should not",
-                                         "be necessary in that case.")
+    def set_union_of_point_clouds(self):
+        self.PCUnion = get_union_of_point_clouds(self.PC0, self.PC1, self.pose0,
+                                                 self.pose1, self.misaligned, self.device)
 
-        pc_union_dists = torch.cat((self.PC0.distances_to_origin, self.PC1.distances_to_origin))
-        self.pc1_CS0 = change_coordinate_system(PCHandler.pc1_CS1, PCHandler.lidar_pose0,
-                                                PCHandler.lidar_pose1)
-        if self.misaligned:
-            self.pc1_CS0 = self.perform_random_perturbation_CorAl(self.pc1_CS0, angular_offset=0.03,
-                                                                  translational_offset=0.3)
+    def set_new_PC(self, PC0, PC1, PCUnion):
+        self.PC0 = PC0
+        self.PC1 = PC1
+        self.PCUnion = PCUnion
 
-        # pc_union may be the concatenation of either two aligned point clouds or two misaligned point clouds.
-        # This will depend on if we randomly peturb one of the aligned point cloud or not.
-        # This happen with the peturb probality handed to the constructor of the class.
-        pc_union = torch.cat((PCHandler.pc0_CS0, self.pc1_CS0), dim=0)
-        self.PCUnion = PC(pc_union, pc_union_dists, label=2)
 
-    def perform_random_perturbation_CorAl(self, pc, angular_offset=0.01, translational_offset=0.1):
-        """
-        This function a point cloud perturb it with an angular and translational offset.
+def perform_random_perturbation_CorAl(pc, angular_offset=0.01, translational_offset=0.1):
+    """
+    This function a point cloud perturb it with an angular and translational offset.
 
-        :param pc: point cloud
-        :param angular_offset: float, angular offset in radians around the sensor's vertical axis
-                               (default: 0.01 rad)
-        :param translational_offset: float, distance of random translational offset (x,y)-coord in meters
-                                     (default: 0.1 m)
-        :return: perturbed point cloud
-        """
-        # Define rotation with angle "angular_offset" around the up-vector
-        cos_off = torch.cos(torch.tensor(angular_offset))
-        sin_off = torch.sin(torch.tensor(angular_offset))
-        R_peturb = torch.tensor([[cos_off,  -sin_off,   0],
-                                 [sin_off,  cos_off,    0],
-                                 [0,        0,          1]])
+    :param pc: point cloud
+    :param angular_offset: float, angular offset in radians around the sensor's vertical axis
+                            (default: 0.01 rad)
+    :param translational_offset: float, distance of random translational offset (x,y)-coord in meters
+                                    (default: 0.1 m)
+    :return: perturbed point cloud
+    """
+    # Define rotation with angle "angular_offset" around the up-vector
+    cos_off = torch.cos(torch.tensor(angular_offset))
+    sin_off = torch.sin(torch.tensor(angular_offset))
+    R_peturb = torch.tensor([[cos_off,  -sin_off,   0],
+                             [sin_off,  cos_off,    0],
+                             [0,        0,          1]])
 
-        # Define random translation offset of 0.1m in (x,y)-plane
-        random_xy_offset = torch.rand((2, 1))
-        scaled_random_xy_offset = translational_offset*random_xy_offset/torch.norm(random_xy_offset)
-        z_offset = torch.tensor(0)  # there should be no offset in y-direction
-        t_peturb = torch.vstack((scaled_random_xy_offset, z_offset)).squeeze()
+    # Define random translation offset of 0.1m in (x,y)-plane
+    random_xy_offset = torch.rand((2, 1))
+    scaled_random_xy_offset = translational_offset*random_xy_offset/torch.norm(random_xy_offset)
+    z_offset = torch.tensor(0)  # there should be no offset in y-direction
+    t_peturb = torch.vstack((scaled_random_xy_offset, z_offset)).squeeze()
 
-        # Define rigid transformation matrix in homogeneuous coordinates
-        T_peturb = torch.eye(4, dtype=pc.dtype)
-        T_peturb[:3, :3] = R_peturb
-        T_peturb[:3, 3] = t_peturb
+    # Define rigid transformation matrix in homogeneuous coordinates
+    T_peturb = torch.eye(4, dtype=pc.dtype, device=pc.device)
+    T_peturb[:3, :3] = R_peturb
+    T_peturb[:3, 3] = t_peturb
 
-        # Peturb point cloud
-        n_points = pc.shape[0]
-        homog_ones = torch.ones(n_points)
-        pc_homog_swapped = torch.vstack((torch.swapaxes(pc, 0, 1), homog_ones))
-        perturbed_point_cloud = torch.swapaxes(torch.matmul(T_peturb, pc_homog_swapped)[:3], 0, 1)
+    # Peturb point cloud
+    n_points = pc.shape[0]
+    homog_ones = torch.ones(n_points, device=pc.device)
+    pc_homog_swapped = torch.vstack((torch.swapaxes(pc, 0, 1), homog_ones))
+    perturbed_point_cloud = torch.swapaxes(torch.matmul(T_peturb, pc_homog_swapped)[:3], 0, 1)
 
-        return perturbed_point_cloud
+    return perturbed_point_cloud
+
+
+def get_union_of_point_clouds(PC0, PC1, pose0, pose1, misaligned, device):
+    pc_union_dists = torch.cat((PC0.distances_to_origin, PC1.distances_to_origin))
+    pc1_CS0 = change_coordinate_system(PC1.pc, pose0, pose1)
+    if misaligned:
+        pc1_CS0 = perform_random_perturbation_CorAl(pc1_CS0, angular_offset=0.03, translational_offset=0.3)
+
+    # pc_union may be the concatenation of either two aligned point clouds or two misaligned point clouds.
+    # This will depend on if we randomly peturb one of the aligned point cloud or not.
+    # This happen with the peturb probality handed to the constructor of the class.
+    pc_union = torch.cat((PC0.pc, pc1_CS0), dim=0)
+    PCUnion = PC(pc_union, pc_union_dists, label=2, device=device)
+    return PCUnion
 
 
 def farthest_point_sample_PC_scenes(PC_scenes, fps_N_points):
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     # Find the least points of the current pcs
     from utils.data_handling import min_points_in_PC_scenes
 
@@ -204,9 +216,9 @@ def farthest_point_sample_PC_scenes(PC_scenes, fps_N_points):
             k += 1
             PC_scenes[i][j].PC1.set_fps_inds(fps_inds[k])
             k += 1
-    print("Fps inds set :)")
-    print("hej")
-
+            fps_inds_in_union_pc = torch.cat((fps_inds[k-2],
+                                              fps_inds[k-1]+PC_scenes[i][j].PC0.N_points)).to(device)
+            PC_scenes[i][j].PCUnion.set_fps_inds(fps_inds_in_union_pc)
     # when we e.g. evaluate differential_entropy, the whole
     # neighborhood is considered from the full point cloud, but only points that are
     # downsampled with furthest point sampling will be the points we consider the

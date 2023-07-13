@@ -3,11 +3,9 @@ import numpy as np
 import time
 
 from classifiers.regression import perform_logistic_regression
-from utils.visibility import keep_covisible_points
-from PointTransformers.pointnet_util import farthest_point_sample
 
 
-def get_dynamic_radius(d, params):
+def get_dynamic_radii(d, params):
     # Unpack parameters
     rmin = torch.tensor(params["rmin"])
     rmax = torch.tensor(params["rmax"])
@@ -35,38 +33,34 @@ def differential_entropy(PC, params: dict) -> float:
     Returns:
     float: The entropy the point cloud.
     """
-
-    dim_distribution = PC.N_dim
-    assert dim_distribution == 3, "Expected 3-dim distribution"
-
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    pc = PC.pc.to(device)
-    n_points = PC.N_points
-    # Get dynamic radius
-    radius = get_dynamic_radius(PC.distances_to_origin, params).to(device)
-    del PC
+    device = PC.device
+    assert PC.N_dim == 3, "Expected 3-dim distribution"
+    # Get dynamic radii
+    radii = get_dynamic_radii(PC.distances_to_origin, params).to(device)
 
     # Some offset to make sure not taking log of zero
     epsilon = torch.exp(torch.tensor(params["log_epsilon"]))
     scaler = ((2*torch.tensor(np.pi, dtype=torch.float64)*torch.exp(torch.tensor(1, dtype=torch.float64))
-               )**dim_distribution).to(device)  # (2pi*e)^dim_distribution
+               )**PC.N_dim).to(device)  # (2pi*e)^dim_distribution
 
-    # Setup batches
+    # Setup batches for the points of interest
     batch_size = 8**3
-    pc_batches = torch.split(pc, batch_size, dim=0)
+    pc_batches = torch.split(PC.pc[PC.fps_inds], batch_size, dim=0)
+    radii_batches = torch.split(radii[PC.fps_inds], batch_size, dim=0)
+    N_fps_points = len(PC.fps_inds)
 
     # We will remove the lowest entropies later, so we want something low initially
-    entropies = 1/2*torch.log(epsilon)*torch.ones(n_points, device=device)
+    entropies = 1/2*torch.log(epsilon)*torch.ones(N_fps_points, device=device)
     from_ind = 0
     to_ind = 0
 
-    for pc_batch in pc_batches:
+    for pc_batch, radii_batch in zip(pc_batches, radii_batches):
         # Compute the distance matrix between pc_batch and pc
-        dists = torch.cdist(pc_batch, pc)
+        dists = torch.cdist(pc_batch, PC.pc)
         del pc_batch
 
         # Create a mask with True values where the distance is less than the radius
-        neighbor_mask = (dists < radius)
+        neighbor_mask = (dists < radii_batch[:, None])
         del dists
 
         # Count the number of neighbors for each point in the batch
@@ -82,7 +76,7 @@ def differential_entropy(PC, params: dict) -> float:
         del n_neighbors_per_point_in_batch
 
         # Apply the filtered neighbor mask to the point cloud batch
-        masked_pc_batch = (pc.unsqueeze(dim=0))*(filtered_neighbor_mask.unsqueeze(dim=2))
+        masked_pc_batch = (PC.pc.unsqueeze(dim=0))*(filtered_neighbor_mask.unsqueeze(dim=2))
 
         # Compute the mean of the masked point cloud batch
         mu = torch.sum(masked_pc_batch, dim=1) / filtered_n_neighbors
@@ -127,29 +121,25 @@ def get_overlap_share(PC0, PC1, params):
     return: overlap_share
         the share of points in PC0 that has at least one point from PC1 in its neighborhood.
     """
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    pc0 = PC0.pc.to(device)
-    pc1 = PC1.pc.to(device)
-    radius0 = get_dynamic_radius(PC0.distances_to_origin, params).to(device).unsqueeze(dim=1)
+    device = PC0.device
+    pc0 = PC0.pc
+    pc1 = PC1.pc
+    radii0 = get_dynamic_radii(PC0.distances_to_origin, params).to(device).unsqueeze(dim=1)
     n_points = PC0.N_points
     del PC0, PC1
 
     batch_size = 8**4
     pc0_batches = torch.split(pc0, batch_size, dim=0)
-    del pc0
+    radii0_batches = torch.split(radii0, batch_size, dim=0)
+    del pc0, radii0
 
     n_non_empty_neighborhoods = 0
-    to_ind = 0
-    from_ind = 0
-    for pc0_batch in pc0_batches:
+    for pc0_batch, radii0_batch in zip(pc0_batches, radii0_batches):
         dists = torch.cdist(pc0_batch, pc1)
-        n_points_in_batch = pc0_batch.shape[0]
-        to_ind += n_points_in_batch
-        lower_elements = dists < radius0[from_ind:to_ind]
+        lower_elements = dists < radii0_batch
         n_non_empty_neighborhoods += torch.sum(lower_elements.any(dim=1)).item()
-        from_ind = to_ind
 
-    del radius0, dists, pc1, pc0_batches, lower_elements
+    del radii0_batches, dists, pc1, pc0_batches, lower_elements
     overlap_share = n_non_empty_neighborhoods / n_points
     return overlap_share
 
@@ -200,29 +190,20 @@ def differential_entropy_metric(PC0, PC1, PCUnion, misaligned, params, verbose=T
     return metric, H_joint, H_separate
 
 
-def differential_entropy_pointwise(PC_scenes, params, hpr_radius=3.25, preprocess=True):
+def differential_entropy_pointwise(PC_scenes, params):
     N_scenes = PC_scenes.shape[0]
     N_samples_per_scene = PC_scenes.shape[1]
     for scene_number in range(N_scenes):
         for sample_number in range(N_samples_per_scene):
             PC_pair = PC_scenes[scene_number][sample_number]
-            PC0_in = PC_pair.PC0
-            PC1_in = PC_pair.PC1
-            PCUnion_in = PC_pair.PCUnion
-            if preprocess:
-                # Calculate the co-visible points
-                PC0_in, PC1_in, PCUnion_in = keep_covisible_points(
-                    PC0_in, PC1_in, PCUnion_in, PC_pair.pose0, PC_pair.pose1, hpr_radius)
-
-            # 
             # separate differential entropies
-            entropies_PC0 = differential_entropy(PC0_in, params)
-            entropies_PC1 = differential_entropy(PC1_in, params)
+            entropies_PC0 = differential_entropy(PC_pair.PC0, params)
+            entropies_PC1 = differential_entropy(PC_pair.PC1, params)
             # joint differential entropies
-            entropies_joint = differential_entropy(PCUnion_in, params)
+            entropies_joint = differential_entropy(PC_pair.PCUnion, params)
 
-            entropies_joint_from_PC0 = entropies_joint[:PC0_in.N_points]
-            entropies_joint_from_PC1 = entropies_joint[PC0_in.N_points:]
+            entropies_joint_from_PC0 = entropies_joint[:PC_pair.PC0.N_points]
+            entropies_joint_from_PC1 = entropies_joint[PC_pair.PC0.N_points:]
             PC_pair.PC0.set_joint_diff_entropy(entropies_joint_from_PC0)
             PC_pair.PC1.set_joint_diff_entropy(entropies_joint_from_PC1)
             PC_pair.PC0.set_sep_diff_entropy(entropies_PC0)
@@ -231,7 +212,7 @@ def differential_entropy_pointwise(PC_scenes, params, hpr_radius=3.25, preproces
     return PC_scenes
 
 
-def differential_entropy_dataset(PC_scenes, params, verbose=True, hpr_radius=3.25, preprocess=True):
+def differential_entropy_dataset(PC_scenes, params, verbose=True):
     metrics_aligned = []
     metrics_misaligned = []
 
@@ -241,16 +222,8 @@ def differential_entropy_dataset(PC_scenes, params, verbose=True, hpr_radius=3.2
     for PC_scene in PC_scenes:
         for PC_pair in PC_scene:
             t1 = time.time()
-            PC0_in = PC_pair.PC0
-            PC1_in = PC_pair.PC1
-            PCUnion_in = PC_pair.PCUnion
-            if preprocess:
-                # Calculate the co-visible points
-                PC0_in, PC1_in, PCUnion_in = keep_covisible_points(
-                    PC0_in, PC1_in, PCUnion_in, PC_pair.pose0, PC_pair.pose1, hpr_radius)
-
             result, H_joint, H_separate = differential_entropy_metric(
-                PC0_in, PC1_in, PCUnion_in, PC_pair.misaligned, params, verbose)
+                PC_pair.PC0, PC_pair.PC1, PC_pair.PCUnion, PC_pair.misaligned, params, verbose)
             input_data.append([H_joint, H_separate])
             labels.append(PC_pair.misaligned)
 

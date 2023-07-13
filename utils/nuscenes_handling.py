@@ -3,12 +3,13 @@ import torch
 
 from utils.geometrics import transformation_matrix
 from utils.pointclouds import PC, PCPair
+from utils.visibility import keep_covisible_points
 from nuscenes.utils.data_classes import LidarPointCloud
 
 
 class NuscenesHandling:
     def __init__(self, nusc, downsample_factor=1, lidar_token=None, T_close_thresh=0,
-                 scene_counter=0, verbose=True):
+                 scene_counter=0, verbose=True, preprocess=True, hpr_radius=3.25):
         self.nusc = nusc
         self.scene_counter_init = scene_counter
         self.scene_counter = scene_counter
@@ -20,6 +21,8 @@ class NuscenesHandling:
         self.T_close_thresh = T_close_thresh
         self.downsample_factor = downsample_factor  # Randomly downsample point clouds
         self.verbose = verbose
+        self.preprocess = preprocess
+        self.hpr_radius = hpr_radius
 
         # Setup scene data
         self.setup_new_scene_data(lidar_token)
@@ -225,6 +228,7 @@ class NuscenesHandling:
         PC_scenes = []
         PC_scene = []
         count = 0
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         # HACK: Avoid circular imports
         from utils.data_handling import list_of_samples_per_scene, calculate_sample_gaps
@@ -241,11 +245,18 @@ class NuscenesHandling:
                 print(f"We have collected {count} number of samples")
 
             # Load in first point cloud
-            PC0 = PC(self.pc0_CS0, self.point_distances0, label=0)
+            PC0 = PC(self.pc0_CS0, self.point_distances0, label=0, device=device)
             # Load in second point cloud
-            PC1 = PC(self.pc1_CS1, self.point_distances1, label=1)
+            PC1 = PC(self.pc1_CS1, self.point_distances1, label=1, device=device)
             # Set point cloud pair and their union, and perform possible perturbation
-            currentPCPair = PCPair(PC0, PC1, self, perturb_probability=0.5)
+            currentPCPair = PCPair(PC0, PC1, device=device, PCHandler=self, perturb_probability=0.5)
+
+            if self.preprocess:
+                # Calculate the co-visible points
+                PC0_cov, PC1_cov, PCUnion_cov = keep_covisible_points(
+                    PC0, PC1, currentPCPair.PCUnion, currentPCPair.pose0, currentPCPair.pose1,
+                    hpr_radius=self.hpr_radius)
+                currentPCPair.set_new_PC(PC0_cov, PC1_cov, PCUnion_cov)
             # Append pair to list
             PC_scene.append(currentPCPair)
             # Iterate to next pair in scene

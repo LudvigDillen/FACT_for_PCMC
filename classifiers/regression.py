@@ -20,7 +20,7 @@ class LogisticRegression(torch.nn.Module):
 
 
 def perform_logistic_regression(
-        X_train, X_test, y_train, y_test, epochs=100_000, learning_rate=0.03, verbose=True):
+        X_train, X_test, y_train, y_test, epochs=200_000, learning_rate=0.03, verbose=True):
     """
     Perform logistic regression to predict alignment based on input features.
 

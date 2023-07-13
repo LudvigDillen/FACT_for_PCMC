@@ -1,8 +1,10 @@
+import torch
+
 from utils.data_handling import setup_inputs_to_dnn
 from utils.parameters import Params
 
 
-def extract_features(nusc, n_scenes=10, n_samples_per_scene=1, train_ratio=0.60, fps_N_points=1024):
+def extract_features(nusc, n_scenes=10, n_samples_per_scene=1, train_ratio=0.60, N_fps_points=1024):
     # TODO: Add some assertions that we do not use more scenes than we actually have
     # TODO: Find suitable parameters. Although, I think these are rather ok
     # Set parameters
@@ -20,13 +22,14 @@ def extract_features(nusc, n_scenes=10, n_samples_per_scene=1, train_ratio=0.60,
     hpr_radius = 3.25
     preprocess = True
     pointwise = True
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     ##
     print(f"Radius running: {hpr_radius}")
     params = Params(nusc=nusc, n_scenes=n_scenes, n_samples_per_scene=n_samples_per_scene,
                     train_ratio=train_ratio, downsample_factor=downsample_factor,
                     T_close_thresh=T_close_thresh, params_diff_entropy=params_diff_entropy,
-                    hpr_radius=hpr_radius, preprocess=preprocess, pointwise=pointwise,
-                    fps_N_points=fps_N_points)
+                    verbose=verbose, hpr_radius=hpr_radius, preprocess=preprocess, pointwise=pointwise,
+                    do_fps=True, N_fps_points=N_fps_points, device=device)
 
     if pointwise:
         all_PC_scenes_train, all_PC_scenes_test = setup_inputs_to_dnn(params)

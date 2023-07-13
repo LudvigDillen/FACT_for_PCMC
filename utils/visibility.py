@@ -120,7 +120,11 @@ def covisible_inds(PC0, PC_union, T0, T1, hpr_radius=3.25):
 def keep_covisible_points(PC0, PC1, PC_union, T0, T1, hpr_radius=3.25):
     visible_inds, visible_inds_pc0, visible_inds_pc1 = covisible_inds(
         PC0, PC_union, T0, T1, hpr_radius=hpr_radius)
-    PC_union_covisible = PC(PC_union.pc[visible_inds], PC_union.distances_to_origin[visible_inds], label=2)
-    PC0_covisible = PC(PC0.pc[visible_inds_pc0], PC0.distances_to_origin[visible_inds_pc0], label=0)
-    PC1_covisible = PC(PC1.pc[visible_inds_pc1], PC1.distances_to_origin[visible_inds_pc1], label=1)
+    device = PC0.device
+    PC_union_covisible = PC(PC_union.pc[visible_inds], PC_union.distances_to_origin[visible_inds], label=2,
+                            device=device)
+    PC0_covisible = PC(PC0.pc[visible_inds_pc0], PC0.distances_to_origin[visible_inds_pc0], label=0,
+                       device=device)
+    PC1_covisible = PC(PC1.pc[visible_inds_pc1], PC1.distances_to_origin[visible_inds_pc1], label=1,
+                       device=device)
     return PC0_covisible, PC1_covisible, PC_union_covisible

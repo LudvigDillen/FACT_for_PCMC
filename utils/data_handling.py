@@ -7,11 +7,12 @@ from utils.pointclouds import farthest_point_sample_PC_scenes
 
 def read_nuscenes_data(nusc, n_samples, downsample_factor=1, n_scenes='all',
                        T_close_thresh=0, lidar_token=None, scene_counter=0,
-                       verbose=True):
+                       verbose=True, preprocess=True, hpr_radius=3.25):
     # Read data
     PCHandler = NuscenesHandling(nusc, downsample_factor=downsample_factor,
                                  T_close_thresh=T_close_thresh, lidar_token=lidar_token,
-                                 scene_counter=scene_counter, verbose=verbose)
+                                 scene_counter=scene_counter, verbose=verbose, preprocess=preprocess,
+                                 hpr_radius=hpr_radius)
     PC_scenes = PCHandler.sample_from_scenes(n_samples=n_samples, n_scenes=n_scenes)
     return PC_scenes
 
@@ -136,8 +137,7 @@ def calculate_sample_gaps(N, M):
 
 
 def feature_extraction(PC_scenes, params):
-    PC_scenes_with_features = differential_entropy_pointwise(
-        PC_scenes, params.params_diff_entropy, hpr_radius=params.hpr_radius, preprocess=params.preprocess)
+    PC_scenes_with_features = differential_entropy_pointwise(PC_scenes, params.params_diff_entropy)
     # TODO: Extract more features ...
     return PC_scenes_with_features
 
@@ -169,9 +169,11 @@ def run_dnn(scenes_lower, scenes_upper, n_scenes_per_loop, params):
         PC_scenes = read_nuscenes_data(
             params.nusc, n_scenes=read_n_scenes, n_samples=read_n_samples,
             downsample_factor=params.downsample_factor, T_close_thresh=params.T_close_thresh,
-            scene_counter=scene_counter, verbose=params.verbose)
-        # Compute the differential entropy features for the scenes
-        farthest_point_sample_PC_scenes(PC_scenes, params.fps_N_points)
+            scene_counter=scene_counter, verbose=params.verbose, preprocess=params.preprocess,
+            hpr_radius=params.hpr_radius)
+        if params.do_fps:
+            # Compute the differential entropy features for the scenes
+            farthest_point_sample_PC_scenes(PC_scenes, params.N_fps_points)
         # Feature extraction
         PC_scenes_with_features = feature_extraction(PC_scenes, params)
         if first_iter:
@@ -210,11 +212,13 @@ def get_diff_entropy_features(scenes_lower, scenes_upper, n_scenes_per_loop, par
         PC_scenes = read_nuscenes_data(
             params.nusc, n_scenes=read_n_scenes, n_samples=read_n_samples,
             downsample_factor=params.downsample_factor, T_close_thresh=params.T_close_thresh,
-            scene_counter=scene_counter, verbose=params.verbose)
+            scene_counter=scene_counter, verbose=params.verbose, hpr_radius=params.hpr_radius)
+        if params.do_fps:
+            # Compute the differential entropy features for the scenes
+            farthest_point_sample_PC_scenes(PC_scenes, params.N_fps_points)
         # Compute the differential entropy features for the scenes
         X_loop, y_loop = differential_entropy_dataset(
-            PC_scenes, params.params_diff_entropy, verbose=params.verbose, hpr_radius=params.hpr_radius,
-            preprocess=params.preprocess)
+            PC_scenes, params.params_diff_entropy, verbose=params.verbose)
         # Append the features and labels to the storage arrays
         X = np.concatenate((X, X_loop), axis=0)
         y = np.concatenate((y, y_loop), axis=0)

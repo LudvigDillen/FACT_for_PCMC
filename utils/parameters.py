@@ -1,8 +1,12 @@
+import torch
+
+
 class Params:
     def __init__(self, nusc, n_scenes, n_samples_per_scene, train_ratio,
                  downsample_factor, T_close_thresh, params_diff_entropy,
                  verbose=False, hpr_radius=3.25, preprocess=True, pointwise=True,
-                 fps_N_points=1024):
+                 do_fps=True, N_fps_points=9192,
+                 device=torch.device("cuda" if torch.cuda.is_available() else "cpu")):
         """
         nusc: The NuScenes class variable.
         n_scenes (int): The total number of scenes.
@@ -16,9 +20,11 @@ class Params:
         preprocess (bool): whether to preprocess the point cloud or not
         pointwise (bool): Whether to process pointcloud pointwise or not. Must be true
                           if we want to feed it to the DNN.
+        do_fps (bool) : Whether or not to apply farthest point sampling
         fps_N_points (int): How many points we should evaluate each metric for, note
                             that the hole point cloud is considered when stuying each
                             sampled points' neighborhoods.
+        device (torch.device)      : Which device to perform calculations on (cuda or cpu).
         """
         # Set dataset parameters
         self.nusc = nusc
@@ -39,10 +45,14 @@ class Params:
         # Set preprocess settings and parameters
         self.preprocess = preprocess
         self.pointwise = pointwise
-        self.fps_N_points = fps_N_points
+        self.do_fps = do_fps
+        self.N_fps_points = N_fps_points
 
         # Set co-visibility parameters
         self.hpr_radius = hpr_radius
+
+        # Set device
+        self.device = device
 
     def set_params_diff_entropy(self, params_diff_entropy):
         self.params_diff_entropy = params_diff_entropy
