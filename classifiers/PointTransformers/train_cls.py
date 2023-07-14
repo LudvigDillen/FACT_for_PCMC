@@ -14,7 +14,7 @@ import gc
 
 import nuscenes as ns
 from features.feature_extractor import extract_features_to_txt_files
-import PointTransformers.provider as provider
+import classifiers.PointTransformers.provider as provider
 from utils.other import start_debug
 from utils.pointclouds import PCAC_dataset
 
@@ -54,7 +54,7 @@ def main(args):
 
     # Ludvig's code
     # Init Nusc object
-    extract_features = False
+    extract_features = True
     if extract_features:
         data_folder = '/home/luddi824/thesis/PCAC/data/nuscenes/'
         version = 'v1.0-mini'
@@ -80,9 +80,11 @@ def main(args):
     '''MODEL LOADING'''
     args.num_class = 2  # aligned or misaligned
 
-    shutil.copy(hydra.utils.to_absolute_path('PointTransformers/models/{}/model.py'.format(args.model.name)),
+    shutil.copy(hydra.utils.to_absolute_path(
+        'classifiers/PointTransformers/models/{}/model.py'.format(args.model.name)),
                 '.')
-    classifier = getattr(importlib.import_module('PointTransformers.models.{}.model'.format(args.model.name)),
+    classifier = getattr(importlib.import_module(
+        'classifiers.PointTransformers.models.{}.model'.format(args.model.name)),
                          'PointTransformerCls')(args).cuda()
     criterion = torch.nn.CrossEntropyLoss()
 

@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from pointnet_util import PointNetSetAbstractionMsg
+from utils.pointnet_util import PointNetSetAbstractionMsg
 from .transformer import MultiHeadAttention
 
 

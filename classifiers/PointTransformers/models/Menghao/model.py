@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from pointnet_util import farthest_point_sample, index_points, square_distance
+from utils.pointnet_util import farthest_point_sample, index_points, square_distance
 
 
 def sample_and_group(npoint, nsample, xyz, points):

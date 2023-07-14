@@ -3,7 +3,7 @@ import random
 import os
 import numpy as np
 
-from PointTransformers.pointnet_util import farthest_point_sample, pc_normalize
+from utils.pointnet_util import farthest_point_sample, pc_normalize
 from utils.geometrics import change_coordinate_system
 
 

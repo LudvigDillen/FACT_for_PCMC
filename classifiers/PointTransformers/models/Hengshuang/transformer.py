@@ -1,4 +1,4 @@
-from PointTransformers.pointnet_util import index_points, square_distance
+from utils.pointnet_util import index_points, square_distance
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
