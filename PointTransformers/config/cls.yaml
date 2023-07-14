@@ -1,15 +1,15 @@
-batch_size: 28
-epoch: 2  # 500
+batch_size: 40  # 27
+epoch: 50  # 500
 learning_rate: 0.0005
 gpu: 0
-num_point: 1024
+num_point: 512
 optimizer: Adam
 weight_decay: 0.0001
 normal: true
 model:
   nneighbor: 16
   nblocks: 4
-  transformer_dim: 512
+  transformer_dim: 512  # TODO: Investigate if I could decrease this ... Should save lots of memory
   name: Hengshuang
 
 
