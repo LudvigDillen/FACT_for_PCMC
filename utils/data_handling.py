@@ -14,6 +14,7 @@ def read_nuscenes_data(nusc, n_samples, downsample_factor=1, n_scenes='all',
                                  scene_counter=scene_counter, verbose=verbose, preprocess=preprocess,
                                  hpr_radius=hpr_radius)
     PC_scenes = PCHandler.sample_from_scenes(n_samples=n_samples, n_scenes=n_scenes)
+    del PCHandler
     return PC_scenes
 
 
@@ -176,6 +177,7 @@ def run_dnn(scenes_lower, scenes_upper, n_scenes_per_loop, params):
             farthest_point_sample_PC_scenes(PC_scenes, params.N_fps_points)
         # Feature extraction
         PC_scenes_with_features = feature_extraction(PC_scenes, params)
+        del PC_scenes
         if first_iter:
             all_PC_scenes = PC_scenes_with_features
             first_iter = False

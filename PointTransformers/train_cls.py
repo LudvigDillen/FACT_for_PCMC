@@ -2,25 +2,21 @@
 Author: Benny
 Date: Nov 2019
 """
-import argparse
 import numpy as np
-import os
 import torch
-import datetime
 import logging
-from pathlib import Path
 from tqdm import tqdm
-import sys
 import importlib
 import shutil
 import hydra
 import omegaconf
+import gc
 
 import nuscenes as ns
-from features.feature_extractor import extract_features
-from PointTransformers.dataset import ModelNetDataLoader
+from features.feature_extractor import extract_features_to_txt_files
 import PointTransformers.provider as provider
 from utils.other import start_debug
+from utils.pointclouds import PCAC_dataset
 
 
 def test(model, loader, num_class=40):
@@ -46,126 +42,6 @@ def test(model, loader, num_class=40):
 
 
 @hydra.main(config_path='config', config_name='cls')
-def main_ModelNet40(args):
-    omegaconf.OmegaConf.set_struct(args, False)
-
-    '''HYPER PARAMETER'''
-    # os.environ["CUDA_VISIBLE_DEVICES"] = str(args.gpu)
-    logger = logging.getLogger(__name__)
-
-    '''DATA LOADING'''
-    logger.info('Load dataset ...')
-    DATA_PATH = hydra.utils.to_absolute_path('data/modelnet40_normal_resampled/')
-
-    TRAIN_DATASET = ModelNetDataLoader(root=DATA_PATH, npoint=args.num_point, split='train',
-                                       normal_channel=args.normal)
-    TEST_DATASET = ModelNetDataLoader(root=DATA_PATH, npoint=args.num_point, split='test',
-                                      normal_channel=args.normal)
-    trainDataLoader = torch.utils.data.DataLoader(TRAIN_DATASET, batch_size=args.batch_size, shuffle=True,
-                                                  num_workers=4)
-    testDataLoader = torch.utils.data.DataLoader(TEST_DATASET, batch_size=args.batch_size, shuffle=False,
-                                                 num_workers=4)
-
-    '''MODEL LOADING'''
-    args.num_class = 40
-    args.input_dim = 6 if args.normal else 3
-    shutil.copy(hydra.utils.to_absolute_path('PointTransformers/models/{}/model.py'.format(args.model.name)),
-                '.')
-    classifier = getattr(importlib.import_module('PointTransformers.models.{}.model'.format(args.model.name)),
-                         'PointTransformerCls')(args).cuda()
-    criterion = torch.nn.CrossEntropyLoss()
-
-    try:
-        checkpoint = torch.load('best_model.pth')
-        start_epoch = checkpoint['epoch']
-        classifier.load_state_dict(checkpoint['model_state_dict'])
-        logger.info('Use pretrain model')
-    except:
-        logger.info('No existing model, starting training from scratch...')
-        start_epoch = 0
-
-    if args.optimizer == 'Adam':
-        optimizer = torch.optim.Adam(
-            classifier.parameters(),
-            lr=args.learning_rate,
-            betas=(0.9, 0.999),
-            eps=1e-08,
-            weight_decay=args.weight_decay
-        )
-    else:
-        optimizer = torch.optim.SGD(classifier.parameters(), lr=0.01, momentum=0.9)
-
-    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=50, gamma=0.3)
-    global_epoch = 0
-    global_step = 0
-    best_instance_acc = 0.0
-    best_class_acc = 0.0
-    best_epoch = 0
-    mean_correct = []
-
-    '''TRANING'''
-    logger.info('Start training...')
-    for epoch in range(start_epoch, args.epoch):
-        logger.info('Epoch %d (%d/%s):' % (global_epoch + 1, epoch + 1, args.epoch))
-
-        classifier.train()
-        for batch_id, data in tqdm(enumerate(trainDataLoader, 0), total=len(trainDataLoader), smoothing=0.9):
-            points, target = data
-            points = points.data.numpy()
-            points = provider.random_point_dropout(points)
-            points[:, :, 0:3] = provider.random_scale_point_cloud(points[:, :, 0:3])
-            points[:, :, 0:3] = provider.shift_point_cloud(points[:, :, 0:3])
-            points = torch.Tensor(points)
-            target = target[:, 0]
-
-            points, target = points.cuda(), target.cuda()
-            optimizer.zero_grad()
-
-            pred = classifier(points)
-            loss = criterion(pred, target.long())
-            pred_choice = pred.data.max(1)[1]
-            correct = pred_choice.eq(target.long().data).cpu().sum()
-            mean_correct.append(correct.item() / float(points.size()[0]))
-            loss.backward()
-            optimizer.step()
-            global_step += 1
-
-        scheduler.step()
-
-        train_instance_acc = np.mean(mean_correct)
-        logger.info('Train Instance Accuracy: %f' % train_instance_acc)
-
-        with torch.no_grad():
-            instance_acc, class_acc = test(classifier.eval(), testDataLoader)
-
-            if (instance_acc >= best_instance_acc):
-                best_instance_acc = instance_acc
-                best_epoch = epoch + 1
-
-            if (class_acc >= best_class_acc):
-                best_class_acc = class_acc
-            logger.info('Test Instance Accuracy: %f, Class Accuracy: %f' % (instance_acc, class_acc))
-            logger.info('Best Instance Accuracy: %f, Class Accuracy: %f' % (best_instance_acc,
-                                                                            best_class_acc))
-
-            if (instance_acc >= best_instance_acc):
-                logger.info('Save model...')
-                savepath = 'best_model.pth'
-                logger.info('Saving at %s' % savepath)
-                state = {
-                    'epoch': best_epoch,
-                    'instance_acc': instance_acc,
-                    'class_acc': class_acc,
-                    'model_state_dict': classifier.state_dict(),
-                    'optimizer_state_dict': optimizer.state_dict(),
-                }
-                torch.save(state, savepath)
-            global_epoch += 1
-
-    logger.info('End of training...')
-
-
-@hydra.main(config_path='config', config_name='cls')
 def main(args):
     start_debug()
     omegaconf.OmegaConf.set_struct(args, False)
@@ -178,26 +54,32 @@ def main(args):
 
     # Ludvig's code
     # Init Nusc object
-    data_folder = '/home/luddi824/thesis/PCAC/data/nuscenes/'
-    version = 'v1.0-mini'
-    nusc = ns.nuscenes.NuScenes(version=version, dataroot=data_folder, verbose=False)
-    all_PC_scenes_train, all_PC_scenes_test = extract_features(nusc, n_scenes=2)
+    extract_features = False
+    if extract_features:
+        data_folder = '/home/luddi824/thesis/PCAC/data/nuscenes/'
+        version = 'v1.0-mini'
+        nusc = ns.nuscenes.NuScenes(version=version, dataroot=data_folder, verbose=False)
 
-    #
-    DATA_PATH = hydra.utils.to_absolute_path('data/modelnet40_normal_resampled/')
+        # Get features
+        with torch.no_grad():
+            args.input_dim = extract_features_to_txt_files(nusc, n_scenes=10, n_samples_per_scene=10,
+                                                           N_fps_points=args.num_point)
+        torch.cuda.empty_cache()
+        gc.collect()
+    else:
+        args.input_dim = 6
 
-    TRAIN_DATASET = ModelNetDataLoader(root=DATA_PATH, npoint=args.num_point, split='train',
-                                       normal_channel=args.normal)
-    TEST_DATASET = ModelNetDataLoader(root=DATA_PATH, npoint=args.num_point, split='test',
-                                      normal_channel=args.normal)
-    trainDataLoader = torch.utils.data.DataLoader(TRAIN_DATASET, batch_size=args.batch_size, shuffle=True,
-                                                  num_workers=4)
-    testDataLoader = torch.utils.data.DataLoader(TEST_DATASET, batch_size=args.batch_size, shuffle=False,
-                                                 num_workers=4)
+    # Get dataset (features in a data loader)
+    PCAC_TRAIN_DATASET = PCAC_dataset(split='train')
+    PCAC_TEST_DATASET = PCAC_dataset(split='test')
+    trainDataLoader = torch.utils.data.DataLoader(PCAC_TRAIN_DATASET, batch_size=args.batch_size,
+                                                  shuffle=True, num_workers=4)
+    testDataLoader = torch.utils.data.DataLoader(PCAC_TEST_DATASET, batch_size=args.batch_size,
+                                                 shuffle=False, num_workers=4)
 
     '''MODEL LOADING'''
-    args.num_class = 40
-    args.input_dim = 6 if args.normal else 3
+    args.num_class = 2  # aligned or misaligned
+
     shutil.copy(hydra.utils.to_absolute_path('PointTransformers/models/{}/model.py'.format(args.model.name)),
                 '.')
     classifier = getattr(importlib.import_module('PointTransformers.models.{}.model'.format(args.model.name)),
@@ -265,7 +147,7 @@ def main(args):
         logger.info('Train Instance Accuracy: %f' % train_instance_acc)
 
         with torch.no_grad():
-            instance_acc, class_acc = test(classifier.eval(), testDataLoader)
+            instance_acc, class_acc = test(classifier.eval(), testDataLoader, num_class=args.num_class)
 
             if (instance_acc >= best_instance_acc):
                 best_instance_acc = instance_acc

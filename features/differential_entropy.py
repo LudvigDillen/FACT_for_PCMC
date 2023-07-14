@@ -202,8 +202,12 @@ def differential_entropy_pointwise(PC_scenes, params):
             # joint differential entropies
             entropies_joint = differential_entropy(PC_pair.PCUnion, params)
 
-            entropies_joint_from_PC0 = entropies_joint[:PC_pair.PC0.N_points]
-            entropies_joint_from_PC1 = entropies_joint[PC_pair.PC0.N_points:]
+            entropies_joint_from_PC0 = entropies_joint[:PC_pair.PC0.N_fps_points]
+            entropies_joint_from_PC1 = entropies_joint[PC_pair.PC1.N_fps_points:]
+
+            N_ent_joint_post_division = entropies_joint_from_PC0.shape[0] + entropies_joint_from_PC1.shape[0]
+            assert (N_ent_joint_post_division == entropies_joint.shape[0]), "Division of entropy done wrong"
+
             PC_pair.PC0.set_joint_diff_entropy(entropies_joint_from_PC0)
             PC_pair.PC1.set_joint_diff_entropy(entropies_joint_from_PC1)
             PC_pair.PC0.set_sep_diff_entropy(entropies_PC0)

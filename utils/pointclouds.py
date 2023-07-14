@@ -6,33 +6,25 @@ import numpy as np
 from PointTransformers.pointnet_util import farthest_point_sample, pc_normalize
 from utils.geometrics import change_coordinate_system
 
-###### Things to remember
-# Only extract features for 'npoint' of the points. Select the npoints using farthest point sampling. (Speed)
-
-# Fill up PCAC_data_train/test.txt with info in the data loading ..
-
 
 class PCAC_dataset(torch.utils.data.Dataset):
-    def __init__(self, root='/home/luddi824/thesis/PCAC/data/PCAC_data', npoint=1024, split='train',
-                 uniform=False, normal_channel=True, cache_size=15000):
+    def __init__(self, root='/home/luddi824/thesis/PCAC/data/PCAC_data', split='train', cache_size=1000):
         self.root = root
-        self.npoint = npoint
-        self.uniform = uniform
         self.catfile = os.path.join(self.root, 'PCAC_data_class_names.txt')
 
         self.cat = [line.rstrip() for line in open(self.catfile)]
         self.classes = dict(zip(self.cat, range(len(self.cat))))
-        self.normal_channel = normal_channel
 
-        shape_ids = {}
-        shape_ids['train'] = [line.rstrip() for line in open(os.path.join(self.root, 'PCAC_data_train.txt'))]
-        shape_ids['test'] = [line.rstrip() for line in open(os.path.join(self.root, 'PCAC_data_test.txt'))]
+        class_ids = {}
+        class_ids['train'] = [line.rstrip() for line in open(os.path.join(self.root, 'PCAC_data_train.txt'))]
+        class_ids['test'] = [line.rstrip() for line in open(os.path.join(self.root, 'PCAC_data_test.txt'))]
 
         assert (split == 'train' or split == 'test')
-        shape_names = ['_'.join(x.split('_')[0:-1]) for x in shape_ids[split]]
-        # list of (shape_name, shape_txt_file_path) tuple
-        self.datapath = [(shape_names[i], os.path.join(self.root, shape_names[i], shape_ids[split][i]) + '.txt') for i
-                         in range(len(shape_ids[split]))]
+        class_names = ['_'.join(x.split('_')[0:-1]) for x in class_ids[split]]
+        # list of (class_name, class_txt_file_path) tuple
+        self.datapath = [(class_names[i],
+                          os.path.join(self.root, class_names[i], class_ids[split][i]) + '.txt')
+                         for i in range(len(class_ids[split]))]
         print('The size of %s data is %d' % (split, len(self.datapath)))
 
         self.cache_size = cache_size  # how many data points to cache in memory
@@ -49,15 +41,7 @@ class PCAC_dataset(torch.utils.data.Dataset):
             cls = self.classes[self.datapath[index][0]]
             cls = np.array([cls]).astype(np.int32)
             point_set = np.loadtxt(fn[1], delimiter=',').astype(np.float32)
-            if self.uniform:
-                point_set = farthest_point_sample(point_set, self.npoints)
-            else:
-                point_set = point_set[0:self.npoints, :]
-
             point_set[:, 0:3] = pc_normalize(point_set[:, 0:3])
-
-            if not self.normal_channel:
-                point_set = point_set[:, 0:3]
 
             if len(self.cache) < self.cache_size:
                 self.cache[index] = (point_set, cls)
@@ -66,11 +50,6 @@ class PCAC_dataset(torch.utils.data.Dataset):
 
     def __getitem__(self, index):
         return self._get_item(index)
-
-    def __len__(self):
-        # This method should return the total size/length of the dataset.
-        # For example, if you're reading from an array, you'd do "return len(self.my_array)"
-        return len(self.dataset)
 
 
 class PC:
@@ -81,6 +60,13 @@ class PC:
         self.distances_to_origin = distances.to(device)
         self.N_points = pc.shape[0]
         self.N_dim = pc.shape[1]
+
+        self.N_feature_channels = 3  # the xyz coordinates are the three first features
+        self.set_label(label)
+        # initiate the fps_inds tensor as all points in the point cloud (i.e. that means no downsampling)
+        self.fps_inds = torch.arange(0, self.N_points, dtype=torch.int).to(device)
+
+    def set_label(self, label):
         """
         For the label we have that:
             0 means PC0
@@ -88,33 +74,39 @@ class PC:
             2 means PCUnion
         """
         self.label = label
-        # initiate the fps_inds tensor as all points in the point cloud (i.e. that means no downsampling)
-        self.fps_inds = torch.arange(0, self.N_points, dtype=torch.int).to(device)
+        self.N_feature_channels += 1
 
     def set_joint_diff_entropy(self, value):
         self.metric_jde = value
+        self.N_feature_channels += 1
 
     def set_sep_diff_entropy(self, value):
         self.metric_sde = value
+        self.N_feature_channels += 1
 
     def set_wasserstein_dist(self, value):
         self.metric_wd = value
+        self.N_feature_channels += 1
 
     def set_covisibility_weight(self, weight):
         self.weight_c = weight
+        self.N_feature_channels += 1
 
     def set_static_point_weight(self, weight):
         self.weight_s = weight
+        self.N_feature_channels += 1
 
     def set_cardinality_joint_weight(self, ratio):
         self.weight_cj = ratio
+        self.N_feature_channels += 1
 
     def set_cardinality_sep_weight(self, ratio):
         self.weight_cs = ratio
+        self.N_feature_channels += 1
 
     def set_fps_inds(self, fps_inds):
         self.fps_inds = fps_inds
-        self.fps_N_points = len(fps_inds)
+        self.N_fps_points = len(fps_inds)
 
 
 class PCPair:
@@ -141,6 +133,9 @@ class PCPair:
         self.PC0 = PC0
         self.PC1 = PC1
         self.PCUnion = PCUnion
+
+    def set_name(self, name):
+        self.name = name
 
 
 def perform_random_perturbation_CorAl(pc, angular_offset=0.01, translational_offset=0.1):

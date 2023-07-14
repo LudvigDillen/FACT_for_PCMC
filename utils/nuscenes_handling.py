@@ -259,6 +259,7 @@ class NuscenesHandling:
                 currentPCPair.set_new_PC(PC0_cov, PC1_cov, PCUnion_cov)
             # Append pair to list
             PC_scene.append(currentPCPair)
+            del PC0, PC1, currentPCPair
             # Iterate to next pair in scene
             self.set_next_point_cloud_pair(n_samples_jump=skip_samples_list[skip_sample_index])
             skip_sample_index += 1
