@@ -47,17 +47,17 @@ def differential_entropy(PC, params: dict) -> float:
     batch_size = 8**3
     pc_batches = torch.split(PC.pc[PC.fps_inds], batch_size, dim=0)
     radii_batches = torch.split(radii[PC.fps_inds], batch_size, dim=0)
-    N_fps_points = len(PC.fps_inds)
+    pc_n_neighbors = torch.empty_like((PC.fps_inds))
 
     # We will remove the lowest entropies later, so we want something low initially
-    entropies = 1/2*torch.log(epsilon)*torch.ones(N_fps_points, device=device)
+    entropies = 1/2*torch.log(epsilon)*torch.ones(PC.N_fps_points, device=device, dtype=torch.float64)
     from_ind = 0
     to_ind = 0
 
     for pc_batch, radii_batch in zip(pc_batches, radii_batches):
+        current_batch_size = radii_batch.shape[0]
         # Compute the distance matrix between pc_batch and pc
         dists = torch.cdist(pc_batch, PC.pc)
-        del pc_batch
 
         # Create a mask with True values where the distance is less than the radius
         neighbor_mask = (dists < radii_batch[:, None])
@@ -66,14 +66,13 @@ def differential_entropy(PC, params: dict) -> float:
         # Count the number of neighbors for each point in the batch
         n_neighbors_per_point_in_batch = torch.sum(neighbor_mask, dim=1)
         # Filter out neighborhoods with only one point
-        inds_to_valid_neighborhoods = (n_neighbors_per_point_in_batch > 1)
-        filtered_neighbor_mask = neighbor_mask[inds_to_valid_neighborhoods]
+        bool_mask_valid_neighborhood = (n_neighbors_per_point_in_batch > 1)
+        inds_to_valid_neighborhood = torch.nonzero(bool_mask_valid_neighborhood).squeeze()
+        filtered_neighbor_mask = neighbor_mask[inds_to_valid_neighborhood]
         del neighbor_mask
 
         # Update neighbor count for valid neighborhoods
-        filtered_n_neighbors = n_neighbors_per_point_in_batch[inds_to_valid_neighborhoods].unsqueeze(dim=1)
-        del inds_to_valid_neighborhoods
-        del n_neighbors_per_point_in_batch
+        filtered_n_neighbors = n_neighbors_per_point_in_batch[inds_to_valid_neighborhood].unsqueeze(dim=1)
 
         # Apply the filtered neighbor mask to the point cloud batch
         masked_pc_batch = (PC.pc.unsqueeze(dim=0))*(filtered_neighbor_mask.unsqueeze(dim=2))
@@ -84,27 +83,21 @@ def differential_entropy(PC, params: dict) -> float:
         # Center the data by subtracting the mean
         centered_data = (masked_pc_batch - mu.unsqueeze(dim=1))*(filtered_neighbor_mask.unsqueeze(dim=2))
 
-        del filtered_neighbor_mask, masked_pc_batch, mu
+        del filtered_neighbor_mask, masked_pc_batch
 
         # Calculate covariance matrices
         covariances = (centered_data[..., None] * centered_data[..., None, :]
                        ).sum(dim=1) / (filtered_n_neighbors.unsqueeze(dim=2) - 1)
         del centered_data
 
-        # Get the number of points in the batch
-        n_points_in_batch = filtered_n_neighbors.shape[0]
-        del filtered_n_neighbors
-
         # Compute determinants of covariance matrices
         determinants = torch.linalg.det(covariances)
-        del covariances
-        to_ind += n_points_in_batch
-        entropies[from_ind:to_ind] = 1/2*torch.log(scaler*determinants + epsilon)
-        del determinants
+        to_ind += current_batch_size
+        entropies[inds_to_valid_neighborhood + from_ind] = 1/2*torch.log(scaler*determinants + epsilon)
+        pc_n_neighbors[from_ind:to_ind] = n_neighbors_per_point_in_batch
         from_ind = to_ind
-        del n_points_in_batch
 
-    return entropies
+    return entropies, pc_n_neighbors
 
 
 def filter_and_sum_entropies(entropies, params):
@@ -170,10 +163,10 @@ def differential_entropy_metric(PC0, PC1, PCUnion, misaligned, params, verbose=T
         return metric, H_joint, H_separate
 
     # separate differential entropies
-    entropies_PC0 = differential_entropy(PC0, params)
-    entropies_PC1 = differential_entropy(PC1, params)
+    entropies_PC0, pc0_n_neighbors = differential_entropy(PC0, params)
+    entropies_PC1, pc1_n_neighbors = differential_entropy(PC1, params)
     # joint differential entropies
-    entropies_joint = differential_entropy(PCUnion, params)
+    entropies_joint, pc_joint_n_neighbors = differential_entropy(PCUnion, params)
 
     H_PC0 = filter_and_sum_entropies(entropies_PC0, params)
     H_PC1 = filter_and_sum_entropies(entropies_PC1, params)
@@ -197,21 +190,32 @@ def differential_entropy_pointwise(PC_scenes, params):
         for sample_number in range(N_samples_per_scene):
             PC_pair = PC_scenes[scene_number][sample_number]
             # separate differential entropies
-            entropies_PC0 = differential_entropy(PC_pair.PC0, params)
-            entropies_PC1 = differential_entropy(PC_pair.PC1, params)
+            entropies_PC0, pc0_n_neighbors = differential_entropy(PC_pair.PC0, params)
+            entropies_PC1, pc1_n_neighbors = differential_entropy(PC_pair.PC1, params)
             # joint differential entropies
-            entropies_joint = differential_entropy(PC_pair.PCUnion, params)
+            entropies_joint, pc_joint_n_neighbors = differential_entropy(PC_pair.PCUnion, params)
 
             entropies_joint_from_PC0 = entropies_joint[:PC_pair.PC0.N_fps_points]
-            entropies_joint_from_PC1 = entropies_joint[PC_pair.PC1.N_fps_points:]
+            entropies_joint_from_PC1 = entropies_joint[PC_pair.PC0.N_fps_points:]
 
             N_ent_joint_post_division = entropies_joint_from_PC0.shape[0] + entropies_joint_from_PC1.shape[0]
             assert (N_ent_joint_post_division == entropies_joint.shape[0]), "Division of entropy done wrong"
-
+            # Set differential entropy features
             PC_pair.PC0.set_joint_diff_entropy(entropies_joint_from_PC0)
             PC_pair.PC1.set_joint_diff_entropy(entropies_joint_from_PC1)
             PC_pair.PC0.set_sep_diff_entropy(entropies_PC0)
             PC_pair.PC1.set_sep_diff_entropy(entropies_PC1)
+
+            pc0_joint_n_neighbors = pc_joint_n_neighbors[:PC_pair.PC0.N_fps_points]
+            pc1_joint_n_neighbors = pc_joint_n_neighbors[PC_pair.PC0.N_fps_points:]
+            N_neigh_joint_post_division = pc0_joint_n_neighbors.shape[0] + pc1_joint_n_neighbors.shape[0]
+            assert (N_neigh_joint_post_division == pc_joint_n_neighbors.shape[0]), (
+                "Division of entropy done wrong")
+            # Set number of points in neighborhood features
+            PC_pair.PC0.set_cardinality_ratio_joint_weight(pc0_joint_n_neighbors/PC_pair.PCUnion.N_points)
+            PC_pair.PC1.set_cardinality_ratio_joint_weight(pc1_joint_n_neighbors/PC_pair.PCUnion.N_points)
+            PC_pair.PC0.set_cardinality_ratio_sep_weight(pc0_n_neighbors/PC_pair.PC0.N_points)
+            PC_pair.PC1.set_cardinality_ratio_sep_weight(pc1_n_neighbors/PC_pair.PC1.N_points)
             PC_scenes[scene_number][sample_number] = PC_pair
     return PC_scenes
 

@@ -5,12 +5,13 @@ from utils.data_handling import setup_inputs_to_dnn
 from utils.parameters import Params
 
 
-def get_N_feature_channels(flat_PC_scenes):
-    for PC_pair in flat_PC_scenes:
-        PC0 = PC_pair.PC0
-        PC1 = PC_pair.PC1
-        assert (PC0.N_feature_channels == PC1.N_feature_channels), "ERROR: Different many feature channels!"
-        return PC0.N_feature_channels
+# def get_N_feature_channels(flat_PC_scenes):
+#     for PC_pair in flat_PC_scenes:
+#         PC0 = PC_pair.PC0
+#         PC1 = PC_pair.PC1
+#         assert (PC0.N_available_feature_channels == PC1.N_available_feature_channels), (
+#           "ERROR: Different many feature channels!")
+#         return PC0.N_available_feature_channels
 
 
 def write_features_to_txt_files(flat_PC_scenes, data_folder):
@@ -35,8 +36,18 @@ def write_features_to_txt_files(flat_PC_scenes, data_folder):
         # Set separate differential entropy channel
         sde_channel = np.vstack((PC0.metric_sde.cpu().numpy()[:, np.newaxis],
                                  PC1.metric_sde.cpu().numpy()[:, np.newaxis]))
-        feature_map = np.concatenate((xyz_channels, label_channel, jde_channel, sde_channel), axis=1)
+        # Set joint number of neighbors ratio
+        cj_channel = np.vstack((PC0.weight_cj.cpu().numpy()[:, np.newaxis],
+                                PC1.weight_cj.cpu().numpy()[:, np.newaxis]))
+        # Set separate number of neighbors ratio
+        cs_channel = np.vstack((PC0.weight_cs.cpu().numpy()[:, np.newaxis],
+                                PC1.weight_cs.cpu().numpy()[:, np.newaxis]))
+
+        feature_map = np.concatenate((xyz_channels, label_channel, jde_channel, sde_channel,
+                                      cj_channel, cs_channel), axis=1)
         np.savetxt(file, feature_map, delimiter=',', fmt='%.6f')
+        N_used_feature_channels = feature_map.shape[1]
+    return N_used_feature_channels
 
 
 def classes_to_txt(data_file, flat_PC_scenes, aligned_samples, misaligned_samples):
@@ -114,9 +125,10 @@ def extract_features_to_txt_files(nusc, n_scenes=10, n_samples_per_scene=1, trai
     print("Data sorted")
     PC_train, PC_test = write_classes_to_txt_files(flat_PC_scenes_train, flat_PC_scenes_test)
     print("Classes written to txt files")
-    N_feature_channels = get_N_feature_channels(PC_train)  # could look at test data instead ofc
-    write_features_to_txt_files(PC_train, data_folder="/home/luddi824/thesis/PCAC/data/PCAC_data")
-    write_features_to_txt_files(PC_test, data_folder="/home/luddi824/thesis/PCAC/data/PCAC_data")
+    N_used_feature_channels = write_features_to_txt_files(
+        PC_train, data_folder="/home/luddi824/thesis/PCAC/data/PCAC_data")
+    N_used_feature_channels = write_features_to_txt_files(
+        PC_test, data_folder="/home/luddi824/thesis/PCAC/data/PCAC_data")
     print("Features written to txt files")
     print("\nPCAC data is now extracted!\n")
-    return N_feature_channels
+    return N_used_feature_channels
