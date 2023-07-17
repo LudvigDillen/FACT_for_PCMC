@@ -1,5 +1,7 @@
 import torch
 import numpy as np
+import os
+
 
 from utils.data_handling import setup_inputs_to_dnn
 from utils.parameters import Params
@@ -64,6 +66,13 @@ def write_features_to_txt_files(flat_PC_scenes, data_folder, params):
             cs_channel = np.vstack((PC0.weight_cs.cpu().numpy()[:, np.newaxis],
                                     PC1.weight_cs.cpu().numpy()[:, np.newaxis]))
             feature_map = np.concatenate((feature_map, cs_channel), axis=1)
+
+        # Get the directory name from the save_file path
+        dir_name = os.path.dirname(save_file)
+        # Check if the directory exists
+        if not os.path.exists(dir_name):
+            # If the directory doesn't exist, create it
+            os.makedirs(dir_name)
         np.savetxt(save_file, feature_map, delimiter=',', fmt='%.6f')
 
 

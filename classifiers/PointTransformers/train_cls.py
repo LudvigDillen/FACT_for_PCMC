@@ -16,6 +16,7 @@ from features.feature_extractor import extract_features_to_txt_files, number_of_
 import classifiers.PointTransformers.provider as provider
 from utils.other import start_debug
 from utils.pointclouds import PCAC_dataset
+from visualization.classifications import plot_accuracies
 
 
 def test(model, loader, num_class=2):
@@ -42,8 +43,7 @@ def test(model, loader, num_class=2):
 
 @hydra.main(config_path='config', config_name='cls')
 def main(args):
-    # TODO: Implement visualization tools for accuracy development
-    start_debug()
+    # start_debug()
     omegaconf.OmegaConf.set_struct(args, False)
 
     '''HYPER PARAMETER'''
@@ -54,14 +54,14 @@ def main(args):
 
     # Ludvig's code
     # Init Nusc object
-    extract_features = False
+    extract_features = True
     if extract_features:
         data_folder = '/home/luddi824/thesis/PCAC/data/nuscenes/'
         version = 'v1.0-trainval'
         nusc = ns.nuscenes.NuScenes(version=version, dataroot=data_folder, verbose=False)
 
         # Get features
-        extract_features_to_txt_files(nusc, features=args.features, n_scenes=300,
+        extract_features_to_txt_files(nusc, features=args.features, n_scenes=50,
                                       n_samples_per_scene=10, N_fps_points=args.num_point)
         args.input_dim = number_of_features(args.features)
         torch.cuda.empty_cache()
@@ -117,6 +117,10 @@ def main(args):
     best_class_acc = 0.0
     best_epoch = 0
     mean_correct = []
+
+    train_accuracies = []
+    val_accuracies = []
+
     '''TRANING'''
     logger.info('Start training...')
     for epoch in range(start_epoch, args.epoch):
@@ -140,10 +144,14 @@ def main(args):
             pred_choice = pred.data.max(1)[1]
             correct = pred_choice.eq(target.long().data).cpu().sum()
             mean_correct.append(correct.item() / float(points.size()[0]))
+
             torch.cuda.empty_cache()
             loss.backward()
             optimizer.step()
             global_step += 1
+
+        train_instance_acc = np.mean(mean_correct)
+        train_accuracies.append(train_instance_acc)
 
         scheduler.step()
 
@@ -152,6 +160,7 @@ def main(args):
 
         with torch.no_grad():
             instance_acc, class_acc = test(classifier.eval(), testDataLoader, num_class=args.num_class)
+            val_accuracies.append(instance_acc)
 
             if (instance_acc >= best_instance_acc):
                 best_instance_acc = instance_acc
@@ -178,6 +187,7 @@ def main(args):
             global_epoch += 1
 
     logger.info('End of training...')
+    plot_accuracies(train_accuracies, val_accuracies)
 
 
 if __name__ == '__main__':

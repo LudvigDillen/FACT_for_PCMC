@@ -1,3 +1,4 @@
+from datetime import datetime
 import matplotlib.pyplot as plt
 import numpy as np
 
@@ -20,3 +21,34 @@ def model_plot(model, X, y, title):
     plt.ylabel(r'x_2', fontsize=16, fontweight='bold')
     plt.title(title)
     plt.show()
+
+
+def plot_accuracies(train_accuracies, val_accuracies):
+    plt.figure(figsize=(10, 5))
+    plt.plot(100*train_accuracies, label='Train Accuracy')
+    plt.plot(100*val_accuracies, label='Validation Accuracy')
+    plt.title('Training and Validation Accuracy')
+    plt.xlabel('Epoch')
+    plt.ylabel('Accuracy [%]')
+    plt.legend()
+    plt.grid(True)
+
+    # Ensure that the x-axis only uses integer values
+    plt.xticks(ticks=np.arange(0, len(train_accuracies), step=1))
+
+    # Define the directory and filename
+    directory = '/home/luddi824/thesis/PCAC/images/classification/PointTransformer'
+
+    # Get the current time and format it as a string
+    now = datetime.now()
+    time_string = now.strftime('%Y%m%d_%H%M%S')
+
+    filename = f'accuracy_plot_{time_string}'
+
+    # Save the figure as .jpg
+    plt.savefig(f'{directory}/{filename}.jpg', format='jpg')
+
+    # Save the figure as .eps
+    plt.savefig(f'{directory}/{filename}.eps', format='eps')
+
+    plt.close()  # Close the figure
