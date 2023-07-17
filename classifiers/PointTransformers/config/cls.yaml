@@ -1,16 +1,25 @@
-batch_size: 40  # 27
+batch_size: 20  # 27
 epoch: 50  # 500
 learning_rate: 0.0005
 gpu: 0
-num_point: 256
+num_point: 1024  # 512
 optimizer: Adam
 weight_decay: 0.0001
 normal: true
 model:
   nneighbor: 16
   nblocks: 4
-  transformer_dim: 512  # TODO: Investigate if I could decrease this ... Should save lots of memory
+  transformer_dim: 128  # TODO: Investigate if I could decrease this ... Should save lots of memory
   name: Hengshuang
+# Which features to use (we always use xyz)
+features:
+  use_label: true  # class label
+  use_de: true  # differential entropy (this is actually 2 features)
+  use_wd: false  # wasserstein distance
+  use_c: false # covisibility weight
+  use_s: false  # static weight
+  use_cj: true  # joint cardinality ratio
+  use_cs: true  # separate cardinality ratio
 
 
 
