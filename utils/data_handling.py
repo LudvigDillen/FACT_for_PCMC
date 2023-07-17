@@ -1,21 +1,8 @@
 import numpy as np
 
-from utils.nuscenes_handling import NuscenesHandling
-from features.differential_entropy import differential_entropy_dataset, differential_entropy_pointwise
+from features.differential_entropy import differential_entropy_dataset
+from utils.nuscenes_handling import read_nuscenes_data
 from utils.pointclouds import farthest_point_sample_PC_scenes
-
-
-def read_nuscenes_data(nusc, n_samples, downsample_factor=1, n_scenes='all',
-                       T_close_thresh=0, lidar_token=None, scene_counter=0,
-                       verbose=True, preprocess=True, hpr_radius=3.25):
-    # Read data
-    PCHandler = NuscenesHandling(nusc, downsample_factor=downsample_factor,
-                                 T_close_thresh=T_close_thresh, lidar_token=lidar_token,
-                                 scene_counter=scene_counter, verbose=verbose, preprocess=preprocess,
-                                 hpr_radius=hpr_radius)
-    PC_scenes = PCHandler.sample_from_scenes(n_samples=n_samples, n_scenes=n_scenes)
-    del PCHandler
-    return PC_scenes
 
 
 def sample_from_scene(scene, samples):
@@ -137,13 +124,32 @@ def calculate_sample_gaps(N, M):
     return distances
 
 
-def feature_extraction(PC_scenes, params):
-    PC_scenes_with_features = differential_entropy_pointwise(PC_scenes, params.params_diff_entropy)
-    # TODO: Extract more features ...
-    return PC_scenes_with_features
+def sort_PC_scenes(all_PC_scenes):
+    flat_PC_scenes = []
+    for scene in all_PC_scenes:
+        for PC_pair in scene:
+            if PC_pair.misaligned:
+                flat_PC_scenes.append(PC_pair)
+            else:
+                flat_PC_scenes.insert(0, PC_pair)
+    return np.array(flat_PC_scenes)
 
 
-def run_dnn(scenes_lower, scenes_upper, n_scenes_per_loop, params):
+def classes_to_txt(flat_PC_scenes, aligned_samples, misaligned_samples, file):
+    for PC_pair in flat_PC_scenes:
+        if PC_pair.misaligned:
+            misaligned_samples += 1
+            message = 'misaligned' + "_" + str(misaligned_samples).zfill(4)
+        else:
+            aligned_samples += 1
+            message = 'aligned' + "_" + str(aligned_samples).zfill(4)
+        PC_pair.set_name(message)
+        file.write(message + '\n')
+    return aligned_samples, misaligned_samples, flat_PC_scenes
+
+
+def features_to_txt_files(scenes_lower, scenes_upper, n_scenes_per_loop, params, mode,
+                          aligned_samples=0, misaligned_samples=0):
     """
     Extract differential entropy features from a range of scenes.
 
@@ -158,32 +164,55 @@ def run_dnn(scenes_lower, scenes_upper, n_scenes_per_loop, params):
     y (np.array): The corresponding labels.
     """
     # Prepare storage for features
-    first_iter = True
-    for scene_counter in range(scenes_lower, scenes_upper, n_scenes_per_loop):
-        # Determine the number of scenes to read in this loop
-        if scene_counter + n_scenes_per_loop > scenes_upper:
-            read_n_scenes = scenes_upper - scene_counter
-        else:
-            read_n_scenes = n_scenes_per_loop
-        read_n_samples = read_n_scenes*params.n_samples_per_scene
-        # Load data sequentially
-        PC_scenes = read_nuscenes_data(
-            params.nusc, n_scenes=read_n_scenes, n_samples=read_n_samples,
-            downsample_factor=params.downsample_factor, T_close_thresh=params.T_close_thresh,
-            scene_counter=scene_counter, verbose=params.verbose, preprocess=params.preprocess,
-            hpr_radius=params.hpr_radius)
-        if params.do_fps:
-            # Compute the differential entropy features for the scenes
-            farthest_point_sample_PC_scenes(PC_scenes, params.N_fps_points)
-        # Feature extraction
-        PC_scenes_with_features = feature_extraction(PC_scenes, params)
-        del PC_scenes
-        if first_iter:
-            all_PC_scenes = PC_scenes_with_features
-            first_iter = False
-        else:
-            all_PC_scenes = np.vstack((all_PC_scenes, PC_scenes_with_features))
-    return all_PC_scenes
+    from features.feature_extractor import write_features_to_txt_files, feature_extraction
+
+    if mode == "train":
+        data_file = "/home/luddi824/thesis/PCAC/data/PCAC_data/PCAC_data_train.txt"
+    elif mode == "test":
+        data_file = "/home/luddi824/thesis/PCAC/data/PCAC_data/PCAC_data_test.txt"
+    else:
+        exit(f"Specified mode ({mode}) is not known!")
+
+    with open(data_file, 'w') as file:
+        data_folder = "/home/luddi824/thesis/PCAC/data/PCAC_data"
+        for scene_counter in range(scenes_lower, scenes_upper, n_scenes_per_loop):
+            # Display data loading progress
+            print(f"Have loaded {scene_counter-scenes_lower} of {scenes_upper-scenes_lower} {mode} scenes " +
+                  f"({np.around(100*(scene_counter-scenes_lower)/(scenes_upper-scenes_lower), 1)}%)")
+
+            # Determine the number of scenes to read in this loop
+            if scene_counter + n_scenes_per_loop > scenes_upper:
+                read_n_scenes = scenes_upper - scene_counter
+            else:
+                read_n_scenes = n_scenes_per_loop
+            read_n_samples = read_n_scenes*params.n_samples_per_scene
+
+            # Load data sequentially (can't read all at once, too high memory requirement)
+            PC_scenes = read_nuscenes_data(
+                params.nusc, n_scenes=read_n_scenes, n_samples=read_n_samples,
+                downsample_factor=params.downsample_factor, T_close_thresh=params.T_close_thresh,
+                scene_counter=scene_counter, verbose=params.verbose, preprocess=params.preprocess,
+                hpr_radius=params.hpr_radius)
+
+            if params.do_fps:
+                # Compute the differential entropy features for the scenes
+                farthest_point_sample_PC_scenes(PC_scenes, params.N_fps_points)
+
+            # TODO: In feature extraction, only extract the features that are specified given in the params
+            # Feature extraction.
+            PC_scenes_with_features = feature_extraction(PC_scenes, params)
+            sorted_PC_scenes = sort_PC_scenes(PC_scenes_with_features)
+            del PC_scenes_with_features
+
+            # Write class names to text file
+            aligned_samples, misaligned_samples, sorted_PC_scenes_named = classes_to_txt(
+                sorted_PC_scenes, aligned_samples, misaligned_samples, file)
+            del sorted_PC_scenes
+
+            write_features_to_txt_files(sorted_PC_scenes_named, data_folder, params)
+    if mode == "train":
+        return aligned_samples, misaligned_samples
+    return None
 
 
 def get_diff_entropy_features(scenes_lower, scenes_upper, n_scenes_per_loop, params):
@@ -242,7 +271,7 @@ def get_n_scenes_per_loop(n_samples_per_scene, n_training_scenes, n_scenes):
     n_test_scenes = n_scenes - n_training_scenes
     smallest_loop = min(n_test_scenes, n_training_scenes)
 
-    n_scenes_per_loop = max(round(100/n_samples_per_scene), 1)
+    n_scenes_per_loop = max(round(40/n_samples_per_scene), 1)
     n_scenes_per_loop = min(n_scenes_per_loop, smallest_loop)
     return n_scenes_per_loop
 
@@ -283,24 +312,20 @@ def setup_inputs_to_dnn(params):
     params (see the class Params in utils.parameters)
 
     Returns:
-    X_train (np.array): The differential entropy features extracted from the training scenes.
-    y_train (np.array): The corresponding labels for the training data.
-    X_test (np.array): The differential entropy features extracted from the test scenes.
-    y_test (np.array): The corresponding labels for the test data.
     """
     n_training_scenes = round(params.train_ratio*params.n_scenes)
     # Determine the number of scenes to process in each loop
     n_scenes_per_loop = get_n_scenes_per_loop(params.n_samples_per_scene, n_training_scenes, params.n_scenes)
 
     # Extract features from the training scenes
-    all_PC_scenes_train = run_dnn(
-        scenes_lower=0, scenes_upper=n_training_scenes, n_scenes_per_loop=n_scenes_per_loop, params=params)
+    aligned_samples, misaligned_samples = features_to_txt_files(
+        scenes_lower=0, scenes_upper=n_training_scenes,
+        n_scenes_per_loop=n_scenes_per_loop, params=params, mode="train")
 
     # Extract features from the test scenes
-    all_PC_scenes_test = run_dnn(
-        scenes_lower=n_training_scenes, scenes_upper=params.n_scenes, n_scenes_per_loop=n_scenes_per_loop,
-        params=params)
-    return all_PC_scenes_train, all_PC_scenes_test
+    features_to_txt_files(scenes_lower=n_training_scenes, scenes_upper=params.n_scenes,
+                          n_scenes_per_loop=n_scenes_per_loop, params=params, mode="test",
+                          aligned_samples=aligned_samples, misaligned_samples=misaligned_samples)
 
 
 def min_points_in_PC_scenes(PC_scenes):

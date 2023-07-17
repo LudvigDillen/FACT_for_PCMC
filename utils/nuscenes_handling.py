@@ -241,7 +241,7 @@ class NuscenesHandling:
             samples_per_scene[self.scene_counter-self.scene_counter_init])
         n_skip_samples = len(skip_samples_list)
         while True:
-            if count % 50 == 0 and count != 0:
+            if count % 200 == 0 and count != 0:
                 print(f"We have collected {count} number of samples")
 
             # Load in first point cloud
@@ -291,6 +291,20 @@ class NuscenesHandling:
             count += 1
 
         PC_scenes = np.array(PC_scenes)
-        print(f"Total number of samples: {self.get_number_of_samples_in_scenes(PC_scenes)}")
-        print(f"Total number of scenes:  {len(PC_scenes)}")
+        if self.verbose:
+            print(f"Total number of samples: {self.get_number_of_samples_in_scenes(PC_scenes)}")
+            print(f"Total number of scenes:  {len(PC_scenes)}")
         return PC_scenes
+
+
+def read_nuscenes_data(nusc, n_samples, downsample_factor=1, n_scenes='all',
+                       T_close_thresh=0, lidar_token=None, scene_counter=0,
+                       verbose=True, preprocess=True, hpr_radius=3.25):
+    # Read data
+    PCHandler = NuscenesHandling(nusc, downsample_factor=downsample_factor,
+                                 T_close_thresh=T_close_thresh, lidar_token=lidar_token,
+                                 scene_counter=scene_counter, verbose=verbose, preprocess=preprocess,
+                                 hpr_radius=hpr_radius)
+    PC_scenes = PCHandler.sample_from_scenes(n_samples=n_samples, n_scenes=n_scenes)
+    del PCHandler
+    return PC_scenes

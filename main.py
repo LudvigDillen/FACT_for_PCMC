@@ -4,7 +4,8 @@ import torch
 from utils.other import start_debug
 from features.differential_entropy import differential_entropy_dataset
 from utils.optimize_parameters import optimize_with_ax
-from utils.data_handling import read_nuscenes_data, gather_data
+from utils.nuscenes_handling import read_nuscenes_data
+from utils.data_handling import gather_data
 from classifiers.regression import perform_logistic_regression
 
 
