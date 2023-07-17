@@ -10,16 +10,15 @@ import importlib
 import shutil
 import hydra
 import omegaconf
-import gc
 
 import nuscenes as ns
-from features.feature_extractor import extract_features_to_txt_files
+from features.feature_extractor import extract_features_to_txt_files, number_of_features
 import classifiers.PointTransformers.provider as provider
 from utils.other import start_debug
 from utils.pointclouds import PCAC_dataset
 
 
-def test(model, loader, num_class=40):
+def test(model, loader, num_class=2):
     mean_correct = []
     class_acc = np.zeros((num_class, 3))
     for j, data in tqdm(enumerate(loader), total=len(loader)):
@@ -43,6 +42,7 @@ def test(model, loader, num_class=40):
 
 @hydra.main(config_path='config', config_name='cls')
 def main(args):
+    # TODO: Implement visualization tools for accuracy development
     start_debug()
     omegaconf.OmegaConf.set_struct(args, False)
 
@@ -54,20 +54,20 @@ def main(args):
 
     # Ludvig's code
     # Init Nusc object
-    extract_features = True
+    extract_features = False
     if extract_features:
         data_folder = '/home/luddi824/thesis/PCAC/data/nuscenes/'
-        version = 'v1.0-mini'
+        version = 'v1.0-trainval'
         nusc = ns.nuscenes.NuScenes(version=version, dataroot=data_folder, verbose=False)
 
         # Get features
-        with torch.no_grad():
-            args.input_dim = extract_features_to_txt_files(nusc, n_scenes=10, n_samples_per_scene=10,
-                                                           N_fps_points=args.num_point)
+        extract_features_to_txt_files(nusc, features=args.features, n_scenes=300,
+                                      n_samples_per_scene=10, N_fps_points=args.num_point)
+        args.input_dim = number_of_features(args.features)
         torch.cuda.empty_cache()
-        gc.collect()
+        del nusc
     else:
-        args.input_dim = 6
+        args.input_dim = 8
 
     # Get dataset (features in a data loader)
     PCAC_TRAIN_DATASET = PCAC_dataset(split='train')
@@ -76,6 +76,7 @@ def main(args):
                                                   shuffle=True, num_workers=4)
     testDataLoader = torch.utils.data.DataLoader(PCAC_TEST_DATASET, batch_size=args.batch_size,
                                                  shuffle=False, num_workers=4)
+    del PCAC_TRAIN_DATASET, PCAC_TEST_DATASET
 
     '''MODEL LOADING'''
     args.num_class = 2  # aligned or misaligned
@@ -93,7 +94,8 @@ def main(args):
         start_epoch = checkpoint['epoch']
         classifier.load_state_dict(checkpoint['model_state_dict'])
         logger.info('Use pretrain model')
-    except:
+    except FileNotFoundError as e:
+        logger.info(f'Error loading model: {e}')
         logger.info('No existing model, starting training from scratch...')
         start_epoch = 0
 
@@ -115,7 +117,6 @@ def main(args):
     best_class_acc = 0.0
     best_epoch = 0
     mean_correct = []
-
     '''TRANING'''
     logger.info('Start training...')
     for epoch in range(start_epoch, args.epoch):
@@ -139,6 +140,7 @@ def main(args):
             pred_choice = pred.data.max(1)[1]
             correct = pred_choice.eq(target.long().data).cpu().sum()
             mean_correct.append(correct.item() / float(points.size()[0]))
+            torch.cuda.empty_cache()
             loss.backward()
             optimizer.step()
             global_step += 1

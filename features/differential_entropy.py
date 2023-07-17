@@ -44,7 +44,7 @@ def differential_entropy(PC, params: dict) -> float:
                )**PC.N_dim).to(device)  # (2pi*e)^dim_distribution
 
     # Setup batches for the points of interest
-    batch_size = 8**3
+    batch_size = 4*8**2
     pc_batches = torch.split(PC.pc[PC.fps_inds], batch_size, dim=0)
     radii_batches = torch.split(radii[PC.fps_inds], batch_size, dim=0)
     pc_n_neighbors = torch.empty_like((PC.fps_inds))

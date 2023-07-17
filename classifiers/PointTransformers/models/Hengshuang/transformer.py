@@ -29,6 +29,8 @@ class TransformerBlock(nn.Module):
     def forward(self, xyz, features):
         dists = square_distance(xyz, xyz)
         knn_idx = dists.argsort()[:, :, :self.k]  # b x n x k
+        del dists
+
         knn_xyz = index_points(xyz, knn_idx)
 
         pre = features
@@ -36,10 +38,17 @@ class TransformerBlock(nn.Module):
         q, k, v = self.w_qs(x), index_points(self.w_ks(x), knn_idx), index_points(self.w_vs(x), knn_idx)
 
         pos_enc = self.fc_delta(xyz[:, :, None] - knn_xyz)  # b x n x k x f
+        values = v + pos_enc
+
+        del knn_xyz, xyz, knn_idx, v, x
 
         attn = self.fc_gamma(q[:, :, None] - k + pos_enc)
-        attn = F.softmax(attn / np.sqrt(k.size(-1)), dim=-2)  # b x n x k x f
 
-        res = torch.einsum('bmnf,bmnf->bmf', attn, v + pos_enc)
+        normalizer = np.sqrt(k.size(-1))
+        del k, q, pos_enc
+
+        attn = F.softmax(attn / normalizer, dim=-2)  # b x n x k x f
+
+        res = torch.einsum('bmnf,bmnf->bmf', attn, values)
         res = self.fc2(res) + pre
         return res, attn

@@ -8,7 +8,7 @@ from utils.geometrics import change_coordinate_system
 
 
 class PCAC_dataset(torch.utils.data.Dataset):
-    def __init__(self, root='/home/luddi824/thesis/PCAC/data/PCAC_data', split='train', cache_size=1000):
+    def __init__(self, root='/home/luddi824/thesis/PCAC/data/PCAC_data', split='train', cache_size=3000):
         self.root = root
         self.catfile = os.path.join(self.root, 'PCAC_data_class_names.txt')
 
@@ -61,7 +61,6 @@ class PC:
         self.N_points = pc.shape[0]
         self.N_dim = pc.shape[1]
 
-        self.N_available_feature_channels = 3  # the xyz coordinates are the three first features
         self.set_label(label)
         # initiate the fps_inds tensor as all points in the point cloud (i.e. that means no downsampling)
         self.fps_inds = torch.arange(0, self.N_points, dtype=torch.int).to(device)
@@ -74,35 +73,27 @@ class PC:
             2 means PCUnion
         """
         self.label = label
-        self.N_available_feature_channels += 1
 
     def set_joint_diff_entropy(self, value):
         self.metric_jde = value
-        self.N_available_feature_channels += 1
 
     def set_sep_diff_entropy(self, value):
         self.metric_sde = value
-        self.N_available_feature_channels += 1
 
     def set_wasserstein_dist(self, value):
         self.metric_wd = value
-        self.N_available_feature_channels += 1
 
     def set_covisibility_weight(self, weight):
         self.weight_c = weight
-        self.N_available_feature_channels += 1
 
     def set_static_point_weight(self, weight):
         self.weight_s = weight
-        self.N_available_feature_channels += 1
 
     def set_cardinality_ratio_joint_weight(self, ratio):
         self.weight_cj = ratio
-        self.N_available_feature_channels += 1
 
     def set_cardinality_ratio_sep_weight(self, ratio):
         self.weight_cs = ratio
-        self.N_available_feature_channels += 1
 
     def set_fps_inds(self, fps_inds):
         self.fps_inds = fps_inds
