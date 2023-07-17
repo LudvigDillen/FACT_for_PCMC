@@ -56,3 +56,12 @@ class Params:
 
     def set_params_diff_entropy(self, params_diff_entropy):
         self.params_diff_entropy = params_diff_entropy
+
+    def set_which_features_to_use(self, features):
+        self.use_label = features.use_label  # class label
+        self.use_de = features.use_de  # differential entropy
+        self.use_wd = features.use_wd  # wasserstein distance
+        self.use_c = features.use_c  # covisibility weight
+        self.use_s = features.use_s  # static weight
+        self.use_cj = features.use_cj  # joint cardinality ratio
+        self.use_cs = features.use_cs  # separate cardinality ratio
