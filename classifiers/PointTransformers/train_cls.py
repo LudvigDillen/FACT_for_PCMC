@@ -43,7 +43,7 @@ def test(model, loader, num_class=2):
 
 @hydra.main(config_path='config', config_name='cls')
 def main(args):
-    # start_debug()
+    start_debug()
     omegaconf.OmegaConf.set_struct(args, False)
 
     '''HYPER PARAMETER'''
@@ -57,12 +57,12 @@ def main(args):
     extract_features = True
     if extract_features:
         data_folder = '/home/luddi824/thesis/PCAC/data/nuscenes/'
-        version = 'v1.0-trainval'
+        version = 'v1.0-mini'
         nusc = ns.nuscenes.NuScenes(version=version, dataroot=data_folder, verbose=False)
 
         # Get features
-        extract_features_to_txt_files(nusc, features=args.features, n_scenes=50,
-                                      n_samples_per_scene=10, N_fps_points=args.num_point)
+        extract_features_to_txt_files(nusc, features=args.features, n_scenes=5,
+                                      n_samples_per_scene=1, N_fps_points=args.num_point)
         args.input_dim = number_of_features(args.features)
         torch.cuda.empty_cache()
         del nusc
@@ -118,8 +118,8 @@ def main(args):
     best_epoch = 0
     mean_correct = []
 
-    train_accuracies = []
-    val_accuracies = []
+    train_accuracies = np.empty((args.epoch))
+    val_accuracies = np.empty((args.epoch))
 
     '''TRANING'''
     logger.info('Start training...')
@@ -151,7 +151,7 @@ def main(args):
             global_step += 1
 
         train_instance_acc = np.mean(mean_correct)
-        train_accuracies.append(train_instance_acc)
+        train_accuracies[epoch] = train_instance_acc
 
         scheduler.step()
 
@@ -160,7 +160,7 @@ def main(args):
 
         with torch.no_grad():
             instance_acc, class_acc = test(classifier.eval(), testDataLoader, num_class=args.num_class)
-            val_accuracies.append(instance_acc)
+            val_accuracies[epoch] = instance_acc
 
             if (instance_acc >= best_instance_acc):
                 best_instance_acc = instance_acc

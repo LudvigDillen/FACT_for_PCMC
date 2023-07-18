@@ -25,8 +25,8 @@ def model_plot(model, X, y, title):
 
 def plot_accuracies(train_accuracies, val_accuracies):
     plt.figure(figsize=(10, 5))
-    plt.plot(100*train_accuracies, label='Train Accuracy')
-    plt.plot(100*val_accuracies, label='Validation Accuracy')
+    plt.plot(range(1, len(train_accuracies) + 1), 100*np.array(train_accuracies), label='Train Accuracy')
+    plt.plot(range(1, len(val_accuracies) + 1), 100*np.array(val_accuracies), label='Validation Accuracy')
     plt.title('Training and Validation Accuracy')
     plt.xlabel('Epoch')
     plt.ylabel('Accuracy [%]')
@@ -34,7 +34,7 @@ def plot_accuracies(train_accuracies, val_accuracies):
     plt.grid(True)
 
     # Ensure that the x-axis only uses integer values
-    plt.xticks(ticks=np.arange(0, len(train_accuracies), step=1))
+    plt.xticks(ticks=np.arange(1, len(train_accuracies) + 1, step=1))
 
     # Define the directory and filename
     directory = '/home/luddi824/thesis/PCAC/images/classification/PointTransformer'
@@ -52,3 +52,4 @@ def plot_accuracies(train_accuracies, val_accuracies):
     plt.savefig(f'{directory}/{filename}.eps', format='eps')
 
     plt.close()  # Close the figure
+
