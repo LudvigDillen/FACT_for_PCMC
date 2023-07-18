@@ -3,7 +3,7 @@ import random
 import os
 import numpy as np
 
-from utils.pointnet_util import farthest_point_sample, pc_normalize
+from utils.pointnet_util import pc_normalize, pad_point_clouds, farthest_point_sample_paddded
 from utils.geometrics import change_coordinate_system
 
 
@@ -74,6 +74,17 @@ class PC:
         """
         self.label = label
 
+    def init_features(self):
+        # TODO: DO I need to clone here?
+        empty_feature = torch.empty(self.N_fps_points, dtype=self.pc.dtype).to(self.device)
+        self.metric_jde = empty_feature.clone()
+        self.metric_sde = empty_feature.clone()
+        self.metric_wd = empty_feature.clone()
+        self.weight_c = empty_feature.clone()
+        self.weight_s = empty_feature.clone()
+        self.weight_cj = empty_feature.clone()
+        self.weight_cs = empty_feature.clone()
+
     def set_joint_diff_entropy(self, value):
         self.metric_jde = value
 
@@ -98,6 +109,8 @@ class PC:
     def set_fps_inds(self, fps_inds):
         self.fps_inds = fps_inds
         self.N_fps_points = len(fps_inds)
+        # initiate features
+        self.init_features()
 
 
 class PCPair:
@@ -117,13 +130,14 @@ class PCPair:
         self.set_union_of_point_clouds()
 
     def set_union_of_point_clouds(self):
-        self.PCUnion = get_union_of_point_clouds(self.PC0, self.PC1, self.pose0,
-                                                 self.pose1, self.misaligned, self.device)
+        self.PCUnion, self.pc1_CS0 = get_union_of_point_clouds(self.PC0, self.PC1, self.pose0,
+                                                               self.pose1, self.misaligned, self.device)
 
     def set_new_PC(self, PC0, PC1, PCUnion):
         self.PC0 = PC0
         self.PC1 = PC1
         self.PCUnion = PCUnion
+        self.pc1_CS0 = change_coordinate_system(PC1.pc, self.pose0, self.pose1)
 
     def set_name(self, name):
         self.name = name
@@ -178,49 +192,13 @@ def get_union_of_point_clouds(PC0, PC1, pose0, pose1, misaligned, device):
     # This happen with the peturb probality handed to the constructor of the class.
     pc_union = torch.cat((PC0.pc, pc1_CS0), dim=0)
     PCUnion = PC(pc_union, pc_union_dists, label=2, device=device)
-    return PCUnion
+    return PCUnion,  pc1_CS0
 
 
 def farthest_point_sample_PC_scenes(PC_scenes, fps_N_points):
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = PC_scenes[0][0].PC0.device
     # Find the least points of the current pcs
-    from utils.data_handling import min_points_in_PC_scenes
-
-    min_points = min_points_in_PC_scenes(PC_scenes)
-    assert fps_N_points < min_points, "Cannot fps_downsample point cloud because we have invalid sizes"
-
-    # Obtain pointcloud data in format [B, min_points, 3] through random downsampling
-    downsampled_PC_scenes = downsample_PC_scenes_to_N_points(PC_scenes, min_points)
-    # Obtain pointcloud data in format [B, fps_N_points, 3] through farthest point sampling
-    fps_inds = farthest_point_sample(downsampled_PC_scenes, fps_N_points)
-    # Set new indices
-    N_scenes, N_samples_per_scenes = PC_scenes.shape
-    k = 0
-    for i in range(N_scenes):
-        for j in range(N_samples_per_scenes):
-            PC_scenes[i][j].PC0.set_fps_inds(fps_inds[k])
-            k += 1
-            PC_scenes[i][j].PC1.set_fps_inds(fps_inds[k])
-            k += 1
-            fps_inds_in_union_pc = torch.cat((fps_inds[k-2],
-                                              fps_inds[k-1]+PC_scenes[i][j].PC0.N_points)).to(device)
-            PC_scenes[i][j].PCUnion.set_fps_inds(fps_inds_in_union_pc)
-    # when we e.g. evaluate differential_entropy, the whole
-    # neighborhood is considered from the full point cloud, but only points that are
-    # downsampled with furthest point sampling will be the points we consider the
-    # neighborhoods from
-    return None
-
-
-def downsample_PC_scenes_to_N_points(PC_scenes, N_points):
-    """
-    Return a torch tensor of size [B, N_points, 3], where B is the number of separate point clouds
-    in PC_scenes (2*PC_scenes.size)
-    """
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    downsampled_PC_scenes = torch.empty((2*PC_scenes.size, N_points, 3), device=device)
-
-    i = 0
+    list_pcs = []
     for PC_scene in PC_scenes:
         for PC_sample in PC_scene:
             for j in range(2):
@@ -228,8 +206,24 @@ def downsample_PC_scenes_to_N_points(PC_scenes, N_points):
                     PC = PC_sample.PC0
                 else:
                     PC = PC_sample.PC1
-                pc_points = PC.N_points
-                samples_to_keep = np.random.choice(pc_points, size=N_points)
-                downsampled_PC_scenes[i] = PC.pc[samples_to_keep].to(device)
-                i += 1
-    return downsampled_PC_scenes
+                list_pcs.append(PC.pc)
+    padded_PC_scenes = pad_point_clouds(list_pcs)
+    batch_fps_inds = farthest_point_sample_paddded(padded_PC_scenes, fps_N_points)
+
+    # Set new indices
+    N_scenes, N_samples_per_scenes = PC_scenes.shape
+    k = 0
+    for i in range(N_scenes):
+        for j in range(N_samples_per_scenes):
+            PC_scenes[i][j].PC0.set_fps_inds(batch_fps_inds[k])
+            k += 1
+            PC_scenes[i][j].PC1.set_fps_inds(batch_fps_inds[k])
+            k += 1
+            fps_inds_in_union_pc = torch.cat((batch_fps_inds[k-2],
+                                              batch_fps_inds[k-1]+PC_scenes[i][j].PC0.N_points)).to(device)
+            PC_scenes[i][j].PCUnion.set_fps_inds(fps_inds_in_union_pc)
+    # when we e.g. evaluate differential_entropy, the whole
+    # neighborhood is considered from the full point cloud, but only points that are
+    # downsampled with furthest point sampling will be the points we consider the
+    # neighborhoods from
+    return None

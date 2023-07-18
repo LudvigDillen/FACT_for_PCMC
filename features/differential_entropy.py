@@ -3,20 +3,7 @@ import numpy as np
 import time
 
 from classifiers.regression import perform_logistic_regression
-
-
-def get_dynamic_radii(d, params):
-    # Unpack parameters
-    rmin = torch.tensor(params["rmin"])
-    rmax = torch.tensor(params["rmax"])
-    alpha = torch.tensor(params["alpha"])
-    #
-    alpha_rad = torch.deg2rad(alpha)
-    r = d*torch.sin(alpha_rad)
-    r_out = r
-    r_out[r < rmin] = rmin
-    r_out[r > rmax] = rmax
-    return r_out
+from features.feature_utils import get_dynamic_radii
 
 
 @torch.no_grad()
@@ -40,22 +27,17 @@ def differential_entropy(PC, params: dict) -> float:
 
     # Some offset to make sure not taking log of zero
     epsilon = torch.exp(torch.tensor(params["log_epsilon"]))
-    scaler = ((2*torch.tensor(np.pi, dtype=torch.float64)*torch.exp(torch.tensor(1, dtype=torch.float64))
-               )**PC.N_dim).to(device)  # (2pi*e)^dim_distribution
+    scaler = (2*np.pi*np.exp(1))**PC.N_dim  # (2pi*e)^dim_distribution
 
     # Setup batches for the points of interest
     batch_size = 4*8**2
     pc_batches = torch.split(PC.pc[PC.fps_inds], batch_size, dim=0)
     radii_batches = torch.split(radii[PC.fps_inds], batch_size, dim=0)
-    pc_n_neighbors = torch.empty_like((PC.fps_inds))
 
     # We will remove the lowest entropies later, so we want something low initially
     entropies = 1/2*torch.log(epsilon)*torch.ones(PC.N_fps_points, device=device, dtype=torch.float64)
     from_ind = 0
-    to_ind = 0
-
     for pc_batch, radii_batch in zip(pc_batches, radii_batches):
-        current_batch_size = radii_batch.shape[0]
         # Compute the distance matrix between pc_batch and pc
         dists = torch.cdist(pc_batch, PC.pc)
 
@@ -92,12 +74,43 @@ def differential_entropy(PC, params: dict) -> float:
 
         # Compute determinants of covariance matrices
         determinants = torch.linalg.det(covariances)
-        to_ind += current_batch_size
         entropies[inds_to_valid_neighborhood + from_ind] = 1/2*torch.log(scaler*determinants + epsilon)
-        pc_n_neighbors[from_ind:to_ind] = n_neighbors_per_point_in_batch
-        from_ind = to_ind
+        current_batch_size = radii_batch.shape[0]
+        from_ind += current_batch_size
 
-    return entropies, pc_n_neighbors
+    return entropies
+
+
+def extract_differential_entropy(PC, n_neighbors_per_point_in_batch, neighbor_mask,
+                                 inds_to_valid_neighborhood, params):
+    # init batch entropies
+    epsilon = torch.exp(torch.tensor(params.params_diff_entropy["log_epsilon"]))
+    batch_entropies = 1/2*torch.log(epsilon)*torch.ones(neighbor_mask.shape[0], device=PC.device,
+                                                        dtype=PC.pc.dtype)
+
+    filtered_neighbor_mask = neighbor_mask[inds_to_valid_neighborhood]
+    del neighbor_mask
+    # Update neighbor count for valid neighborhoods
+    filtered_n_neighbors = n_neighbors_per_point_in_batch[inds_to_valid_neighborhood].unsqueeze(dim=1)
+
+    # Apply the filtered neighbor mask to the point cloud batch
+    masked_pc_batch = (PC.pc.unsqueeze(dim=0))*(filtered_neighbor_mask.unsqueeze(dim=2))
+
+    # Compute the mean of the masked point cloud batch
+    mu = torch.sum(masked_pc_batch, dim=1) / filtered_n_neighbors
+
+    # Center the data by subtracting the mean
+    centered_data = (masked_pc_batch - mu.unsqueeze(dim=1))*(filtered_neighbor_mask.unsqueeze(dim=2))
+    covariances = ((centered_data[..., None] * centered_data[..., None, :]).sum(dim=1) /
+                   (filtered_n_neighbors.unsqueeze(dim=2) - 1))
+    del centered_data
+
+    # Compute determinants of covariance matrices
+    determinants = torch.linalg.det(covariances)
+
+    scaler = (2*np.pi*np.exp(1))**PC.N_dim
+    batch_entropies[inds_to_valid_neighborhood] = 1/2*torch.log(scaler*determinants + epsilon)
+    return batch_entropies
 
 
 def filter_and_sum_entropies(entropies, params):
@@ -163,10 +176,10 @@ def differential_entropy_metric(PC0, PC1, PCUnion, misaligned, params, verbose=T
         return metric, H_joint, H_separate
 
     # separate differential entropies
-    entropies_PC0, pc0_n_neighbors = differential_entropy(PC0, params)
-    entropies_PC1, pc1_n_neighbors = differential_entropy(PC1, params)
+    entropies_PC0 = differential_entropy(PC0, params)
+    entropies_PC1 = differential_entropy(PC1, params)
     # joint differential entropies
-    entropies_joint, pc_joint_n_neighbors = differential_entropy(PCUnion, params)
+    entropies_joint = differential_entropy(PCUnion, params)
 
     H_PC0 = filter_and_sum_entropies(entropies_PC0, params)
     H_PC1 = filter_and_sum_entropies(entropies_PC1, params)
@@ -181,43 +194,6 @@ def differential_entropy_metric(PC0, PC1, PCUnion, misaligned, params, verbose=T
               f"[{np.round(H_joint, 3)}|{np.round(H_separate, 3)}|{np.round(metric, 3)}|{misaligned}]",
               flush=True)
     return metric, H_joint, H_separate
-
-
-def differential_entropy_pointwise(PC_scenes, params):
-    N_scenes = PC_scenes.shape[0]
-    N_samples_per_scene = PC_scenes.shape[1]
-    for scene_number in range(N_scenes):
-        for sample_number in range(N_samples_per_scene):
-            PC_pair = PC_scenes[scene_number][sample_number]
-            # separate differential entropies
-            entropies_PC0, pc0_n_neighbors = differential_entropy(PC_pair.PC0, params)
-            entropies_PC1, pc1_n_neighbors = differential_entropy(PC_pair.PC1, params)
-            # joint differential entropies
-            entropies_joint, pc_joint_n_neighbors = differential_entropy(PC_pair.PCUnion, params)
-
-            entropies_joint_from_PC0 = entropies_joint[:PC_pair.PC0.N_fps_points]
-            entropies_joint_from_PC1 = entropies_joint[PC_pair.PC0.N_fps_points:]
-
-            N_ent_joint_post_division = entropies_joint_from_PC0.shape[0] + entropies_joint_from_PC1.shape[0]
-            assert (N_ent_joint_post_division == entropies_joint.shape[0]), "Division of entropy done wrong"
-            # Set differential entropy features
-            PC_pair.PC0.set_joint_diff_entropy(entropies_joint_from_PC0)
-            PC_pair.PC1.set_joint_diff_entropy(entropies_joint_from_PC1)
-            PC_pair.PC0.set_sep_diff_entropy(entropies_PC0)
-            PC_pair.PC1.set_sep_diff_entropy(entropies_PC1)
-
-            pc0_joint_n_neighbors = pc_joint_n_neighbors[:PC_pair.PC0.N_fps_points]
-            pc1_joint_n_neighbors = pc_joint_n_neighbors[PC_pair.PC0.N_fps_points:]
-            N_neigh_joint_post_division = pc0_joint_n_neighbors.shape[0] + pc1_joint_n_neighbors.shape[0]
-            assert (N_neigh_joint_post_division == pc_joint_n_neighbors.shape[0]), (
-                "Division of entropy done wrong")
-            # Set number of points in neighborhood features
-            PC_pair.PC0.set_cardinality_ratio_joint_weight(pc0_joint_n_neighbors/PC_pair.PCUnion.N_points)
-            PC_pair.PC1.set_cardinality_ratio_joint_weight(pc1_joint_n_neighbors/PC_pair.PCUnion.N_points)
-            PC_pair.PC0.set_cardinality_ratio_sep_weight(pc0_n_neighbors/PC_pair.PC0.N_points)
-            PC_pair.PC1.set_cardinality_ratio_sep_weight(pc1_n_neighbors/PC_pair.PC1.N_points)
-            PC_scenes[scene_number][sample_number] = PC_pair
-    return PC_scenes
 
 
 def differential_entropy_dataset(PC_scenes, params, verbose=True):
