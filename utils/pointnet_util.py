@@ -82,6 +82,43 @@ def farthest_point_sample(xyz, npoint):
     return centroids
 
 
+def pad_point_clouds(point_clouds):
+    B = len(point_clouds)  # number of point clouds
+    N_max = max(pc.shape[0] for pc in point_clouds)  # maximum number of points
+
+    # Initialize a tensor to hold the padded point clouds
+    pc0 = point_clouds[0]
+    padded_point_clouds = torch.full((B, N_max, 3), float('nan'), dtype=pc0.dtype).to(pc0.device)
+
+    # Copy each point cloud into the padded tensor
+    for i, pc in enumerate(point_clouds):
+        padded_point_clouds[i, :pc.shape[0]] = pc
+
+    return padded_point_clouds
+
+
+def farthest_point_sample_paddded(xyz, npoint):
+    device = xyz.device
+    B, N, C = xyz.shape
+    centroids = torch.zeros(B, npoint, dtype=torch.long).to(device)
+    distance = torch.ones(B, N).to(device) * 1e10
+    batch_indices = torch.arange(B, dtype=torch.long).to(device)
+    for b in batch_indices:
+        while True:
+            farthest = torch.randint(0, N, (1,), dtype=torch.long).to(device)
+            if not torch.isnan(xyz[b, farthest]).any():
+                break
+        centroids[b, 0] = farthest
+    for i in range(1, npoint):
+        centroid = xyz[batch_indices, centroids[:, i-1], :].view(B, 1, 3)
+        dist = torch.sum((xyz - centroid) ** 2, -1)
+        dist[torch.isnan(dist)] = float('-inf')  # set distance for padded points to negative infinity
+        distance = torch.min(distance, dist)
+        farthest = torch.max(distance, -1)[1]
+        centroids[:, i] = farthest
+    return centroids
+
+
 def query_ball_point(radius, nsample, xyz, new_xyz):
     """
     Input:

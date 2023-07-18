@@ -270,7 +270,7 @@ def get_n_scenes_per_loop(n_samples_per_scene, n_training_scenes, n_scenes):
     """
     n_test_scenes = n_scenes - n_training_scenes
     smallest_loop = min(n_test_scenes, n_training_scenes)
-
+    # TODO: Maybe try to increase from 40, could give faster computations ...
     n_scenes_per_loop = max(round(40/n_samples_per_scene), 1)
     n_scenes_per_loop = min(n_scenes_per_loop, smallest_loop)
     return n_scenes_per_loop
@@ -326,21 +326,3 @@ def setup_inputs_to_dnn(params):
     features_to_txt_files(scenes_lower=n_training_scenes, scenes_upper=params.n_scenes,
                           n_scenes_per_loop=n_scenes_per_loop, params=params, mode="test",
                           aligned_samples=aligned_samples, misaligned_samples=misaligned_samples)
-
-
-def min_points_in_PC_scenes(PC_scenes):
-    """
-    Return the number of points in the point cloud that has the least points in the PC_scenes
-    container.
-    """
-    min_points = int(1e10)
-    for i in range(PC_scenes.shape[0]):
-        for j in range(PC_scenes.shape[1]):
-            pc0_points = PC_scenes[i][j].PC0.pc.shape[0]
-            if pc0_points < min_points:
-                min_points = pc0_points
-
-            pc1_points = PC_scenes[i][j].PC1.pc.shape[0]
-            if pc1_points < min_points:
-                min_points = pc1_points
-    return min_points
