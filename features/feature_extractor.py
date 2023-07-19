@@ -6,27 +6,18 @@ from utils.data_handling import setup_inputs_to_dnn
 from utils.parameters import Params
 from features.differential_entropy import extract_differential_entropy
 from features.feature_utils import get_data_batches
+from features.wasserstein import sinkhorn_distance
 
 
-def get_neighborhood(PC_pair, current_pc_is_0, pc_batch, radii_batch, params):
-    if params.use_de or params.use_cs:
-        # Note that everything is in the coordinate system of PC0
-        dists_pc0 = torch.cdist(pc_batch, PC_pair.PC0.pc)
-        dists_pc1 = torch.cdist(pc_batch, PC_pair.pc1_CS0)
+def get_neighborhoods(PC_pair, pc_batch, radii_batch):
+    # Note that everything is in the coordinate system of PC0
+    dists_pc0 = torch.cdist(pc_batch, PC_pair.PC0.pc)
+    neighbor_mask_0 = (dists_pc0 < radii_batch[:, None])
+    del dists_pc0
 
-        if current_pc_is_0:
-            neighbor_mask_sep = (dists_pc0 < radii_batch[:, None])
-        else:
-            neighbor_mask_sep = (dists_pc1 < radii_batch[:, None])
-
-        dists_joint = torch.concatenate((dists_pc0, dists_pc1), dim=1)
-        del dists_pc0, dists_pc1
-        neighbor_mask_joint = (dists_joint < radii_batch[:, None])
-        return neighbor_mask_joint, neighbor_mask_sep
-
-    dists_joint = torch.cdist(pc_batch, PC_pair.PCUnion.pc)
-    neighbor_mask_joint = (dists_joint < radii_batch[:, None])
-    return neighbor_mask_joint, None
+    dists_pc1 = torch.cdist(pc_batch, PC_pair.pc1_CS0)
+    neighbor_mask_1 = (dists_pc1 < radii_batch[:, None])
+    return neighbor_mask_0, neighbor_mask_1
 
 
 def feature_extraction(PC_scenes, params):
@@ -46,23 +37,27 @@ def feature_extraction(PC_scenes, params):
                     # Keep track if which PC this batch belongs to
                     if i < N_batches/2:
                         current_pc_is_0 = True
-                        PC_sep = PC_pair.PC0
                     else:
                         current_pc_is_0 = False
-                        PC_sep = PC_pair.PC1
 
                     # Find a mask for the neighborhood of the points of interest
-                    neighbor_mask_j, neighbor_mask_s = get_neighborhood(PC_pair, current_pc_is_0,
-                                                                        pc, radii, params)
+                    neighbor_mask_0, neighbor_mask_1 = get_neighborhoods(PC_pair, pc, radii)
                     # EXTRACT NEIGHBOR FEATURES
                     # Count the number of neighbors in the joint/sep pc for each point in the batch
                     if params.calc_joint_neighbors:
+                        neighbor_mask_j = torch.cat((neighbor_mask_0, neighbor_mask_1), dim=1)
                         n_neighbors_per_point_in_batch_j = torch.sum(neighbor_mask_j, dim=1,
                                                                      dtype=PC_joint.weight_cj.dtype)
                         if params.use_cj:
                             # SET JOINT NEIGHBORHOOD CARDINALITY RATIO
                             PC_joint.weight_cj[index] = n_neighbors_per_point_in_batch_j/PC_joint.N_points
                     if params.calc_sep_neighbors:
+                        if current_pc_is_0:
+                            neighbor_mask_s = neighbor_mask_0
+                            PC_sep = PC_pair.PC0
+                        else:
+                            neighbor_mask_s = neighbor_mask_1
+                            PC_sep = PC_pair.PC1
                         n_neighbors_per_point_in_batch_s = torch.sum(neighbor_mask_s, dim=1,
                                                                      dtype=PC_joint.weight_cs.dtype)
                         if params.use_cs:
@@ -96,6 +91,9 @@ def feature_extraction(PC_scenes, params):
                             inds_to_valid_neighborhood_s, params)
                         PC_joint.metric_sde[index] = entropies_batch_s
                         del n_neighbors_per_point_in_batch_s, neighbor_mask_s, inds_to_valid_neighborhood_s
+                    if params.use_wd:
+                        dists = sinkhorn_distance(PC_pair, neighbor_mask_0, neighbor_mask_1)
+                        PC_joint.metric_wd[index] = dists
 
             PC_scenes[scene_number][sample_number].PCUnion = PC_joint
 
@@ -137,7 +135,8 @@ def write_features_to_txt_files(flat_PC_scenes, data_folder, params):
             sde_channel = PC_pair.PCUnion.metric_sde.cpu().numpy()[:, np.newaxis]
             feature_map = np.concatenate((feature_map, jde_channel, sde_channel), axis=1)
         if params.use_wd:
-            print("Wasserstein Distance feature not implemented yet")
+            wd_channel = PC_pair.PCUnion.metric_wd.cpu().numpy()[:, np.newaxis]
+            feature_map = np.concatenate((feature_map, wd_channel), axis=1)
         if params.use_c:
             print("Co-visibility weight feature not implemented yet")
         if params.use_s:

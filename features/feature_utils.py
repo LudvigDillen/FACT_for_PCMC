@@ -15,7 +15,7 @@ def get_dynamic_radii(d, params):
     return r_out
 
 
-def divide_into_batches(tensor, N, max_batch_size=256):
+def divide_into_batches(tensor, N, max_batch_size=64):
     # Calculate the number of full batches needed
     full_batches = N // max_batch_size
     remaining = N % max_batch_size
