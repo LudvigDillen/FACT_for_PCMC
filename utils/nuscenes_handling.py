@@ -7,6 +7,9 @@ from utils.visibility import keep_covisible_points
 from nuscenes.utils.data_classes import LidarPointCloud
 
 
+DTYPE = torch.float32
+
+
 class NuscenesHandling:
     def __init__(self, nusc, downsample_factor=1, lidar_token=None, T_close_thresh=0,
                  scene_counter=0, verbose=True, preprocess=True, hpr_radius=3.25):
@@ -96,7 +99,7 @@ class NuscenesHandling:
         # It is the sensor coordinate system.
         path_to_lidar_bin_file = self.nusc.get_sample_data_path(lidar_token)
         pc = LidarPointCloud.from_file(path_to_lidar_bin_file)
-        pc_xyz = torch.swapaxes(torch.from_numpy(pc.points[:3]).to(torch.float64), 0, 1)
+        pc_xyz = torch.swapaxes(torch.from_numpy(pc.points[:3]).to(DTYPE), 0, 1)
         if self.T_close_thresh != 0:
             pc_xyz_filtered = self.remove_close_points_from_pc(pc_xyz, self.T_close_thresh)
         return pc_xyz_filtered
@@ -130,7 +133,7 @@ class NuscenesHandling:
 
         # Get transformation matrix of lidar in WCS
         Ts = Tv@Ts_ego_vehicle
-        Ts_out = torch.from_numpy(Ts).to(torch.float64)
+        Ts_out = torch.from_numpy(Ts).to(DTYPE)
         return Ts_out
 
     def get_next_lidar_token(self, lidar_token):

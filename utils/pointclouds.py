@@ -55,8 +55,8 @@ class PCAC_dataset(torch.utils.data.Dataset):
 class PC:
     def __init__(self, pc, distances, label, device):
         self.device = device
-
         self.pc = pc.to(device)
+        self.dtype = pc.dtype
         self.distances_to_origin = distances.to(device)
         self.N_points = pc.shape[0]
         self.N_dim = pc.shape[1]

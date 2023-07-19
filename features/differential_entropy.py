@@ -35,7 +35,7 @@ def differential_entropy(PC, params: dict) -> float:
     radii_batches = torch.split(radii[PC.fps_inds], batch_size, dim=0)
 
     # We will remove the lowest entropies later, so we want something low initially
-    entropies = 1/2*torch.log(epsilon)*torch.ones(PC.N_fps_points, device=device, dtype=torch.float64)
+    entropies = 1/2*torch.log(epsilon)*torch.ones(PC.N_fps_points, device=device, dtype=PC.dtype)
     from_ind = 0
     for pc_batch, radii_batch in zip(pc_batches, radii_batches):
         # Compute the distance matrix between pc_batch and pc
