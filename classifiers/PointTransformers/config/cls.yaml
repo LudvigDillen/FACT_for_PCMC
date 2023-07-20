@@ -1,8 +1,7 @@
 batch_size: 20  # 27
-epoch: 50  # 500
+epoch: 75  # 500
 learning_rate: 0.0005
 gpu: 0
-num_point: 1024  # 512
 optimizer: Adam
 weight_decay: 0.0001
 normal: true
@@ -12,14 +11,35 @@ model:
   transformer_dim: 128  # TODO: Investigate if I could decrease this ... Should save lots of memory
   name: Hengshuang
 # Which features to use (we always use xyz)
-features:
+features_to_create:
   use_label: true  # class label
-  use_de: true  # differential entropy (this is actually 2 features)
-  use_wd: false  # wasserstein distance
+  use_jde: true  # joint differential entropy
+  use_sde: true  # separate differential entropy
+  use_wd: true  # wasserstein distance
   use_c: false # covisibility weight
   use_s: false  # static weight
   use_cj: true  # joint cardinality ratio
   use_cs: true  # separate cardinality ratio
+features_to_use:
+  use_label: true  # class label
+  use_jde: true  # joint differential entropy
+  use_sde: true  # separate differential entropy
+  use_wd: true  # wasserstein distance
+  use_c: false # covisibility weight
+  use_s: false  # static weight
+  use_cj: true  # joint cardinality ratio
+  use_cs: true  # separate cardinality ratio
+batch_size_feature_extraction: 256
+# Data setup
+num_point: 1024  # 512
+re_use_data: false
+n_scenes: 300
+n_samples_per_scene: 10
+dataset: 'v1.0-trainval'  # 'v1.0-trainval'
+# Other settings
+debug: false
+ablation: false
+
 
 
 

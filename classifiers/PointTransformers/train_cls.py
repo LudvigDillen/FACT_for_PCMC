@@ -12,7 +12,8 @@ import hydra
 import omegaconf
 
 import nuscenes as ns
-from features.feature_extractor import extract_features_to_txt_files, number_of_features
+from features.feature_extractor import extract_features_to_txt_files
+from features.feature_utils import process_features, run_ablation_features, number_of_features
 import classifiers.PointTransformers.provider as provider
 from utils.other import start_debug
 from utils.pointclouds import PCAC_dataset
@@ -41,37 +42,9 @@ def test(model, loader, num_class=2):
     return instance_acc, class_acc
 
 
-@hydra.main(config_path='config', config_name='cls')
-def main(args):
-    start_debug()
-    omegaconf.OmegaConf.set_struct(args, False)
-
-    '''HYPER PARAMETER'''
-    logger = logging.getLogger(__name__)
-
-    '''DATA LOADING'''
-    logger.info('Load dataset ...')
-
-    # Ludvig's code
-    # Init Nusc object
-    extract_features = True
-    if extract_features:
-        data_folder = '/home/luddi824/thesis/PCAC/data/nuscenes/'
-        version = 'v1.0-mini'
-        nusc = ns.nuscenes.NuScenes(version=version, dataroot=data_folder, verbose=False)
-
-        # Get features
-        extract_features_to_txt_files(nusc, features=args.features, n_scenes=5,
-                                      n_samples_per_scene=1, N_fps_points=args.num_point)
-        args.input_dim = number_of_features(args.features)
-        torch.cuda.empty_cache()
-        del nusc
-    else:
-        args.input_dim = 8
-
-    # Get dataset (features in a data loader)
-    PCAC_TRAIN_DATASET = PCAC_dataset(split='train')
-    PCAC_TEST_DATASET = PCAC_dataset(split='test')
+def run_cls(n_samples, feature_filter, args, logger, pretrained=True):
+    PCAC_TRAIN_DATASET = PCAC_dataset(n_samples=n_samples, split='train', feature_filter=feature_filter)
+    PCAC_TEST_DATASET = PCAC_dataset(n_samples=n_samples, split='test', feature_filter=feature_filter)
     trainDataLoader = torch.utils.data.DataLoader(PCAC_TRAIN_DATASET, batch_size=args.batch_size,
                                                   shuffle=True, num_workers=4)
     testDataLoader = torch.utils.data.DataLoader(PCAC_TEST_DATASET, batch_size=args.batch_size,
@@ -80,6 +53,7 @@ def main(args):
 
     '''MODEL LOADING'''
     args.num_class = 2  # aligned or misaligned
+    args.input_dim = number_of_features(feature_filter)
 
     shutil.copy(hydra.utils.to_absolute_path(
         'classifiers/PointTransformers/models/{}/model.py'.format(args.model.name)),
@@ -89,14 +63,17 @@ def main(args):
                          'PointTransformerCls')(args).cuda()
     criterion = torch.nn.CrossEntropyLoss()
 
-    try:
-        checkpoint = torch.load('best_model.pth')
-        start_epoch = checkpoint['epoch']
-        classifier.load_state_dict(checkpoint['model_state_dict'])
-        logger.info('Use pretrain model')
-    except FileNotFoundError as e:
-        logger.info(f'Error loading model: {e}')
-        logger.info('No existing model, starting training from scratch...')
+    if pretrained:
+        try:
+            checkpoint = torch.load('best_model.pth')
+            start_epoch = checkpoint['epoch']
+            classifier.load_state_dict(checkpoint['model_state_dict'])
+            logger.info('Use pretrain model')
+        except FileNotFoundError as e:
+            logger.info(f'Error loading model: {e}')
+            logger.info('No existing model, starting training from scratch...')
+            start_epoch = 0
+    else:
         start_epoch = 0
 
     if args.optimizer == 'Adam':
@@ -187,7 +164,48 @@ def main(args):
             global_epoch += 1
 
     logger.info('End of training...')
-    plot_accuracies(train_accuracies, val_accuracies)
+    return train_accuracies, val_accuracies
+
+
+@hydra.main(config_path='config', config_name='cls')
+def main(args):
+    # TODO: Change it to torch.float64, I think this is better, and then move it to torch.float32 for
+    # certain calculations. If we want to go back to torch.float32, we need to check that epsilon does not
+    # cause nan-values in the differential entropy method
+    if args.debug:
+        start_debug()
+    omegaconf.OmegaConf.set_struct(args, False)
+
+    '''HYPER PARAMETER'''
+    logger = logging.getLogger(__name__)
+
+    '''DATA LOADING'''
+    logger.info('Load dataset ...')
+
+    # Ludvig's code
+    # Init Nusc object
+    if not args.re_use_data:
+        data_folder = '/home/luddi824/thesis/PCAC/data/nuscenes/'
+        version = args.dataset
+        nusc = ns.nuscenes.NuScenes(version=version, dataroot=data_folder, verbose=False)
+
+        # Get features
+        extract_features_to_txt_files(
+            nusc, features=args.features_to_create, n_scenes=args.n_scenes,
+            n_samples_per_scene=args.n_samples_per_scene, N_fps_points=args.num_point,
+            batch_size_feature_extraction=args.batch_size_feature_extraction)
+        torch.cuda.empty_cache()
+        del nusc
+    n_samples = args.n_scenes*args.n_samples_per_scene
+    # Get dataset (features in a data loader)
+    feature_filter = process_features(args.features_to_use, args.features_to_create)
+
+    # Run all
+    if args.ablation:
+        run_ablation_features(n_samples, feature_filter, args, logger)
+    else:
+        train_accuracies, val_accuracies = run_cls(n_samples, feature_filter, args, logger)
+        plot_accuracies(train_accuracies, val_accuracies)
 
 
 if __name__ == '__main__':
