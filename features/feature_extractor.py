@@ -1,6 +1,8 @@
 import torch
 import numpy as np
 import os
+import gc
+import time
 
 from utils.data_handling import setup_inputs_to_dnn
 from utils.parameters import Params
@@ -21,10 +23,12 @@ def get_neighborhoods(PC_pair, pc_batch, radii_batch):
 
 
 def feature_extraction(PC_scenes, params):
-    # TODO: Extract the features better, I wrote about this on Trello
     N_scenes, N_samples_per_scene = PC_scenes.shape
     for scene_number in range(N_scenes):
+        gc.collect()
+        torch.cuda.empty_cache()
         for sample_number in range(N_samples_per_scene):
+            start_sample = time.time()
             PC_pair = PC_scenes[scene_number][sample_number]
             PC_joint = PC_pair.PCUnion
             if params.study_neighborhoods:
@@ -42,26 +46,28 @@ def feature_extraction(PC_scenes, params):
 
                     # Find a mask for the neighborhood of the points of interest
                     neighbor_mask_0, neighbor_mask_1 = get_neighborhoods(PC_pair, pc, radii)
+
                     # EXTRACT NEIGHBOR FEATURES
                     # Count the number of neighbors in the joint/sep pc for each point in the batch
                     if params.calc_joint_neighbors:
                         neighbor_mask_j = torch.cat((neighbor_mask_0, neighbor_mask_1), dim=1)
                         n_neighbors_per_point_in_batch_j = torch.sum(neighbor_mask_j, dim=1,
                                                                      dtype=PC_joint.weight_cj.dtype)
+                        # EXTRACT JOINT NEIGHBORHOOD CARDINALITY RATIO FEATURE
                         if params.use_cj:
-                            # SET JOINT NEIGHBORHOOD CARDINALITY RATIO
                             PC_joint.weight_cj[index] = n_neighbors_per_point_in_batch_j/PC_joint.N_points
+
                     if params.calc_sep_neighbors:
                         if current_pc_is_0:
                             neighbor_mask_s = neighbor_mask_0
-                            PC_sep = PC_pair.PC0
                         else:
                             neighbor_mask_s = neighbor_mask_1
-                            PC_sep = PC_pair.PC1
                         n_neighbors_per_point_in_batch_s = torch.sum(neighbor_mask_s, dim=1,
                                                                      dtype=PC_joint.weight_cs.dtype)
+                        
+                        # EXTRACT SEPARATE NEIGHBORHOOD CARDINALITY RATIO FEATURE
                         if params.use_cs:
-                            # SET SEPARATE NEIGHBORHOOD CARDINALITY RATIO
+                            
                             if current_pc_is_0:
                                 PC_joint.weight_cs[index] = \
                                     n_neighbors_per_point_in_batch_s/PC_pair.PC0.N_points
@@ -69,8 +75,8 @@ def feature_extraction(PC_scenes, params):
                                 PC_joint.weight_cs[index] = \
                                     n_neighbors_per_point_in_batch_s/PC_pair.PC1.N_points
 
-                    if params.use_de:
-                        # EXTRACT JOINT ENTROPY FEATURE
+                    # EXTRACT JOINT ENTROPY FEATURE
+                    if params.use_jde:
                         # Filter out neighborhoods with only one point
                         bool_mask_valid_neighborhood_j = (n_neighbors_per_point_in_batch_j > 1)
                         inds_to_valid_neighborhood_j = torch.nonzero(bool_mask_valid_neighborhood_j).squeeze()
@@ -81,32 +87,32 @@ def feature_extraction(PC_scenes, params):
                         PC_joint.metric_jde[index] = entropies_batch_j
                         del n_neighbors_per_point_in_batch_j, neighbor_mask_j, inds_to_valid_neighborhood_j
 
-                        # EXTRACT SEPARATE ENTROPY FEATURE
+                    # EXTRACT SEPARATE ENTROPY FEATURE
+                    if params.use_sde:
                         # Filter out neighborhoods with only one point
                         bool_mask_valid_neighborhood_s = (n_neighbors_per_point_in_batch_s > 1)
                         inds_to_valid_neighborhood_s = torch.nonzero(bool_mask_valid_neighborhood_s).squeeze()
+                        if current_pc_is_0:
+                            PC_sep = PC_pair.PC0
+                        else:
+                            PC_sep = PC_pair.PC1
 
                         entropies_batch_s = extract_differential_entropy(
                             PC_sep, n_neighbors_per_point_in_batch_s, neighbor_mask_s,
                             inds_to_valid_neighborhood_s, params)
                         PC_joint.metric_sde[index] = entropies_batch_s
                         del n_neighbors_per_point_in_batch_s, neighbor_mask_s, inds_to_valid_neighborhood_s
+
+                    # EXTRACT WASSERSTEIN DISTANCE FEATURE
                     if params.use_wd:
                         dists = sinkhorn_distance(PC_pair, neighbor_mask_0, neighbor_mask_1)
                         PC_joint.metric_wd[index] = dists
 
             PC_scenes[scene_number][sample_number].PCUnion = PC_joint
-
+            end_sample = time.time()
+            # print(f"Time sample {np.around(end_sample - start_sample, 2)}")
     # TODO: Extract more features ...
     return PC_scenes
-
-
-def number_of_features(features):
-    # xyz is always used (=> 3)
-    N_features = 3 + sum(features.values())
-    if features.use_de:
-        N_features += 1  # differential entropy entails two features
-    return N_features
 
 
 def write_features_to_txt_files(flat_PC_scenes, data_folder, params):
@@ -128,12 +134,14 @@ def write_features_to_txt_files(flat_PC_scenes, data_folder, params):
             # Set label feature (which point cloud the point belongs to)
             label_channel = np.vstack((np.zeros((PC0.N_fps_points, 1)), np.ones((PC1.N_fps_points, 1))))
             feature_map = np.concatenate((feature_map, label_channel), axis=1)
-        if params.use_de:
+        if params.use_jde:
             # Set joint differential entropy channel
             jde_channel = PC_pair.PCUnion.metric_jde.cpu().numpy()[:, np.newaxis]
+            feature_map = np.concatenate((feature_map, jde_channel), axis=1)
+        if params.use_sde:
             # Set separate differential entropy channel
             sde_channel = PC_pair.PCUnion.metric_sde.cpu().numpy()[:, np.newaxis]
-            feature_map = np.concatenate((feature_map, jde_channel, sde_channel), axis=1)
+            feature_map = np.concatenate((feature_map, sde_channel), axis=1)
         if params.use_wd:
             wd_channel = PC_pair.PCUnion.metric_wd.cpu().numpy()[:, np.newaxis]
             feature_map = np.concatenate((feature_map, wd_channel), axis=1)
@@ -160,7 +168,7 @@ def write_features_to_txt_files(flat_PC_scenes, data_folder, params):
 
 
 def extract_features_to_txt_files(nusc, features, n_scenes=10, n_samples_per_scene=1, train_ratio=0.60,
-                                  N_fps_points=1024):
+                                  N_fps_points=1024, batch_size_feature_extraction=128):
     # TODO: Add some assertions that we do not use more scenes than we actually have
     # TODO: Find suitable parameters. Although, I think these are rather ok
     # Set parameters
@@ -182,7 +190,8 @@ def extract_features_to_txt_files(nusc, features, n_scenes=10, n_samples_per_sce
                     train_ratio=train_ratio, downsample_factor=downsample_factor,
                     T_close_thresh=T_close_thresh, params_diff_entropy=params_diff_entropy,
                     verbose=verbose, hpr_radius=hpr_radius, preprocess=preprocess, pointwise=True,
-                    do_fps=True, N_fps_points=N_fps_points, device=device)
+                    do_fps=True, N_fps_points=N_fps_points, device=device,
+                    batch_size_feature_extraction=batch_size_feature_extraction)
     # Set which features to use
     params.set_which_features_to_use(features)
     setup_inputs_to_dnn(params)

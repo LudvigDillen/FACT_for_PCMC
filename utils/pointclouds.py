@@ -8,7 +8,8 @@ from utils.geometrics import change_coordinate_system
 
 
 class PCAC_dataset(torch.utils.data.Dataset):
-    def __init__(self, root='/home/luddi824/thesis/PCAC/data/PCAC_data', split='train', cache_size=3000):
+    def __init__(self, n_samples, root='/home/luddi824/thesis/PCAC/data/PCAC_data', split='train',
+                 cache_size=3000, feature_filter=None):
         self.root = root
         self.catfile = os.path.join(self.root, 'PCAC_data_class_names.txt')
 
@@ -18,6 +19,11 @@ class PCAC_dataset(torch.utils.data.Dataset):
         class_ids = {}
         class_ids['train'] = [line.rstrip() for line in open(os.path.join(self.root, 'PCAC_data_train.txt'))]
         class_ids['test'] = [line.rstrip() for line in open(os.path.join(self.root, 'PCAC_data_test.txt'))]
+
+        # Possiblity to not use all data
+        total_samples_available = len(class_ids['train']) + len(class_ids['test'])
+        if total_samples_available != n_samples:
+            class_ids = self._change_data_usage(class_ids, n_samples, total_samples_available)
 
         assert (split == 'train' or split == 'test')
         class_names = ['_'.join(x.split('_')[0:-1]) for x in class_ids[split]]
@@ -29,6 +35,9 @@ class PCAC_dataset(torch.utils.data.Dataset):
 
         self.cache_size = cache_size  # how many data points to cache in memory
         self.cache = {}  # from index to (point_set, cls) tuple
+
+        feature_filter_with_xyz = np.concatenate((np.ones(3, dtype=int), feature_filter))
+        self.feature_channels = np.where(feature_filter_with_xyz == 1)[0]
 
     def __len__(self):
         return len(self.datapath)
@@ -42,6 +51,8 @@ class PCAC_dataset(torch.utils.data.Dataset):
             cls = np.array([cls]).astype(np.int32)
             point_set = np.loadtxt(fn[1], delimiter=',').astype(np.float32)
             point_set[:, 0:3] = pc_normalize(point_set[:, 0:3])
+            # Remove some of the features which we do not want to use
+            point_set = point_set[:, self.feature_channels]
 
             if len(self.cache) < self.cache_size:
                 self.cache[index] = (point_set, cls)
@@ -50,6 +61,23 @@ class PCAC_dataset(torch.utils.data.Dataset):
 
     def __getitem__(self, index):
         return self._get_item(index)
+
+    def _change_data_usage(self, class_ids, n_samples, total_samples_available):
+        if n_samples > total_samples_available:
+            print(f"Only {total_samples_available} are available. Using all!")
+        elif n_samples < total_samples_available:
+            # train_ratio = len(class_ids['train'])/total_samples_available  # TODO
+            train_ratio = 0.6
+            n_train_samples = round(n_samples*train_ratio)
+            n_test_samples = round(n_samples*(1-train_ratio))
+            if n_train_samples + n_test_samples > n_samples:
+                n_test_samples -= 1
+            elif n_train_samples + n_test_samples < n_samples:
+                n_test_samples += 1
+            assert (n_train_samples + n_test_samples == n_samples), "Division of data gone wrong"
+            class_ids['train'] = class_ids['train'][:n_train_samples]
+            class_ids['test'] = class_ids['test'][:n_test_samples]
+        return class_ids
 
 
 class PC:

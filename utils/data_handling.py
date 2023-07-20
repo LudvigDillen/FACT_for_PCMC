@@ -271,7 +271,7 @@ def get_n_scenes_per_loop(n_samples_per_scene, n_training_scenes, n_scenes):
     n_test_scenes = n_scenes - n_training_scenes
     smallest_loop = min(n_test_scenes, n_training_scenes)
     # TODO: Maybe try to increase from 40, could give faster computations ...
-    n_scenes_per_loop = max(round(20/n_samples_per_scene), 1)
+    n_scenes_per_loop = max(round(10/n_samples_per_scene), 1)
     n_scenes_per_loop = min(n_scenes_per_loop, smallest_loop)
     return n_scenes_per_loop
 

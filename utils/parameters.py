@@ -6,7 +6,8 @@ class Params:
                  downsample_factor, T_close_thresh, params_diff_entropy,
                  verbose=False, hpr_radius=3.25, preprocess=True, pointwise=True,
                  do_fps=True, N_fps_points=9192,
-                 device=torch.device("cuda" if torch.cuda.is_available() else "cpu")):
+                 device=torch.device("cuda" if torch.cuda.is_available() else "cpu"),
+                 batch_size_feature_extraction=128):
         """
         nusc: The NuScenes class variable.
         n_scenes (int): The total number of scenes.
@@ -25,6 +26,7 @@ class Params:
                             that the hole point cloud is considered when stuying each
                             sampled points' neighborhoods.
         device (torch.device)      : Which device to perform calculations on (cuda or cpu).
+        batch_size_feature_extraction (int): How many points to handle in each batch.
         """
         # Set dataset parameters
         self.nusc = nusc
@@ -53,19 +55,21 @@ class Params:
 
         # Set device
         self.device = device
+        self.batch_size_feature_extraction = batch_size_feature_extraction
 
     def set_params_diff_entropy(self, params_diff_entropy):
         self.params_diff_entropy = params_diff_entropy
 
     def set_which_features_to_use(self, features):
         self.use_label = features.use_label  # class label
-        self.use_de = features.use_de  # differential entropy
+        self.use_jde = features.use_jde  # joint differential entropy
+        self.use_sde = features.use_sde  # separate differential entropy
         self.use_wd = features.use_wd  # wasserstein distance
         self.use_c = features.use_c  # covisibility weight
         self.use_s = features.use_s  # static weight
         self.use_cj = features.use_cj  # joint cardinality ratio
         self.use_cs = features.use_cs  # separate cardinality ratio
         # All these feature belows are calculated in neighborhoods (spheres) around points
-        self.study_neighborhoods = (self.use_de or self.use_wd or self.use_cj or self.use_cs)
-        self.calc_joint_neighbors = (self.use_de or self.use_cj)
-        self.calc_sep_neighbors = (self.use_de or self.use_cs)
+        self.study_neighborhoods = (self.use_jde or self.use_sde or self.use_wd or self.use_cj or self.use_cs)
+        self.calc_joint_neighbors = (self.use_jde or self.use_cj)
+        self.calc_sep_neighbors = (self.use_sde or self.use_cs)

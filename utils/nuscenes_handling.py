@@ -7,7 +7,7 @@ from utils.visibility import keep_covisible_points
 from nuscenes.utils.data_classes import LidarPointCloud
 
 
-DTYPE = torch.float32
+DTYPE = torch.float64
 
 
 class NuscenesHandling:
