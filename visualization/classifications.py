@@ -113,3 +113,36 @@ def get_legend_names(keys):
     for key in keys:
         legend_names.append(key.split('_')[1])
     return legend_names
+
+
+def extract_accuracies(filename):
+    # Lists to store the accuracies
+    train_accuracies = []
+    test_accuracies = []
+
+    # Open and read the file
+    with open(filename, 'r') as file:
+        lines = file.readlines()
+        for line in lines:
+            # Split the line into words
+            words = line.split()
+
+            # Check if the line contains the accuracies
+            if "Train Instance Accuracy" in line:
+                train_accuracies.append(float(words[-1]))
+            elif "Test Instance Accuracy" in line:
+                test_accuracies.append(float(words[-1]))
+
+    # Convert lists to numpy arrays
+    train_accuracies = np.array(train_accuracies)
+    test_accuracies = np.array(test_accuracies)
+
+    return train_accuracies, test_accuracies
+
+
+if __name__ == "__main__":
+    filename = input("Enter the path to the file: ")
+    train_accuracies, test_accuracies = extract_accuracies(filename)
+    print("Train Accuracies:", train_accuracies)
+    print("Test Accuracies:", test_accuracies)
+    plot_accuracies(train_accuracies, test_accuracies)
