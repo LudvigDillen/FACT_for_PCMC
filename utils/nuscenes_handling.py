@@ -12,7 +12,7 @@ DTYPE = torch.float64
 
 class NuscenesHandling:
     def __init__(self, nusc, downsample_factor=1, lidar_token=None, T_close_thresh=0,
-                 scene_counter=0, verbose=True, preprocess=True, hpr_radius=3.25):
+                 scene_counter=0, verbose=True, preprocess=True, hpr_radius=3.25, perturb_settings=None):
         self.nusc = nusc
         self.scene_counter_init = scene_counter
         self.scene_counter = scene_counter
@@ -26,6 +26,7 @@ class NuscenesHandling:
         self.verbose = verbose
         self.preprocess = preprocess
         self.hpr_radius = hpr_radius
+        self.perturb_settings = perturb_settings
 
         # Setup scene data
         self.setup_new_scene_data(lidar_token)
@@ -252,7 +253,8 @@ class NuscenesHandling:
             # Load in second point cloud
             PC1 = PC(self.pc1_CS1, self.point_distances1, label=1, device=device)
             # Set point cloud pair and their union, and perform possible perturbation
-            currentPCPair = PCPair(PC0, PC1, device=device, PCHandler=self, perturb_probability=0.5)
+            currentPCPair = PCPair(PC0, PC1, device=device, PCHandler=self,
+                                   perturb_settings=self.perturb_settings)
 
             if self.preprocess:
                 # Calculate the co-visible points
@@ -300,14 +302,14 @@ class NuscenesHandling:
         return PC_scenes
 
 
-def read_nuscenes_data(nusc, n_samples, downsample_factor=1, n_scenes='all',
+def read_nuscenes_data(nusc, n_samples, perturb_settings, downsample_factor=1, n_scenes='all',
                        T_close_thresh=0, lidar_token=None, scene_counter=0,
                        verbose=True, preprocess=True, hpr_radius=3.25):
     # Read data
     PCHandler = NuscenesHandling(nusc, downsample_factor=downsample_factor,
                                  T_close_thresh=T_close_thresh, lidar_token=lidar_token,
                                  scene_counter=scene_counter, verbose=verbose, preprocess=preprocess,
-                                 hpr_radius=hpr_radius)
+                                 hpr_radius=hpr_radius, perturb_settings=perturb_settings)
     PC_scenes = PCHandler.sample_from_scenes(n_samples=n_samples, n_scenes=n_scenes)
     del PCHandler
     return PC_scenes

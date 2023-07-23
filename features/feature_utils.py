@@ -90,7 +90,7 @@ def run_ablation_features(n_samples, feature_filter, args, logger):
     true_keys = [key for key, value in args.features_to_create.items() if value]
 
     for i in range(N_features):
-        print(f"Start feature {true_keys[i]} ({np.around(100*i/N_features, 2)}%)")
+        print(f"Start feature {true_keys[i]} ({np.around(100*i/N_features, 2)}%)", flush=True)
         ablation_feature_filter = np.zeros(N_features, dtype=int)
         ablation_feature_filter[i] = 1
         train_accuracies, val_accuracies = run_cls(n_samples, ablation_feature_filter, args, logger,

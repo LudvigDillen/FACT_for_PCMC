@@ -1,19 +1,17 @@
 import torch
 
+from utils.data_handling import count_decimal_digits
+
 
 class Params:
-    def __init__(self, nusc, n_scenes, n_samples_per_scene, train_ratio,
-                 downsample_factor, T_close_thresh, params_diff_entropy,
+    def __init__(self, nusc, args, T_close_thresh, params_diff_entropy,
                  verbose=False, hpr_radius=3.25, preprocess=True, pointwise=True,
-                 do_fps=True, N_fps_points=9192,
-                 device=torch.device("cuda" if torch.cuda.is_available() else "cpu"),
-                 batch_size_feature_extraction=128):
+                 do_fps=True, device=torch.device("cuda" if torch.cuda.is_available() else "cpu")):
         """
         nusc: The NuScenes class variable.
-        n_scenes (int): The total number of scenes.
-        n_samples_per_scene (int): The number of samples to take from each scene.
+        
         train_ratio (float): The ratio of scenes to use for training.
-        downsample_factor (int): The factor by which to downsample the scenes.
+        downsample_factor 
         T_close_thresh (float): Threshold for considering a sample as "close".
         params_diff_entropy (dict): Parameters for the differential entropy calculation.
         verbose (bool): If True, print additional information.
@@ -30,12 +28,16 @@ class Params:
         """
         # Set dataset parameters
         self.nusc = nusc
-        self.n_scenes = n_scenes
-        self.n_samples_per_scene = n_samples_per_scene
-        self.train_ratio = train_ratio
+        self.n_scenes = args.n_scenes  # (int): The total number of scenes.
+        # (int): The number of samples to take from each scene.
+        self.n_samples_per_scene = args.n_samples_per_scene
+        self.train_ratio = args.train_ratio
+
+        # Set args
+        self.args = args  # TODO: Maybe, just leave everything in args ...
 
         # Set point cloud variables
-        self.downsample_factor = downsample_factor
+        self.downsample_factor = args.downsample_factor  # (int): The factor to downsample the scenes with.
         self.T_close_thresh = T_close_thresh
 
         # Set differential entropy parameters
@@ -48,14 +50,17 @@ class Params:
         self.preprocess = preprocess
         self.pointwise = pointwise
         self.do_fps = do_fps
-        self.N_fps_points = N_fps_points
+        self.N_fps_points = args.num_point
 
         # Set co-visibility parameters
         self.hpr_radius = hpr_radius
 
         # Set device
         self.device = device
-        self.batch_size_feature_extraction = batch_size_feature_extraction
+        self.batch_size_feature_extraction = args.batch_size_feature_extraction
+
+        self.perturb_settings = args.perturb_settings
+        self.set_class_names()
 
     def set_params_diff_entropy(self, params_diff_entropy):
         self.params_diff_entropy = params_diff_entropy
@@ -73,3 +78,15 @@ class Params:
         self.study_neighborhoods = (self.use_jde or self.use_sde or self.use_wd or self.use_cj or self.use_cs)
         self.calc_joint_neighbors = (self.use_jde or self.use_cj)
         self.calc_sep_neighbors = (self.use_sde or self.use_cs)
+
+    def set_class_names(self):
+        R_digits = count_decimal_digits(self.perturb_settings.r_bin)
+        t_digits = count_decimal_digits(self.perturb_settings.t_bin)
+        self.class_names = {}
+        for i in range(self.perturb_settings.n_classes):
+            Roff = round(self.args.perturb_settings.r_bin*i, R_digits)
+            toff = round(self.args.perturb_settings.t_bin*i, t_digits)
+            class_name = (f'class_category_{i}' + '_R_offset_' + str(Roff) +
+                          '_t_offset_' + str(toff))
+            class_name = class_name.replace('.', '_')
+            self.class_names[i] = class_name

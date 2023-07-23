@@ -1,6 +1,6 @@
 batch_size: 20  # 27
-epoch: 75  # 500
-learning_rate: 0.0005
+epoch: 250  # 500
+learning_rate: 0.0001 # 0.0005
 gpu: 0
 optimizer: Adam
 weight_decay: 0.0001
@@ -36,29 +36,17 @@ re_use_data: false
 n_scenes: 300
 n_samples_per_scene: 10
 dataset: 'v1.0-trainval'  # 'v1.0-trainval'
+feature_folder: '/home/luddi824/thesis/PCAC/data/PCAC_data'  # TODO: Set by new user ...
+downsample_factor: 1
+train_ratio: 0.60
+# Perturbation settings
+perturb_settings:
+  n_classes: 6
+  r_bin: 0.02
+  t_bin: 0.2
+  class_distribution: uniform
 # Other settings
 debug: false
 ablation: false
-
-
-
-
-# batch_size: 16  # 16
-# epoch: 500  # 200
-# learning_rate: 0.0005  # 1e-3
-# gpu: 0  # 1
-# num_point: 1024
-# optimizer: Adam
-# weight_decay: 1e-4
-# normal: True
-
-# defaults:
-#   - model: Hengshuang
-
-# hydra:
-#   run:
-#     dir: log/cls/${model.name}
-
-#   sweep:
-#     dir: log/cls
-#     subdir: ${model.name}
+#load_model_path: "/home/luddi824/thesis/PCAC/outputs/2023-07-23/12-36-00/best_model.pth"
+load_model_path: false

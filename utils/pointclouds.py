@@ -1,5 +1,4 @@
 import torch
-import random
 import os
 import numpy as np
 
@@ -8,7 +7,7 @@ from utils.geometrics import change_coordinate_system
 
 
 class PCAC_dataset(torch.utils.data.Dataset):
-    def __init__(self, n_samples, root='/home/luddi824/thesis/PCAC/data/PCAC_data', split='train',
+    def __init__(self, n_samples, root, split='train',
                  cache_size=3000, feature_filter=None):
         self.root = root
         self.catfile = os.path.join(self.root, 'PCAC_data_class_names.txt')
@@ -142,7 +141,7 @@ class PC:
 
 
 class PCPair:
-    def __init__(self, PC0, PC1, device, PCHandler, perturb_probability=0.5):
+    def __init__(self, PC0, PC1, device, PCHandler, perturb_settings):
         # Set point cloud pair
         self.PC0 = PC0
         self.pose0 = PCHandler.lidar_pose0.to(device)
@@ -151,15 +150,17 @@ class PCPair:
 
         self.device = device
 
+        # Setup class
+        self.N_classes = perturb_settings.n_classes
+        self.R_bin = perturb_settings.r_bin
+        self.t_bin = perturb_settings.t_bin
+
         # Draw random value between 0 and 1 if we should perturb or not perturb the point cloud.
-        peturb_point_cloud = (random.random() < perturb_probability)
-        self.misaligned = peturb_point_cloud  # The ground truth if the point cloud pair is aligned or not
+        if perturb_settings.class_distribution == 'uniform':
+            self.class_category = np.random.choice(np.arange(self.N_classes))
+
         # If CorAl is implemented we also store the union point cloud
         self.set_union_of_point_clouds()
-
-    def set_union_of_point_clouds(self):
-        self.PCUnion, self.pc1_CS0 = get_union_of_point_clouds(self.PC0, self.PC1, self.pose0,
-                                                               self.pose1, self.misaligned, self.device)
 
     def set_new_PC(self, PC0, PC1, PCUnion):
         self.PC0 = PC0
@@ -170,7 +171,26 @@ class PCPair:
     def set_name(self, name):
         self.name = name
 
+    def set_union_of_point_clouds(self):
+        pc_union_dists = torch.cat((self.PC0.distances_to_origin, self.PC1.distances_to_origin))
+        self.pc1_CS0 = change_coordinate_system(self.PC1.pc, self.pose0, self.pose1)
 
+        # if class_category == 0, do not perturb anything ...
+        self.R_offset = self.R_bin*self.class_category
+        self.t_offset = self.t_bin*self.class_category
+        if self.class_category != 0:
+            self.pc1_CS0 = perform_random_perturbation_CorAl(
+                self.pc1_CS0, angular_offset=self.R_offset, translational_offset=self.t_offset)
+
+        # pc_union may be the concatenation of either two aligned point clouds or two misaligned point clouds.
+        # This will depend on if we randomly peturb one of the aligned point cloud or not.
+        # This happen with the peturb probality handed to the constructor of the class.
+        pc_union = torch.cat((self.PC0.pc, self.pc1_CS0), dim=0)
+        self.PCUnion = PC(pc_union, pc_union_dists, label=2, device=self.device)
+        return None
+
+
+# TODO: If I want to a speed up I should do this in batches
 def perform_random_perturbation_CorAl(pc, angular_offset=0.01, translational_offset=0.1):
     """
     This function a point cloud perturb it with an angular and translational offset.
@@ -205,22 +225,7 @@ def perform_random_perturbation_CorAl(pc, angular_offset=0.01, translational_off
     homog_ones = torch.ones(n_points, device=pc.device)
     pc_homog_swapped = torch.vstack((torch.swapaxes(pc, 0, 1), homog_ones))
     perturbed_point_cloud = torch.swapaxes(torch.matmul(T_peturb, pc_homog_swapped)[:3], 0, 1)
-
     return perturbed_point_cloud
-
-
-def get_union_of_point_clouds(PC0, PC1, pose0, pose1, misaligned, device):
-    pc_union_dists = torch.cat((PC0.distances_to_origin, PC1.distances_to_origin))
-    pc1_CS0 = change_coordinate_system(PC1.pc, pose0, pose1)
-    if misaligned:
-        pc1_CS0 = perform_random_perturbation_CorAl(pc1_CS0, angular_offset=0.03, translational_offset=0.3)
-
-    # pc_union may be the concatenation of either two aligned point clouds or two misaligned point clouds.
-    # This will depend on if we randomly peturb one of the aligned point cloud or not.
-    # This happen with the peturb probality handed to the constructor of the class.
-    pc_union = torch.cat((PC0.pc, pc1_CS0), dim=0)
-    PCUnion = PC(pc_union, pc_union_dists, label=2, device=device)
-    return PCUnion,  pc1_CS0
 
 
 def farthest_point_sample_PC_scenes(PC_scenes, fps_N_points):

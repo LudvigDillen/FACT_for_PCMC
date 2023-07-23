@@ -1,4 +1,5 @@
 import numpy as np
+import os
 
 from features.differential_entropy import differential_entropy_dataset
 from utils.nuscenes_handling import read_nuscenes_data
@@ -124,32 +125,42 @@ def calculate_sample_gaps(N, M):
     return distances
 
 
-def sort_PC_scenes(all_PC_scenes):
-    flat_PC_scenes = []
-    for scene in all_PC_scenes:
-        for PC_pair in scene:
-            if PC_pair.misaligned:
-                flat_PC_scenes.append(PC_pair)
-            else:
-                flat_PC_scenes.insert(0, PC_pair)
-    return np.array(flat_PC_scenes)
+def count_decimal_digits(f):
+    # Convert float to string
+    s = str(f)
+
+    # If there's a decimal point, count the number of digits after it
+    if '.' in s:
+        return len(s.split('.')[1])
+    else:
+        return 0
 
 
-def classes_to_txt(flat_PC_scenes, aligned_samples, misaligned_samples, file):
+def generate_class_names_file(folder, filename, n_classes, class_names):
+    # Construct the full path to the output file
+    file_path = os.path.join(folder, filename)
+
+    # Open the file for writing
+    with open(file_path, 'w') as f:
+        # Write each class category to the file
+        for i in range(n_classes):
+            class_name = class_names[i] + '\n'
+            class_name = class_name.replace('.', '_')
+            f.write(class_name)
+
+
+def classes_to_txt(PC_scenes, class_counts, file, class_names):
+    flat_PC_scenes = np.reshape(PC_scenes, PC_scenes.size)
     for PC_pair in flat_PC_scenes:
-        if PC_pair.misaligned:
-            misaligned_samples += 1
-            message = 'misaligned' + "_" + str(misaligned_samples).zfill(4)
-        else:
-            aligned_samples += 1
-            message = 'aligned' + "_" + str(aligned_samples).zfill(4)
+        class_counts[PC_pair.class_category] += 1
+        message = (class_names[PC_pair.class_category] + "_" +
+                   str(class_counts[PC_pair.class_category]).zfill(4))
         PC_pair.set_name(message)
         file.write(message + '\n')
-    return aligned_samples, misaligned_samples, flat_PC_scenes
+    return class_counts, flat_PC_scenes
 
 
-def features_to_txt_files(scenes_lower, scenes_upper, n_scenes_per_loop, params, mode,
-                          aligned_samples=0, misaligned_samples=0):
+def features_to_txt_files(scenes_lower, scenes_upper, n_scenes_per_loop, params, mode, class_counts):
     """
     Extract differential entropy features from a range of scenes.
 
@@ -165,20 +176,18 @@ def features_to_txt_files(scenes_lower, scenes_upper, n_scenes_per_loop, params,
     """
     # Prepare storage for features
     from features.feature_extractor import write_features_to_txt_files, feature_extraction
-
-    if mode == "train":
-        data_file = "/home/luddi824/thesis/PCAC/data/PCAC_data/PCAC_data_train.txt"
-    elif mode == "test":
-        data_file = "/home/luddi824/thesis/PCAC/data/PCAC_data/PCAC_data_test.txt"
-    else:
-        exit(f"Specified mode ({mode}) is not known!")
+    data_folder = params.args.feature_folder
+    filename = "PCAC_data_" + mode + ".txt"
+    assert (mode == "train" or mode == "test"), f"Specified mode ({mode}) is not known!"
+    data_file = os.path.join(data_folder, filename)
 
     with open(data_file, 'w') as file:
-        data_folder = "/home/luddi824/thesis/PCAC/data/PCAC_data"
+        data_folder = params.args.feature_folder
         for scene_counter in range(scenes_lower, scenes_upper, n_scenes_per_loop):
             # Display data loading progress
             print(f"Have loaded {scene_counter-scenes_lower} of {scenes_upper-scenes_lower} {mode} scenes " +
-                  f"({np.around(100*(scene_counter-scenes_lower)/(scenes_upper-scenes_lower), 1)}%)")
+                  f"({np.around(100*(scene_counter-scenes_lower)/(scenes_upper-scenes_lower), 1)}%)",
+                  flush=True)
 
             # Determine the number of scenes to read in this loop
             if scene_counter + n_scenes_per_loop > scenes_upper:
@@ -190,29 +199,24 @@ def features_to_txt_files(scenes_lower, scenes_upper, n_scenes_per_loop, params,
             # Load data sequentially (can't read all at once, too high memory requirement)
             PC_scenes = read_nuscenes_data(
                 params.nusc, n_scenes=read_n_scenes, n_samples=read_n_samples,
-                downsample_factor=params.downsample_factor, T_close_thresh=params.T_close_thresh,
-                scene_counter=scene_counter, verbose=params.verbose, preprocess=params.preprocess,
-                hpr_radius=params.hpr_radius)
+                perturb_settings=params.perturb_settings, downsample_factor=params.downsample_factor,
+                T_close_thresh=params.T_close_thresh, scene_counter=scene_counter, verbose=params.verbose,
+                preprocess=params.preprocess, hpr_radius=params.hpr_radius)
 
             if params.do_fps:
                 # Compute the differential entropy features for the scenes
                 farthest_point_sample_PC_scenes(PC_scenes, params.N_fps_points)
 
-            # TODO: In feature extraction, only extract the features that are specified given in the params
             # Feature extraction.
             PC_scenes_with_features = feature_extraction(PC_scenes, params)
-            sorted_PC_scenes = sort_PC_scenes(PC_scenes_with_features)
-            del PC_scenes_with_features
 
             # Write class names to text file
-            aligned_samples, misaligned_samples, sorted_PC_scenes_named = classes_to_txt(
-                sorted_PC_scenes, aligned_samples, misaligned_samples, file)
-            del sorted_PC_scenes
+            class_counts, PC_scenes_named = classes_to_txt(
+                PC_scenes_with_features, class_counts, file, params.class_names)
+            del PC_scenes_with_features
 
-            write_features_to_txt_files(sorted_PC_scenes_named, data_folder, params)
-    if mode == "train":
-        return aligned_samples, misaligned_samples
-    return None
+            write_features_to_txt_files(PC_scenes_named, data_folder, params)
+    return class_counts
 
 
 def get_diff_entropy_features(scenes_lower, scenes_upper, n_scenes_per_loop, params):
@@ -317,12 +321,13 @@ def setup_inputs_to_dnn(params):
     # Determine the number of scenes to process in each loop
     n_scenes_per_loop = get_n_scenes_per_loop(params.n_samples_per_scene, n_training_scenes, params.n_scenes)
 
+    class_counts = np.zeros(params.perturb_settings.n_classes, dtype=int)
     # Extract features from the training scenes
-    aligned_samples, misaligned_samples = features_to_txt_files(
-        scenes_lower=0, scenes_upper=n_training_scenes,
-        n_scenes_per_loop=n_scenes_per_loop, params=params, mode="train")
+    class_counts = features_to_txt_files(
+        scenes_lower=0, scenes_upper=n_training_scenes, n_scenes_per_loop=n_scenes_per_loop,
+        params=params, mode="train", class_counts=class_counts)
 
     # Extract features from the test scenes
-    features_to_txt_files(scenes_lower=n_training_scenes, scenes_upper=params.n_scenes,
-                          n_scenes_per_loop=n_scenes_per_loop, params=params, mode="test",
-                          aligned_samples=aligned_samples, misaligned_samples=misaligned_samples)
+    class_counts = features_to_txt_files(
+        scenes_lower=n_training_scenes, scenes_upper=params.n_scenes, n_scenes_per_loop=n_scenes_per_loop,
+        params=params, mode="test", class_counts=class_counts)

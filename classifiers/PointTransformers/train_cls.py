@@ -43,8 +43,10 @@ def test(model, loader, num_class=2):
 
 
 def run_cls(n_samples, feature_filter, args, logger, pretrained=True):
-    PCAC_TRAIN_DATASET = PCAC_dataset(n_samples=n_samples, split='train', feature_filter=feature_filter)
-    PCAC_TEST_DATASET = PCAC_dataset(n_samples=n_samples, split='test', feature_filter=feature_filter)
+    PCAC_TRAIN_DATASET = PCAC_dataset(n_samples=n_samples, root=args.feature_folder, split='train',
+                                      feature_filter=feature_filter)
+    PCAC_TEST_DATASET = PCAC_dataset(n_samples=n_samples, root=args.feature_folder, split='test',
+                                     feature_filter=feature_filter)
     trainDataLoader = torch.utils.data.DataLoader(PCAC_TRAIN_DATASET, batch_size=args.batch_size,
                                                   shuffle=True, num_workers=4)
     testDataLoader = torch.utils.data.DataLoader(PCAC_TEST_DATASET, batch_size=args.batch_size,
@@ -52,7 +54,7 @@ def run_cls(n_samples, feature_filter, args, logger, pretrained=True):
     del PCAC_TRAIN_DATASET, PCAC_TEST_DATASET
 
     '''MODEL LOADING'''
-    args.num_class = 2  # aligned or misaligned
+    args.num_class = args.perturb_settings.n_classes
     args.input_dim = number_of_features(feature_filter)
 
     shutil.copy(hydra.utils.to_absolute_path(
@@ -65,7 +67,10 @@ def run_cls(n_samples, feature_filter, args, logger, pretrained=True):
 
     if pretrained:
         try:
-            checkpoint = torch.load('best_model.pth')
+            if args.load_model_path:
+                checkpoint = torch.load(args.load_model_path)
+            else:
+                checkpoint = torch.load('best_model.pth')
             start_epoch = checkpoint['epoch']
             classifier.load_state_dict(checkpoint['model_state_dict'])
             logger.info('Use pretrain model')
@@ -87,7 +92,7 @@ def run_cls(n_samples, feature_filter, args, logger, pretrained=True):
     else:
         optimizer = torch.optim.SGD(classifier.parameters(), lr=0.01, momentum=0.9)
 
-    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=50, gamma=0.3)
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.8)
     global_epoch = 0
     global_step = 0
     best_instance_acc = 0.0
@@ -190,10 +195,7 @@ def main(args):
         nusc = ns.nuscenes.NuScenes(version=version, dataroot=data_folder, verbose=False)
 
         # Get features
-        extract_features_to_txt_files(
-            nusc, features=args.features_to_create, n_scenes=args.n_scenes,
-            n_samples_per_scene=args.n_samples_per_scene, N_fps_points=args.num_point,
-            batch_size_feature_extraction=args.batch_size_feature_extraction)
+        extract_features_to_txt_files(nusc, args=args)
         torch.cuda.empty_cache()
         del nusc
     n_samples = args.n_scenes*args.n_samples_per_scene
