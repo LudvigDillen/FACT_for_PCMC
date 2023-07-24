@@ -34,7 +34,10 @@ def plot_accuracies(train_accuracies, val_accuracies):
     plt.grid(True)
 
     # Ensure that the x-axis only uses integer values
-    plt.xticks(ticks=np.arange(10, len(train_accuracies) + 1, step=10))
+    result = len(train_accuracies) / 20
+    tick_step = np.ceil(result / 10) * 10
+
+    plt.xticks(ticks=np.arange(tick_step, len(train_accuracies) + 1, step=tick_step))
 
     # Define the directory and filename
     directory = '/home/luddi824/thesis/PCAC/images/classification/PointTransformer'
@@ -88,7 +91,9 @@ def plot_accuracies_ablation(all_train_accuracies, all_val_accuracies, true_keys
     plt.grid(True)
 
     # Ensure that the x-axis only uses integer values
-    plt.xticks(ticks=np.arange(10, all_train_accuracies.shape[1] + 1, step=10))
+    result = all_train_accuracies.shape[1] / 20
+    tick_step = np.ceil(result / 10) * 10
+    plt.xticks(ticks=np.arange(tick_step, all_train_accuracies.shape[1] + 1, step=tick_step))
 
     # Define the directory and filename
     directory = '/home/luddi824/thesis/PCAC/images/classification/PointTransformer'
