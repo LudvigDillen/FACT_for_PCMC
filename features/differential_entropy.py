@@ -88,6 +88,11 @@ def extract_differential_entropy(PC, n_neighbors_per_point_in_batch, neighbor_ma
     batch_entropies = 1/2*torch.log(epsilon)*torch.ones(neighbor_mask.shape[0], device=PC.device,
                                                         dtype=PC.pc.dtype)
 
+    if inds_to_valid_neighborhood.numel() == 0:
+        print(f"Found no valid neighborhoods when calculating differential entropy for any of the batches" +
+              f"(must be > 1 points to calculate covariance in a neighborhood)")
+        return batch_entropies
+
     filtered_neighbor_mask = neighbor_mask[inds_to_valid_neighborhood]
     del neighbor_mask
     # Update neighbor count for valid neighborhoods

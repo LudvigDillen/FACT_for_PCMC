@@ -18,22 +18,39 @@ def get_dynamic_radii(d, params):
     return r_out
 
 
-def divide_into_batches(tensor, N, max_batch_size):
-    # Calculate the number of full batches needed
-    full_batches = N // max_batch_size
-    remaining = N % max_batch_size
+def divide_into_even_batches(N, max_batch_size):
+    N_batches = N // max_batch_size
+    if N_batches % 2 == 1:
+        N_batches += 1
+    elif N_batches == 0:
+        N_batches = 2
 
-    # Create batch sizes
-    batch_sizes = [max_batch_size] * full_batches
-    if remaining > 0:  # Only append remaining samples if remaining > 0
-        batch_sizes.append(remaining)
+    samples_counted = 0
+    N_batches_per_pc = int(N_batches/2)
+    one_pc_batch_sizes = np.empty(N_batches_per_pc, dtype=int)
+    for i in range(N_batches_per_pc):
+        if samples_counted + 2*max_batch_size <= N:
+            samples_to_append = max_batch_size
+        else:
+            samples_left = N - samples_counted
+            assert samples_left % 2 == 0, "There should be an even number of samples left"
+            samples_to_append = int(samples_left / 2)
+        one_pc_batch_sizes[i] = samples_to_append
+        samples_counted += 2*samples_to_append
+    both_pc_batch_sizes = np.append(one_pc_batch_sizes, one_pc_batch_sizes)
+    return both_pc_batch_sizes
+
+
+def divide_into_batches(pc, max_batch_size):
+    N = pc.shape[0]
+    batch_sizes = divide_into_even_batches(N, max_batch_size)
 
     # Split the tensor into batches
     batches = []
     start = 0
     for size in batch_sizes:
         end = start + size
-        batch = tensor[start:end]
+        batch = pc[start:end]
         batches.append(batch)
         start = end
 
@@ -44,18 +61,19 @@ def get_data_batches(PC, params):
     batch_size = params.batch_size_feature_extraction
     # Assuming PC_joint.fps_inds is a tensor, create an indices tensor
     indices = torch.arange(PC.fps_inds.shape[0])
-    # Get the total number of samples
-    N = indices.shape[0]
+    # TODO Maybe handle if this scenario appears: if PC.N_points < PC.fps_inds.shape[0]:
+    # It is quite unlikely if we do not take too many fps points, but it can happen
     # Now split the indices tensor into batches
-    index_batches = divide_into_batches(indices, N, batch_size)
+    index_batches = divide_into_batches(indices, batch_size)
 
     # Similarly, for pc_batches
-    pc_batches = divide_into_batches(PC.pc[PC.fps_inds], N, batch_size)
+    pc_batches = divide_into_batches(PC.pc[PC.fps_inds], batch_size)
 
     # Calculate radii
     radii = get_dynamic_radii(PC.distances_to_origin, params.params_diff_entropy).to(PC.device)
     # Split radii into batches
-    radii_batches = divide_into_batches(radii[PC.fps_inds], N, batch_size)
+    radii_batches = divide_into_batches(radii[PC.fps_inds], batch_size)
+
     return index_batches, pc_batches, radii_batches
 
 

@@ -19,13 +19,17 @@ def get_neighborhoods(PC_pair, pc_batch, radii_batch):
 
     dists_pc1 = torch.cdist(pc_batch, PC_pair.pc1_CS0)
     neighbor_mask_1 = (dists_pc1 < radii_batch[:, None])
+
+    assert not (neighbor_mask_0.sum().item() == 0 and neighbor_mask_1.sum().item() == 0), (
+        "ERROR: Neighbor mask"
+    )
     return neighbor_mask_0, neighbor_mask_1
 
 
 def feature_extraction(PC_scenes, params):
     N_scenes, N_samples_per_scene = PC_scenes.shape
     for scene_number in range(N_scenes):
-        gc.collect()
+        # gc.collect()
         torch.cuda.empty_cache()
         for sample_number in range(N_samples_per_scene):
             start_sample = time.time()
@@ -79,7 +83,8 @@ def feature_extraction(PC_scenes, params):
                     if params.use_jde:
                         # Filter out neighborhoods with only one point
                         bool_mask_valid_neighborhood_j = (n_neighbors_per_point_in_batch_j > 1)
-                        inds_to_valid_neighborhood_j = torch.nonzero(bool_mask_valid_neighborhood_j).squeeze()
+                        inds_to_valid_neighborhood_j = \
+                            torch.nonzero(bool_mask_valid_neighborhood_j).squeeze(dim=1)
 
                         entropies_batch_j = extract_differential_entropy(
                             PC_joint, n_neighbors_per_point_in_batch_j, neighbor_mask_j,
@@ -91,7 +96,9 @@ def feature_extraction(PC_scenes, params):
                     if params.use_sde:
                         # Filter out neighborhoods with only one point
                         bool_mask_valid_neighborhood_s = (n_neighbors_per_point_in_batch_s > 1)
-                        inds_to_valid_neighborhood_s = torch.nonzero(bool_mask_valid_neighborhood_s).squeeze()
+                        inds_to_valid_neighborhood_s = \
+                            torch.nonzero(bool_mask_valid_neighborhood_s).squeeze(dim=1)
+
                         if current_pc_is_0:
                             PC_sep = PC_pair.PC0
                         else:

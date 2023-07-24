@@ -44,9 +44,9 @@ def test(model, loader, num_class=2):
 
 def run_cls(n_samples, feature_filter, args, logger, pretrained=True):
     PCAC_TRAIN_DATASET = PCAC_dataset(n_samples=n_samples, root=args.feature_folder, split='train',
-                                      feature_filter=feature_filter)
+                                      feature_filter=feature_filter, train_ratio=args.train_ratio)
     PCAC_TEST_DATASET = PCAC_dataset(n_samples=n_samples, root=args.feature_folder, split='test',
-                                     feature_filter=feature_filter)
+                                     feature_filter=feature_filter, train_ratio=args.train_ratio)
     trainDataLoader = torch.utils.data.DataLoader(PCAC_TRAIN_DATASET, batch_size=args.batch_size,
                                                   shuffle=True, num_workers=4)
     testDataLoader = torch.utils.data.DataLoader(PCAC_TEST_DATASET, batch_size=args.batch_size,
@@ -127,7 +127,7 @@ def run_cls(n_samples, feature_filter, args, logger, pretrained=True):
             correct = pred_choice.eq(target.long().data).cpu().sum()
             mean_correct.append(correct.item() / float(points.size()[0]))
 
-            torch.cuda.empty_cache()
+            # torch.cuda.empty_cache()
             loss.backward()
             optimizer.step()
             global_step += 1
@@ -190,6 +190,7 @@ def main(args):
     # Ludvig's code
     # Init Nusc object
     if not args.re_use_data:
+        print("Start feature extraction", flush=True)
         data_folder = '/home/luddi824/thesis/PCAC/data/nuscenes/'
         version = args.dataset
         nusc = ns.nuscenes.NuScenes(version=version, dataroot=data_folder, verbose=False)
