@@ -7,6 +7,7 @@ import numpy as np
 COMPUTATION_THRESHOLD = 2.5*1e7
 
 
+# TODO: Make this function easier to comprehend. Split it into several functions.
 def sinkhorn_distance(PC_pair, neighbor_mask_0, neighbor_mask_1):
     start = time.time()
     device = PC_pair.PC0.device
@@ -33,6 +34,7 @@ def sinkhorn_distance(PC_pair, neighbor_mask_0, neighbor_mask_1):
     # The computational complexity of Sinkhorn is O(M X N) where M and N are the sizes of the point clouds
     # Then, when batching it will become O(B X M X N).
     computation_size = current_batch_size*max_neighbors_size**2
+    assert max_neighbors_size >= 1, "ERROR: We cannot have a max neighbor size which is 0"
     # This intimidating looking if-statement with recursion just make sure that we do not overuse
     # the GPU. So, if a computation threshold is reached, we decrease the batch_size by a factor 2.
     # This threshold could probably be tuned more carefully.
@@ -40,7 +42,7 @@ def sinkhorn_distance(PC_pair, neighbor_mask_0, neighbor_mask_1):
     # Use debug so you can check sizes if it crashes
 
     if computation_size > COMPUTATION_THRESHOLD:
-        torch.cuda.empty_cache()
+        # torch.cuda.empty_cache()
         current_batch_size = current_batch_size//2
         assert (current_batch_size >= 1), "ERROR: Batch size can't be lower than 1!"
         neighbor_mask_0 = torch.split(neighbor_mask_0, current_batch_size)
@@ -77,60 +79,63 @@ def sinkhorn_distance(PC_pair, neighbor_mask_0, neighbor_mask_1):
     truncated_pc0[nan_inds0] = 0.0
     truncated_pc1[nan_inds1] = 0.0
 
+    # Check which batches have valid points in both point clouds
+
     # 2. Creating a Mask:
     weights_pc0 = (~nan_inds0).any(dim=2).to(dtype)
     weights_pc1 = (~nan_inds1).any(dim=2).to(dtype)
     del nan_inds0, nan_inds1
 
-    # Normalize the weights (important for Sinkhorn to ensure equal total masses)
-    weights_pc0 /= weights_pc0.sum(dim=1, keepdim=True)
-    weights_pc1 /= weights_pc1.sum(dim=1, keepdim=True)
+    # Find valid distances (must be corresponding points in both points clouds, at least one point in each)
+    weights_pc0 = weights_pc0.float()
+    weights_pc1 = weights_pc1.float()
+    valid_batches = (weights_pc0.any(dim=1)) & (weights_pc1.any(dim=1))
+    if not valid_batches.any().item():
+        batch_distances = torch.full((current_batch_size,), 1e3, dtype=dtype, device=device)
+        print(f"Found no valid distance for any of the {current_batch_size} batches!")
+        return batch_distances
+    valid_weights_pc0 = weights_pc0[valid_batches]
+    valid_weights_pc1 = weights_pc1[valid_batches]
+    del weights_pc0, weights_pc1
+
+    # Normalize the weights (important for Sinkhorn to ensure equal total masses)S
+    valid_weights_pc0 /= valid_weights_pc0.sum(dim=1, keepdim=True)
+    valid_weights_pc1 /= valid_weights_pc1.sum(dim=1, keepdim=True)
 
     # 3. Computing the Sinkhorn Distances:
     loss_fn = SamplesLoss(loss="sinkhorn", p=2, blur=.05)
-    torch.cuda.empty_cache()
-    weights_pc0, weights_pc1 = weights_pc0.float(), weights_pc1.float()
-    truncated_pc0, truncated_pc1 = truncated_pc0.float(), truncated_pc1.float()
-    batch_distances = loss_fn(weights_pc0, truncated_pc0, weights_pc1, truncated_pc1).to(dtype)
+    # torch.cuda.empty_cache()
 
-    nan_distances = torch.isnan(batch_distances)
+    # Only compute distances for valid batches
+    valid_truncated_pc0 = truncated_pc0[valid_batches]
+    valid_truncated_pc1 = truncated_pc1[valid_batches]
+    del truncated_pc0, truncated_pc1
+
+    valid_truncated_pc0 = valid_truncated_pc0.float()
+    valid_truncated_pc1 = valid_truncated_pc1.float()
+
+    res_distances = loss_fn(
+        valid_weights_pc0, valid_truncated_pc0, valid_weights_pc1, valid_truncated_pc1).to(dtype)
+
     # Some distances invalid, set these to the max distance calculated
-    all_distances_non_nan = batch_distances[~nan_distances]
-    if all_distances_non_nan.numel() > 0:
-        max_distance = all_distances_non_nan.max()
+    inds_nan_distances = torch.isnan(res_distances)
+    valid_distances = res_distances[~inds_nan_distances]
+    if valid_distances.numel() > 0:
+        max_distance = valid_distances.max()
     else:
         # Handle the case where the tensor is empty. Maybe set max_distance to a default value or raise a
         # specific error.
         max_distance = 1e3  # TODO what to do otherwise, it is unclear.
+        print(f"Set max distance to {max_distance}, why is still unclear (unstable function?...)")
+    valid_distances[inds_nan_distances] = max_distance
+    del inds_nan_distances
 
-    batch_distances[nan_distances] = max_distance
+    # Initialize batch_distances tensor with the max_distance
+    batch_distances = torch.full((current_batch_size,), max_distance, dtype=dtype, device=device)
+
+    # Place valid distances in the appropriate positions
+    batch_distances[valid_batches] = valid_distances
+
     end = time.time()
     # print(f"Time {np.around(end - start, 4)}")
     return batch_distances
-
-
-# CODE for sequential Sinkhorn computations ...
-# start0 = time.time()
-# # Cannot have blur 0 as the method takes the log of the blur variable.
-# loss = SamplesLoss(loss="sinkhorn", p=2, blur=.05)  # this becomes very close to wasserstein
-
-# # Initialize tensor to store distances
-# N_neighborhoods = neighbor_mask_0.shape[0]
-# distances1 = torch.zeros(N_neighborhoods, dtype=dtype, device=device)
-
-# # Compute the loss for each pair of point clouds
-# for i in range(N_neighborhoods):
-#     pc0 = batch_neighborhood_pc0[i]
-#     pc1 = batch_neighborhood_pc1[i]
-
-#     # Exclude zero points
-#     pc0 = pc0[~torch.isnan(pc0).any(dim=1)]
-#     pc1 = pc1[~torch.isnan(pc1).any(dim=1)]
-
-#     # Compute the loss
-#     if pc0.shape[0] != 0 and pc1.shape[0] != 0:
-#         distances1[i] = loss(pc0, pc1)
-#     else:
-#         distances1[i] = max_distance  # TODO: Change this or select something more appropriate later
-
-# end0 = time.time()

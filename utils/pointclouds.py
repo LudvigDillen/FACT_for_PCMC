@@ -8,7 +8,7 @@ from utils.geometrics import change_coordinate_system
 
 class PCAC_dataset(torch.utils.data.Dataset):
     def __init__(self, n_samples, root, split='train',
-                 cache_size=3000, feature_filter=None):
+                 cache_size=3000, feature_filter=None, train_ratio=0.6):
         self.root = root
         self.catfile = os.path.join(self.root, 'PCAC_data_class_names.txt')
 
@@ -22,7 +22,7 @@ class PCAC_dataset(torch.utils.data.Dataset):
         # Possiblity to not use all data
         total_samples_available = len(class_ids['train']) + len(class_ids['test'])
         if total_samples_available != n_samples:
-            class_ids = self._change_data_usage(class_ids, n_samples, total_samples_available)
+            class_ids = self._change_data_usage(class_ids, n_samples, total_samples_available, train_ratio)
 
         assert (split == 'train' or split == 'test')
         class_names = ['_'.join(x.split('_')[0:-1]) for x in class_ids[split]]
@@ -61,12 +61,10 @@ class PCAC_dataset(torch.utils.data.Dataset):
     def __getitem__(self, index):
         return self._get_item(index)
 
-    def _change_data_usage(self, class_ids, n_samples, total_samples_available):
+    def _change_data_usage(self, class_ids, n_samples, total_samples_available, train_ratio):
         if n_samples > total_samples_available:
             print(f"Only {total_samples_available} are available. Using all!")
         elif n_samples < total_samples_available:
-            # train_ratio = len(class_ids['train'])/total_samples_available  # TODO
-            train_ratio = 0.6
             n_train_samples = round(n_samples*train_ratio)
             n_test_samples = round(n_samples*(1-train_ratio))
             if n_train_samples + n_test_samples > n_samples:
@@ -156,8 +154,8 @@ class PCPair:
         self.t_bin = perturb_settings.t_bin
 
         # Draw random value between 0 and 1 if we should perturb or not perturb the point cloud.
-        if perturb_settings.class_distribution == 'uniform':
-            self.class_category = np.random.choice(np.arange(self.N_classes))
+        # if perturb_settings.class_distribution == 'uniform': ... I have variant currently ...
+        self.class_category = np.random.choice(np.arange(self.N_classes))
 
         # If CorAl is implemented we also store the union point cloud
         self.set_union_of_point_clouds()

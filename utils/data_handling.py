@@ -1,5 +1,6 @@
 import numpy as np
 import os
+import time
 
 from features.differential_entropy import differential_entropy_dataset
 from utils.nuscenes_handling import read_nuscenes_data
@@ -160,7 +161,26 @@ def classes_to_txt(PC_scenes, class_counts, file, class_names):
     return class_counts, flat_PC_scenes
 
 
-def features_to_txt_files(scenes_lower, scenes_upper, n_scenes_per_loop, params, mode, class_counts):
+def display_progress(scene_counter, scenes_lower, scenes_upper, mode, start, train_ratio):
+    amount_loaded = (scene_counter-scenes_lower)/(scenes_upper-scenes_lower)
+    if mode == 'train':
+        amount_loaded *= 0.6
+    elif mode == 'test':
+        amount_loaded *= 0.4
+        amount_loaded += train_ratio
+
+    print(f"Have loaded {scene_counter-scenes_lower} of {scenes_upper-scenes_lower} {mode} scenes " +
+          f"({np.around(100*amount_loaded, 1)}% of both train and test scenes)", flush=True)
+    if amount_loaded != 0:
+        time_check = time.time()
+        time_gone = time_check - start
+
+        print(f"Time gone: {np.around(time_gone / 3600, 2)} hours")
+        estimated_time_left = time_gone / amount_loaded - time_gone
+        print(f"Estimated time left: {np.around(estimated_time_left / 3600, 2)} hours\n", flush=True)
+
+
+def features_to_txt_files(scenes_lower, scenes_upper, n_scenes_per_loop, params, mode, class_counts, start):
     """
     Extract differential entropy features from a range of scenes.
 
@@ -185,9 +205,9 @@ def features_to_txt_files(scenes_lower, scenes_upper, n_scenes_per_loop, params,
         data_folder = params.args.feature_folder
         for scene_counter in range(scenes_lower, scenes_upper, n_scenes_per_loop):
             # Display data loading progress
-            print(f"Have loaded {scene_counter-scenes_lower} of {scenes_upper-scenes_lower} {mode} scenes " +
-                  f"({np.around(100*(scene_counter-scenes_lower)/(scenes_upper-scenes_lower), 1)}%)",
-                  flush=True)
+            display_progress(scene_counter, scenes_lower, scenes_upper, mode, start, params.train_ratio)
+
+
 
             # Determine the number of scenes to read in this loop
             if scene_counter + n_scenes_per_loop > scenes_upper:
@@ -322,12 +342,13 @@ def setup_inputs_to_dnn(params):
     n_scenes_per_loop = get_n_scenes_per_loop(params.n_samples_per_scene, n_training_scenes, params.n_scenes)
 
     class_counts = np.zeros(params.perturb_settings.n_classes, dtype=int)
+    start = time.time()
     # Extract features from the training scenes
     class_counts = features_to_txt_files(
         scenes_lower=0, scenes_upper=n_training_scenes, n_scenes_per_loop=n_scenes_per_loop,
-        params=params, mode="train", class_counts=class_counts)
+        params=params, mode="train", class_counts=class_counts, start=start)
 
     # Extract features from the test scenes
     class_counts = features_to_txt_files(
         scenes_lower=n_training_scenes, scenes_upper=params.n_scenes, n_scenes_per_loop=n_scenes_per_loop,
-        params=params, mode="test", class_counts=class_counts)
+        params=params, mode="test", class_counts=class_counts, start=start)
