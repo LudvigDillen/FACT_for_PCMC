@@ -9,7 +9,7 @@ COMPUTATION_THRESHOLD = 2.5*1e7
 
 # TODO: Make this function easier to comprehend. Split it into several functions.
 def sinkhorn_distance(PC_pair, neighbor_mask_0, neighbor_mask_1):
-    start = time.time()
+    # start = time.time()
     device = PC_pair.PC0.device
     dtype = PC_pair.PC0.pc.dtype
     current_batch_size = neighbor_mask_0.shape[0]
@@ -22,6 +22,12 @@ def sinkhorn_distance(PC_pair, neighbor_mask_0, neighbor_mask_1):
     batch_neighborhood_pc0 = (PC_pair.PC0.pc.unsqueeze(dim=0))*(masked_tensor0.unsqueeze(dim=2))
     batch_neighborhood_pc1 = (PC_pair.PC1.pc.unsqueeze(dim=0))*(masked_tensor1.unsqueeze(dim=2))
 
+    # TODO: If computational load is too high. Do sequential computations.
+    if current_batch_size == 1:
+        del masked_tensor0, masked_tensor1
+        dists = sequential_sinkhorn_computations(batch_neighborhood_pc0, batch_neighborhood_pc1)
+        return dists
+
     # Create a mask where True indicates the point is not nan
     not_nan_mask_pc0 = ~torch.isnan(batch_neighborhood_pc0).any(dim=2)
     not_nan_mask_pc1 = ~torch.isnan(batch_neighborhood_pc1).any(dim=2)
@@ -30,21 +36,21 @@ def sinkhorn_distance(PC_pair, neighbor_mask_0, neighbor_mask_1):
     neighbors_per_batch0 = not_nan_mask_pc0.sum(dim=1)
     neighbors_per_batch1 = not_nan_mask_pc1.sum(dim=1)
     max_neighbors_size = max(neighbors_per_batch0.max().item(), neighbors_per_batch1.max().item())
+    if max_neighbors_size == 0:
+        # TODO: Maybe try to fix this ... This caused one crash after 4.5 hours of running before.
+        # Train scenes 130-140 when loading 30 samples per scene
+        print("Very weird that no neighbors exist but can be numerical problems ...")
+        dists = torch.full((current_batch_size,), 1e3, dtype=dtype, device=device)
+        return dists
 
     # The computational complexity of Sinkhorn is O(M X N) where M and N are the sizes of the point clouds
     # Then, when batching it will become O(B X M X N).
     computation_size = current_batch_size*max_neighbors_size**2
-    assert max_neighbors_size >= 1, "ERROR: We cannot have a max neighbor size which is 0"
     # This intimidating looking if-statement with recursion just make sure that we do not overuse
     # the GPU. So, if a computation threshold is reached, we decrease the batch_size by a factor 2.
     # This threshold could probably be tuned more carefully.
-    # TODO: RE-run and make sure that computations does not crash ... I'll decrease COMPUTATION_THRES a bit ..
-    # Use debug so you can check sizes if it crashes
-
     if computation_size > COMPUTATION_THRESHOLD:
-        # torch.cuda.empty_cache()
         current_batch_size = current_batch_size//2
-        assert (current_batch_size >= 1), "ERROR: Batch size can't be lower than 1!"
         neighbor_mask_0 = torch.split(neighbor_mask_0, current_batch_size)
         neighbor_mask_1 = torch.split(neighbor_mask_1, current_batch_size)
         N_batches = len(neighbor_mask_0)
@@ -104,7 +110,6 @@ def sinkhorn_distance(PC_pair, neighbor_mask_0, neighbor_mask_1):
 
     # 3. Computing the Sinkhorn Distances:
     loss_fn = SamplesLoss(loss="sinkhorn", p=2, blur=.05)
-    # torch.cuda.empty_cache()
 
     # Only compute distances for valid batches
     valid_truncated_pc0 = truncated_pc0[valid_batches]
@@ -136,6 +141,47 @@ def sinkhorn_distance(PC_pair, neighbor_mask_0, neighbor_mask_1):
     # Place valid distances in the appropriate positions
     batch_distances[valid_batches] = valid_distances
 
-    end = time.time()
+    # end = time.time()
     # print(f"Time {np.around(end - start, 4)}")
     return batch_distances
+
+
+def sequential_sinkhorn_computations(batch_neighborhood_pc0, batch_neighborhood_pc1):
+    print("Perform sequential Sinkhorn computations")
+    dtype = batch_neighborhood_pc0.dtype
+    device = batch_neighborhood_pc0.device
+    # Cannot have blur 0 as the method takes the log of the blur variable.
+    loss = SamplesLoss(loss="sinkhorn", p=2, blur=.05)  # this becomes very close to wasserstein
+
+    # Initialize tensor to store distances
+    N_neighborhoods = batch_neighborhood_pc0.shape[0]
+    distances = torch.zeros(N_neighborhoods, dtype=dtype, device=device)
+
+    # Compute the loss for each pair of point clouds
+    for i in range(N_neighborhoods):
+        pc0 = batch_neighborhood_pc0[i]
+        pc1 = batch_neighborhood_pc1[i]
+
+        # Exclude zero points
+        pc0 = pc0[~torch.isnan(pc0).any(dim=1)]
+        pc1 = pc1[~torch.isnan(pc1).any(dim=1)]
+
+        # Compute the loss
+        if pc0.shape[0] != 0 and pc1.shape[0] != 0:
+            distances[i] = loss(pc0, pc1)
+        elif distances.max() > 0:
+            distances[i] = distances.max()
+        else:
+            distances[i] = 1e3  # TODO: Change this or select something more appropriate later
+    return distances
+
+
+def get_max_distances(distances):
+    if distances.numel() > 0:
+        max_distance = distances.max()
+    else:
+        # Handle the case where the tensor is empty. Maybe set max_distance to a default value or raise a
+        # specific error.
+        max_distance = 1e3  # TODO what to do otherwise, it is unclear.
+        print(f"Set max distance to {max_distance}, why is still unclear (unstable function?...)")
+    return max_distance
