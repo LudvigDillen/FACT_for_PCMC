@@ -8,28 +8,22 @@ import time
 from utils.pointclouds import PC
 
 
-def triangle_angles(A, B, neighbors):
-    """Compute the internal angles of triangle ABC in radians."""
-    a = np.linalg.norm(B - neighbors, axis=1)
-    b = np.linalg.norm(A - neighbors, axis=1)
-    c = np.linalg.norm(A - B)
-
-    betas = np.arccos((a**2 + c**2 - b**2) / (2*a*c))
-    return betas
-
-
-def triangle_angles_torch(viewpoint, batch_vertices, batch_neighbors):
+def triangle_angles(viewpoint, batch_vertices, batch_neighbors):
     """Compute the internal angles of triangle ABC in radians."""
     dtype = batch_vertices.dtype
 
     batch_vertices_reshaped = batch_vertices.unsqueeze(1)  # Add an extra dimension for broadcasting
-    viewpoint_reshaped = viewpoint.unsqueeze(0).unsqueeze(0)  # Add an extra dimension for broadcasting
+    viewpoint_reshaped = viewpoint.unsqueeze(0).unsqueeze(0)  # Add extra dimensions for broadcasting
 
     a = torch.norm(batch_vertices_reshaped - batch_neighbors, dim=2)
     b = torch.norm(viewpoint_reshaped - batch_neighbors, dim=2)
     c = torch.norm(viewpoint_reshaped - batch_vertices_reshaped, dim=2)
 
-    betas = torch.acos((a**2 + c**2 - b**2) / (2*a*c))
+    arg_cos = (a**2 + c**2 - b**2) / (2*a*c)
+    # Theoretically, this is not necessary, but numerically the argument could slightly leave the range
+    # resulting in NaN values.
+    arg_cos_clipped = torch.clamp(arg_cos, -1, 1)
+    betas = torch.acos(arg_cos_clipped)
 
     # Create a mask for valid neighbors
     mask = (batch_neighbors != 0).any(dim=2).to(dtype)
@@ -39,50 +33,10 @@ def triangle_angles_torch(viewpoint, batch_vertices, batch_neighbors):
     return betas_valid
 
 
-# def calculate_visibility_angles(viewpoint, pc, vertices_map, input_convex_hull, batch_size):
-#     t1 = time.time()
-#     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-#     # Make sure your data is on the GPU
-#     pc = torch.tensor(pc, device=device)
-#     dtype = pc.dtype
-#     viewpoint = torch.tensor(viewpoint, device=device, dtype=dtype)
-#     input_convex_hull = torch.tensor(input_convex_hull, device=device, dtype=dtype)
-
-#     visibility_angles = torch.zeros(len(vertices_map), device=device, dtype=dtype)
-#     keys = list(vertices_map.keys())
-#     t2 = time.time()
-#     acc1 = 0
-#     acc2 = 0
-#     for i in range(0, len(keys), batch_size):
-#         t11 = time.time()
-#         batch_keys = keys[i:i+batch_size]
-
-#         # Determine N_max_neighbors for this batch
-#         N_max_neighbors = max(len(vertices_map[k]) for k in batch_keys)
-
-#         # Create a tensor initialized with zeros
-#         batch_neighbors = torch.zeros(len(batch_keys), N_max_neighbors, 3, device=device, dtype=dtype)
-
-#         # Fill in the neighbors for each vertex in the batch
-#         for j, k in enumerate(batch_keys):
-#             n_neighbors = len(vertices_map[k])
-#             batch_neighbors[j, :n_neighbors] = input_convex_hull[vertices_map[k]]
-#         t22 = time.time()
-#         acc1 += t22-t11
-
-#         # Compute angles
-#         angles = triangle_angles_torch(viewpoint, pc[batch_keys], batch_neighbors)
-#         visibility_angles[i:i+batch_size] = torch.sum(angles, dim=1)
-#         t33 = time.time()
-#         acc2 += t33-t22
-#     print(f"Timings\n {np.around(t2-t1, 3)}, {np.around(acc1, 3)}, {np.around(acc2, 3)}")
-#     return visibility_angles.cpu().numpy()
-
-
 def calculate_visibility_angles(viewpoint, pc, vertices_map, input_convex_hull, batch_size):
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = pc.device
     dtype = pc.dtype
-    # Convert data to PyTorch tensors on the CPU
+
     visibility_angles = torch.zeros(len(vertices_map), device=device, dtype=dtype)
 
     keys = list(vertices_map.keys())
@@ -105,25 +59,35 @@ def calculate_visibility_angles(viewpoint, pc, vertices_map, input_convex_hull, 
 
         padded_indices = torch.zeros(N_batch_keys, N_max_neighbors, dtype=torch.long)
 
-        for j, ind in enumerate(neighbor_indices):
-            padded_indices[j, :neighbor_lengths[j]] = torch.tensor(ind, dtype=torch.long)
+        for j, inds in enumerate(neighbor_indices):
+            padded_indices[j, :neighbor_lengths[j]] = torch.tensor(inds, dtype=torch.long)
 
         mask = (padded_indices != 0).unsqueeze(dim=2).to(device)
         batch_neighbors[:, :N_max_neighbors] = mask*input_convex_hull[padded_indices]
         # Compute angles
-        angles = triangle_angles_torch(viewpoint, pc[batch_keys], batch_neighbors)
+        angles = triangle_angles(viewpoint, pc[batch_keys], batch_neighbors)
+
+        # Whether to use the sum of the two smallest angles, take the mean (like below), or sum, is somewhat
+        # unclear from the article "On the Visibility of Point Clouds"
+        # But to me, it makes the most sense to take the mean, since in 3D, a point can have unlimited
+        # number of neighbors so summing is definitely not appropriate.
+        # Selecting the two smallest ones feels somewhat unmotivated, and might favor points with many
+        # neighbors, which does not necessarily imply that those points are visible.
+
+        # Code if using the two smalles angles:
         # angles_masked = angles.clone()
         # angles_masked[~(mask.squeeze(dim=2))] = float('inf')
         # two_smallest_angles = torch.topk(angles_masked, k=2, dim=1, largest=False).values
         # two_smallest_angles[two_smallest_angles == float('inf')] = torch.pi/2
         # visibility_angles[i:i+batch_size] = torch.sum(angles, dim=1)
+
         visibility_angles[i:i+batch_size] = torch.sum(angles, dim=1)/torch.tensor(neighbor_lengths,
                                                                                   dtype=dtype, device=device)
     return visibility_angles
 
 
 def visible_points(pc: np.array, viewpoint: np.array, hpr_radius: float, compute_weights=False,
-                   inversion_kernel="spherical flipping") -> np.array:
+                   inversion_kernel="spherical flipping", gamma=-0.0001) -> np.array:
     """
     Returns the indices of points in a given point cloud that are visible from a specified viewpoint.
 
@@ -153,6 +117,7 @@ def visible_points(pc: np.array, viewpoint: np.array, hpr_radius: float, compute
     Notes
     -----
     Visibility of points is determined according to the method presented in "Direct Visibility of Point Sets".
+    Visibility Scores is based on the method presented in "On the Visibility of Point Clouds"
     """
     # TODO: There are two drawbacks with this function.
     # 1. It does not take the orientation into account. This is necessary to model the points that
@@ -168,10 +133,9 @@ def visible_points(pc: np.array, viewpoint: np.array, hpr_radius: float, compute
     # vertical field of view might not be in the vertical field of view anymore since we might
     # move closer to the object.
 
-    # TODO: Make this general, always take tensors as input, and remove this then ...
-
     # Move all points such that the viewpoint is in the origin
     pc_vp = pc - viewpoint
+    viewpoint_origin = viewpoint - viewpoint
 
     # Calculate distance from origin to all points
     pc_dist = torch.norm(pc_vp, dim=1)
@@ -185,15 +149,11 @@ def visible_points(pc: np.array, viewpoint: np.array, hpr_radius: float, compute
 
     # EXPONENTIAL INVERSION KERNEL
     if inversion_kernel == "exponential inversion kernel":
-        # Move all points such that the viewpoint is in the origin
-        pc_vp = pc - viewpoint
-        # Calculate distance from origin to all points
-        pc_dist = torch.norm(pc_vp, dim=1)
-        # Exponential inversion, TODO: Set parameter 0.0001 to something good ...
-        flipped_pc_vp = pc_vp*(pc_dist**(-0.0001)/pc_dist)[:, None]
+        # Exponential inversion, TODO: Set parameter gamma to something good ...
+        flipped_pc_vp = pc_vp*(pc_dist**gamma/pc_dist)[:, None]
 
     # Add viewpoint to the set
-    input_convex_hull = torch.cat((flipped_pc_vp, viewpoint[None, :]), dim=0)
+    input_convex_hull = torch.cat((flipped_pc_vp, viewpoint_origin[None, :]), dim=0)
 
     # Compute the convex hull
     n_points = flipped_pc_vp.shape[0]
@@ -208,8 +168,6 @@ def visible_points(pc: np.array, viewpoint: np.array, hpr_radius: float, compute
             visible_inds = visible_inds[0:-1]
         return visible_inds
 
-    # New code in progress ...
-    # TODO: Do this in batches, do it better ...
     # Dictionary to store angles for each vertex
     vertices_map = {i: [] for i in visible_inds}
     # This code might not look pretty but is quite fast at least
@@ -236,17 +194,18 @@ def visible_points(pc: np.array, viewpoint: np.array, hpr_radius: float, compute
     # Remove the potential viewpoint from the inds list
     if n_points in vertices_map:
         del vertices_map[n_points]
+        visible_inds = visible_inds[0:-1]
 
     # TODO: Set batch size here to what we give in the cls-file
     visibility_angles = calculate_visibility_angles(
-        viewpoint, pc, vertices_map, input_convex_hull, batch_size=256)
-    # visibility score (inspired by "On the Visibility of Point Clouds")
-    visibility_scores = visibility_angles
-    # New code in progress ends
-
-    # Remove the potential viewpoint from the inds list
-    if n_points in visible_inds:
-        visible_inds = visible_inds[0:-1]
+        viewpoint_origin, pc, vertices_map, input_convex_hull, batch_size=256)
+    # TODO: I actually, believe the score should be torch.pi - visibility angles, where
+    # visibiltity angles are the mean of the angles. Try this with the exponential inversion
+    # kernel as well as with spherical flipping. The angle will be in the range [0, pi]
+    # So pi - [0, pi] = [pi, 0], which results in that small angles gives larger scores and
+    # vice versa which is exactly what makes sense.
+    # TODO: How should we actually calc. the score. 2pi, -pi and so on
+    visibility_scores = torch.pi - visibility_angles
     return visible_inds, visibility_scores
 
 
@@ -299,20 +258,3 @@ def keep_covisible_points(PC0, PC1, PC_union, T0, T1, hpr_radius=3.25):
     PC1_covisible = PC(PC1.pc[visible_inds_pc1], PC1.distances_to_origin[visible_inds_pc1], label=1,
                        device=device)
     return PC0_covisible, PC1_covisible, PC_union_covisible
-
-
-    # For each vertex in the convex hulls
-    # visibility_angles = np.zeros(visible_inds.shape[0])
-    # for i, vertex_key in enumerate(vertices_map):
-    #     # For each neighboring vertex
-    #     neighbors = input_convex_hull[vertices_map[vertex_key]]
-    #     # We do not care about the viewpoint vertex
-    #     if vertex_key == pc.shape[0]:
-    #         continue
-    #     vertex = pc[vertex_key]
-
-    #     # Calculate the angles of the triangle formed by the vertex, its neighbor, and the viewpoint
-    #     angles = triangle_angles(viewpoint, vertex, neighbors)
-
-    #     # Get the angle at the current vertex
-    #     visibility_angles[i] = np.sum(angles)
