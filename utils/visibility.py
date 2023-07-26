@@ -87,7 +87,7 @@ def calculate_visibility_angles(viewpoint, pc, vertices_map, input_convex_hull, 
 
 
 def visible_points(pc: np.array, viewpoint: np.array, hpr_radius: float, compute_weights=False,
-                   inversion_kernel="spherical flipping", gamma=-0.0001) -> np.array:
+                   inversion_kernel="spherical_flipping", gamma=-0.0001) -> np.array:
     """
     Returns the indices of points in a given point cloud that are visible from a specified viewpoint.
 
@@ -141,14 +141,14 @@ def visible_points(pc: np.array, viewpoint: np.array, hpr_radius: float, compute
     pc_dist = torch.norm(pc_vp, dim=1)
 
     # SPHERICAL FLIPPING
-    if inversion_kernel == "spherical flipping":
+    if inversion_kernel == "spherical_flipping":
         # Choosing dynamic radius
         R = 10**(hpr_radius)*torch.max(pc_dist)
         # Perform spherical flipping
         flipped_pc_vp = pc_vp + 2*((R-pc_dist)/pc_dist)[:, None]*pc_vp
 
     # EXPONENTIAL INVERSION KERNEL
-    if inversion_kernel == "exponential inversion kernel":
+    if inversion_kernel == "exponential":
         # Exponential inversion, TODO: Set parameter gamma to something good ...
         flipped_pc_vp = pc_vp*(pc_dist**gamma/pc_dist)[:, None]
 
