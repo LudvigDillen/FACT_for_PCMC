@@ -1,5 +1,5 @@
 batch_size: 20  # 27
-epoch: 250  # 500
+epoch: 150  # 500
 learning_rate: 0.0001 # 0.0005
 gpu: 0
 optimizer: Adam
@@ -7,7 +7,7 @@ weight_decay: 0.0001
 normal: true
 model:
   nneighbor: 16
-  nblocks: 4
+  nblocks: 4  # TODO: What does this parameter do
   transformer_dim: 128  # TODO: Investigate if I could decrease this ... Should save lots of memory
   name: Hengshuang
 # Which features to use (we always use xyz)
@@ -15,7 +15,7 @@ features_to_create:
   use_label: true  # class label
   use_jde: true  # joint differential entropy
   use_sde: true  # separate differential entropy
-  use_wd: true  # wasserstein distance
+  use_sd: true  # sinkhorn divergence
   use_c: false # covisibility weight
   use_s: false  # static weight
   use_cj: true  # joint cardinality ratio
@@ -24,7 +24,7 @@ features_to_use:
   use_label: true  # class label
   use_jde: true  # joint differential entropy
   use_sde: true  # separate differential entropy
-  use_wd: true  # wasserstein distance
+  use_sd: true  # sinkhorn divergence
   use_c: false # covisibility weight
   use_s: false  # static weight
   use_cj: true  # joint cardinality ratio
@@ -32,12 +32,12 @@ features_to_use:
 batch_size_feature_extraction: 256
 # Data setup
 num_point: 1024  # 512
-re_use_data: false
+re_use_data: true
 n_scenes: 300
 n_samples_per_scene: 10
 dataset: 'v1.0-trainval'  # 'v1.0-trainval'
 feature_folder: '/home/luddi824/thesis/PCAC/data/PCAC_data'  # TODO: Set by new user ...
-downsample_factor: 1
+downsample_factor: 1  # Make sure that the point cloud is not so downsampled that num_point does not exist
 train_ratio: 0.60
 # Perturbation settings
 perturb_settings:
@@ -47,6 +47,6 @@ perturb_settings:
   class_distribution: uniform
 # Other settings
 debug: false
-ablation: false
+ablation: true
 #load_model_path: "/home/luddi824/thesis/PCAC/outputs/2023-07-23/12-36-00/best_model.pth"
 load_model_path: false

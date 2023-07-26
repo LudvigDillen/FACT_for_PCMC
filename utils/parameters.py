@@ -69,13 +69,13 @@ class Params:
         self.use_label = features.use_label  # class label
         self.use_jde = features.use_jde  # joint differential entropy
         self.use_sde = features.use_sde  # separate differential entropy
-        self.use_wd = features.use_wd  # wasserstein distance
+        self.use_sd = features.use_sd  # sinkhorn divergence
         self.use_c = features.use_c  # covisibility weight
         self.use_s = features.use_s  # static weight
         self.use_cj = features.use_cj  # joint cardinality ratio
         self.use_cs = features.use_cs  # separate cardinality ratio
         # All these feature belows are calculated in neighborhoods (spheres) around points
-        self.study_neighborhoods = (self.use_jde or self.use_sde or self.use_wd or self.use_cj or self.use_cs)
+        self.study_neighborhoods = (self.use_jde or self.use_sde or self.use_sd or self.use_cj or self.use_cs)
         self.calc_joint_neighbors = (self.use_jde or self.use_cj)
         self.calc_sep_neighbors = (self.use_sde or self.use_cs)
 

@@ -111,7 +111,7 @@ def feature_extraction(PC_scenes, params):
                         del n_neighbors_per_point_in_batch_s, neighbor_mask_s, inds_to_valid_neighborhood_s
 
                     # EXTRACT WASSERSTEIN DISTANCE FEATURE
-                    if params.use_wd:
+                    if params.use_sd:
                         dists = sinkhorn_distance(PC_pair, neighbor_mask_0, neighbor_mask_1)
                         PC_joint.metric_wd[index] = dists
 
@@ -146,7 +146,7 @@ def write_features_to_txt_files(flat_PC_scenes, data_folder, params):
             # Set separate differential entropy channel
             sde_channel = PC_pair.PCUnion.metric_sde.cpu().numpy()[:, np.newaxis]
             feature_map = np.concatenate((feature_map, sde_channel), axis=1)
-        if params.use_wd:
+        if params.use_sd:
             wd_channel = PC_pair.PCUnion.metric_wd.cpu().numpy()[:, np.newaxis]
             feature_map = np.concatenate((feature_map, wd_channel), axis=1)
         if params.use_c:
