@@ -1,5 +1,5 @@
 batch_size: 20  # 27
-epoch: 150  # 500
+epoch: 10  # 500
 learning_rate: 0.0001 # 0.0005
 gpu: 0
 optimizer: Adam
@@ -16,7 +16,7 @@ features_to_create:
   use_jde: true  # joint differential entropy
   use_sde: true  # separate differential entropy
   use_sd: true  # sinkhorn divergence
-  use_c: false # covisibility weight
+  use_c: true # covisibility weight
   use_s: false  # static weight
   use_cj: true  # joint cardinality ratio
   use_cs: true  # separate cardinality ratio
@@ -25,19 +25,24 @@ features_to_use:
   use_jde: true  # joint differential entropy
   use_sde: true  # separate differential entropy
   use_sd: true  # sinkhorn divergence
-  use_c: false # covisibility weight
+  use_c: true  # covisibility weight
   use_s: false  # static weight
   use_cj: true  # joint cardinality ratio
   use_cs: true  # separate cardinality ratio
 batch_size_feature_extraction: 256
+# Covisibility parameters (see Katz and Tal)
+covisibilty:
+  inversion_kernel: "exponential"  # spherical_flipping is the other choice
+  gamma: -0.0001   # Parameter for the exponential inversion kernel
+  hpr_radius: 3.25  # Parameter for the spherical flipping method
 # Data setup
 num_point: 1024  # 512
-re_use_data: true
-n_scenes: 300
-n_samples_per_scene: 10
-dataset: 'v1.0-trainval'  # 'v1.0-trainval'
+re_use_data: false
+n_scenes: 10
+n_samples_per_scene: 1
+dataset: 'v1.0-mini'  # 'v1.0-trainval'
 feature_folder: '/home/luddi824/thesis/PCAC/data/PCAC_data'  # TODO: Set by new user ...
-downsample_factor: 1  # Make sure that the point cloud is not so downsampled that num_point does not exist
+downsample_factor: 8  # Make sure that the point cloud is not so downsampled that num_point does not exist
 train_ratio: 0.60
 # Perturbation settings
 perturb_settings:
@@ -46,7 +51,7 @@ perturb_settings:
   t_bin: 0.2
   class_distribution: uniform
 # Other settings
-debug: false
-ablation: true
+debug: true
+ablation: false
 #load_model_path: "/home/luddi824/thesis/PCAC/outputs/2023-07-23/12-36-00/best_model.pth"
 load_model_path: false

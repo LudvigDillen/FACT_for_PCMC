@@ -5,11 +5,11 @@ from utils.data_handling import count_decimal_digits
 
 class Params:
     def __init__(self, nusc, args, T_close_thresh, params_diff_entropy,
-                 verbose=False, hpr_radius=3.25, preprocess=True, pointwise=True,
+                 verbose=False, preprocess=True, pointwise=True,
                  do_fps=True, device=torch.device("cuda" if torch.cuda.is_available() else "cpu")):
         """
         nusc: The NuScenes class variable.
-        
+
         train_ratio (float): The ratio of scenes to use for training.
         downsample_factor 
         T_close_thresh (float): Threshold for considering a sample as "close".
@@ -52,14 +52,12 @@ class Params:
         self.do_fps = do_fps
         self.N_fps_points = args.num_point
 
-        # Set co-visibility parameters
-        self.hpr_radius = hpr_radius
-
         # Set device
         self.device = device
         self.batch_size_feature_extraction = args.batch_size_feature_extraction
 
         self.perturb_settings = args.perturb_settings
+        self.covisibilty = args.covisibilty
         self.set_class_names()
 
     def set_params_diff_entropy(self, params_diff_entropy):

@@ -131,6 +131,8 @@ def write_features_to_txt_files(flat_PC_scenes, data_folder, params):
         PC0 = PC_pair.PC0
         PC1 = PC_pair.PC1
 
+        # TODO perhaps save with torch instead. More clean to just keep it in torch ...
+        # torch.save() can be used I think
         # Set xyz feature channels
         xyz_channels = np.vstack((PC0.pc[PC0.fps_inds].cpu().numpy(), PC1.pc[PC1.fps_inds].cpu().numpy()))
         feature_map = xyz_channels
@@ -150,7 +152,8 @@ def write_features_to_txt_files(flat_PC_scenes, data_folder, params):
             wd_channel = PC_pair.PCUnion.metric_wd.cpu().numpy()[:, np.newaxis]
             feature_map = np.concatenate((feature_map, wd_channel), axis=1)
         if params.use_c:
-            print("Co-visibility weight feature not implemented yet")
+            c_channel = PC_pair.PCUnion.weight_c.cpu().numpy()[:, np.newaxis]
+            feature_map = np.concatenate((feature_map, c_channel), axis=1)
         if params.use_s:
             print("Static point weight feature not implemented yet")
         if params.use_cj:
@@ -185,11 +188,10 @@ def extract_features_to_txt_files(nusc, args):
     }
     T_close_thresh = 1.5
     verbose = False
-    hpr_radius = 3.25
     preprocess = True
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     params = Params(nusc=nusc, args=args, T_close_thresh=T_close_thresh,
-                    params_diff_entropy=params_diff_entropy, verbose=verbose, hpr_radius=hpr_radius,
+                    params_diff_entropy=params_diff_entropy, verbose=verbose,
                     preprocess=preprocess, pointwise=True, do_fps=True, device=device)
     # Set which features to use
     params.set_which_features_to_use(args.features_to_create)

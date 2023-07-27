@@ -207,8 +207,6 @@ def features_to_txt_files(scenes_lower, scenes_upper, n_scenes_per_loop, params,
             # Display data loading progress
             display_progress(scene_counter, scenes_lower, scenes_upper, mode, start, params.train_ratio)
 
-
-
             # Determine the number of scenes to read in this loop
             if scene_counter + n_scenes_per_loop > scenes_upper:
                 read_n_scenes = scenes_upper - scene_counter
@@ -221,7 +219,7 @@ def features_to_txt_files(scenes_lower, scenes_upper, n_scenes_per_loop, params,
                 params.nusc, n_scenes=read_n_scenes, n_samples=read_n_samples,
                 perturb_settings=params.perturb_settings, downsample_factor=params.downsample_factor,
                 T_close_thresh=params.T_close_thresh, scene_counter=scene_counter, verbose=params.verbose,
-                preprocess=params.preprocess, hpr_radius=params.hpr_radius)
+                preprocess=params.preprocess, params=params)
 
             if params.do_fps:
                 # Compute the differential entropy features for the scenes

@@ -86,6 +86,8 @@ class PC:
         self.N_points = pc.shape[0]
         self.N_dim = pc.shape[1]
 
+        self.weight_c = None
+
         self.set_label(label)
         # initiate the fps_inds tensor as all points in the point cloud (i.e. that means no downsampling)
         self.fps_inds = torch.arange(0, self.N_points, dtype=torch.int).to(device)
@@ -105,7 +107,12 @@ class PC:
         self.metric_jde = empty_feature.clone()
         self.metric_sde = empty_feature.clone()
         self.metric_wd = empty_feature.clone()
-        self.weight_c = empty_feature.clone()
+        # TODO: perhapsd do this in a more clean way ...
+        if self.label == 2:
+            if self.weight_c is not None:
+                self.weight_c = self.weight_c[self.fps_inds]
+        else:
+            self.weight_c = empty_feature.clone()
         self.weight_s = empty_feature.clone()
         self.weight_cj = empty_feature.clone()
         self.weight_cs = empty_feature.clone()

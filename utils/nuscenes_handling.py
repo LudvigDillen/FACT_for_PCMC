@@ -12,7 +12,7 @@ DTYPE = torch.float64
 
 class NuscenesHandling:
     def __init__(self, nusc, downsample_factor=1, lidar_token=None, T_close_thresh=0,
-                 scene_counter=0, verbose=True, preprocess=True, hpr_radius=3.25, perturb_settings=None):
+                 scene_counter=0, verbose=True, preprocess=True, perturb_settings=None):
         self.nusc = nusc
         self.scene_counter_init = scene_counter
         self.scene_counter = scene_counter
@@ -25,7 +25,6 @@ class NuscenesHandling:
         self.downsample_factor = downsample_factor  # Randomly downsample point clouds
         self.verbose = verbose
         self.preprocess = preprocess
-        self.hpr_radius = hpr_radius
         self.perturb_settings = perturb_settings
 
         # Setup scene data
@@ -218,7 +217,7 @@ class NuscenesHandling:
         num_lidar_sweeps = len(lidar_data)
         return num_lidar_sweeps
 
-    def sample_from_scenes(self, n_samples, n_scenes='all'):
+    def sample_from_scenes(self, n_samples, params, n_scenes='all'):
         """
         Here we return the sample from the dataset s.t. we evenly distribute the sample of the number
         of scenes we want to utilize.
@@ -260,7 +259,8 @@ class NuscenesHandling:
                 # Calculate the co-visible points
                 PC0_cov, PC1_cov, PCUnion_cov = keep_covisible_points(
                     PC0, PC1, currentPCPair.PCUnion, currentPCPair.pose0, currentPCPair.pose1,
-                    hpr_radius=self.hpr_radius)
+                    compute_weights=params.use_c, hpr_radius=params.covisibilty.hpr_radius,
+                    gamma=params.covisibilty.gamma, inversion_kernel=params.covisibilty.inversion_kernel)
                 currentPCPair.set_new_PC(PC0_cov, PC1_cov, PCUnion_cov)
             # Append pair to list
             PC_scene.append(currentPCPair)
@@ -302,14 +302,14 @@ class NuscenesHandling:
         return PC_scenes
 
 
-def read_nuscenes_data(nusc, n_samples, perturb_settings, downsample_factor=1, n_scenes='all',
+def read_nuscenes_data(nusc, n_samples, perturb_settings, params, downsample_factor=1, n_scenes='all',
                        T_close_thresh=0, lidar_token=None, scene_counter=0,
-                       verbose=True, preprocess=True, hpr_radius=3.25):
+                       verbose=True, preprocess=True):
     # Read data
     PCHandler = NuscenesHandling(nusc, downsample_factor=downsample_factor,
                                  T_close_thresh=T_close_thresh, lidar_token=lidar_token,
                                  scene_counter=scene_counter, verbose=verbose, preprocess=preprocess,
-                                 hpr_radius=hpr_radius, perturb_settings=perturb_settings)
-    PC_scenes = PCHandler.sample_from_scenes(n_samples=n_samples, n_scenes=n_scenes)
+                                 perturb_settings=perturb_settings)
+    PC_scenes = PCHandler.sample_from_scenes(n_samples=n_samples, params=params, n_scenes=n_scenes)
     del PCHandler
     return PC_scenes
