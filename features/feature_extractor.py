@@ -8,7 +8,7 @@ from utils.data_handling import setup_inputs_to_dnn, generate_class_names_file
 from utils.parameters import Params
 from features.differential_entropy import extract_differential_entropy
 from features.feature_utils import get_data_batches
-from features.wasserstein import sinkhorn_distance
+from features.wasserstein import sinkhorn_divergence
 
 
 def get_neighborhoods(PC_pair, pc_batch, radii_batch):
@@ -110,9 +110,9 @@ def feature_extraction(PC_scenes, params):
                         PC_joint.metric_sde[index] = entropies_batch_s
                         del n_neighbors_per_point_in_batch_s, neighbor_mask_s, inds_to_valid_neighborhood_s
 
-                    # EXTRACT WASSERSTEIN DISTANCE FEATURE
+                    # EXTRACT SINKHORN DIVERGENCE FEATURE
                     if params.use_sd:
-                        dists = sinkhorn_distance(PC_pair, neighbor_mask_0, neighbor_mask_1)
+                        dists = sinkhorn_divergence(PC_pair, neighbor_mask_0, neighbor_mask_1)
                         PC_joint.metric_wd[index] = dists
 
             PC_scenes[scene_number][sample_number].PCUnion = PC_joint
