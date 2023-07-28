@@ -217,7 +217,8 @@ class NuscenesHandling:
         num_lidar_sweeps = len(lidar_data)
         return num_lidar_sweeps
 
-    def sample_from_scenes(self, n_samples, params, n_scenes='all'):
+    def sample_from_scenes(self, n_samples, cov_params, use_c, n_scenes='all',
+                           batch_size=256):
         """
         Here we return the sample from the dataset s.t. we evenly distribute the sample of the number
         of scenes we want to utilize.
@@ -259,8 +260,9 @@ class NuscenesHandling:
                 # Calculate the co-visible points
                 PC0_cov, PC1_cov, PCUnion_cov = keep_covisible_points(
                     PC0, PC1, currentPCPair.PCUnion, currentPCPair.pose0, currentPCPair.pose1,
-                    compute_weights=params.use_c, hpr_radius=params.covisibilty.hpr_radius,
-                    gamma=params.covisibilty.gamma, inversion_kernel=params.covisibilty.inversion_kernel)
+                    compute_weights=use_c, hpr_radius=cov_params.hpr_radius,
+                    gamma=cov_params.gamma, inversion_kernel=cov_params.inversion_kernel,
+                    batch_size=batch_size)
                 currentPCPair.set_new_PC(PC0_cov, PC1_cov, PCUnion_cov)
             # Append pair to list
             PC_scene.append(currentPCPair)
@@ -302,14 +304,15 @@ class NuscenesHandling:
         return PC_scenes
 
 
-def read_nuscenes_data(nusc, n_samples, perturb_settings, params, downsample_factor=1, n_scenes='all',
+def read_nuscenes_data(nusc, n_samples, perturb_settings, cov_params, use_c, downsample_factor=1, n_scenes='all',
                        T_close_thresh=0, lidar_token=None, scene_counter=0,
-                       verbose=True, preprocess=True):
+                       verbose=True, preprocess=True, batch_size=256):
     # Read data
     PCHandler = NuscenesHandling(nusc, downsample_factor=downsample_factor,
                                  T_close_thresh=T_close_thresh, lidar_token=lidar_token,
                                  scene_counter=scene_counter, verbose=verbose, preprocess=preprocess,
                                  perturb_settings=perturb_settings)
-    PC_scenes = PCHandler.sample_from_scenes(n_samples=n_samples, params=params, n_scenes=n_scenes)
+    PC_scenes = PCHandler.sample_from_scenes(n_samples=n_samples, cov_params=cov_params, n_scenes=n_scenes,
+                                             use_c=use_c, batch_size=batch_size)
     del PCHandler
     return PC_scenes

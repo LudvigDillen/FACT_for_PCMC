@@ -61,6 +61,7 @@ def transformation_matrix(quaternion, translation):
     return transformation_matrix
 
 
+# TODO: If I want to have a speed-up I should to this function in batches.
 def change_coordinate_system(pc1: torch.Tensor, T0: torch.Tensor, T1: torch.Tensor) -> torch.Tensor:
     """
     Moves a 3D point cloud with with pose T1 to the local coordinate system of another point

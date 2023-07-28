@@ -84,7 +84,7 @@ def calculate_visibility_angles(viewpoint, pc_inverted, vertices_map, batch_size
 
 
 def visible_points(pc, viewpoint, hpr_radius, gamma=-0.0001, inversion_kernel="exponential",
-                   compute_weights=False):
+                   compute_weights=False, batch_size=256):
     """
     Returns the indices of points in a given point cloud that are visible from a specified viewpoint.
 
@@ -206,7 +206,7 @@ def visible_points(pc, viewpoint, hpr_radius, gamma=-0.0001, inversion_kernel="e
 
     # TODO: Set batch size here to what we give in the cls-file
     visibility_angles = calculate_visibility_angles(
-        viewpoint_origin, pc_inverted, vertices_map, batch_size=256)
+        viewpoint_origin, pc_inverted, vertices_map, batch_size=batch_size)
 
     # TODO: Do I want this normalization ... ?
     visibility_scores = (visibility_angles - visibility_angles.min())
@@ -215,7 +215,8 @@ def visible_points(pc, viewpoint, hpr_radius, gamma=-0.0001, inversion_kernel="e
 
 
 def covisible_inds(pc0, pc_union, T0, T1, hpr_radius=3.25, gamma=-0.0001,
-                   inversion_kernel="exponential", compute_weights=False):
+                   inversion_kernel="exponential", compute_weights=False,
+                   batch_size=256):
     # We assume here that no non-covisible point will be become visible when adding
     # additional points to the point cloud. This will not necessarily be true in
     # practice but it should hold in theory. Hence, we only need to study the
@@ -232,11 +233,11 @@ def covisible_inds(pc0, pc_union, T0, T1, hpr_radius=3.25, gamma=-0.0001,
     if compute_weights:
         vis_points_pose0, visibility_scores0 = visible_points(
             pc_union, zero_vec, hpr_radius, gamma=gamma, inversion_kernel=inversion_kernel,
-            compute_weights=compute_weights)
+            compute_weights=compute_weights, batch_size=batch_size)
     else:
         vis_points_pose0 = visible_points(
             pc_union, zero_vec, hpr_radius, gamma=gamma, inversion_kernel=inversion_kernel,
-            compute_weights=compute_weights)
+            compute_weights=compute_weights, batch_size=batch_size)
 
     # init with zeros (regard all points as not visible)
     visible_mask0 = torch.zeros(union_n_points, device=device, dtype=torch.int)
@@ -250,11 +251,11 @@ def covisible_inds(pc0, pc_union, T0, T1, hpr_radius=3.25, gamma=-0.0001,
     if compute_weights:
         vis_points_pose1, visibility_scores1 = visible_points(
             pc_union, viewpoint1_CS0, hpr_radius, gamma=gamma, inversion_kernel=inversion_kernel,
-            compute_weights=compute_weights)
+            compute_weights=compute_weights, batch_size=batch_size)
     else:
         vis_points_pose1 = visible_points(
             pc_union, viewpoint1_CS0, hpr_radius, gamma=gamma, inversion_kernel=inversion_kernel,
-            compute_weights=compute_weights)
+            compute_weights=compute_weights, batch_size=batch_size)
 
     # init with zeros (regard all points as not visible)
     visible_mask1 = torch.zeros(union_n_points, device=device, dtype=torch.int)
@@ -292,15 +293,15 @@ def covisible_inds(pc0, pc_union, T0, T1, hpr_radius=3.25, gamma=-0.0001,
 
 
 def keep_covisible_points(PC0, PC1, PC_union, T0, T1, compute_weights, hpr_radius=3.25, gamma=-0.0001,
-                          inversion_kernel="exponential"):
+                          inversion_kernel="exponential", batch_size=256):
     if compute_weights:
         visible_inds, visible_inds_pc0, visible_inds_pc1, covisibility_scores = covisible_inds(
             PC0.pc, PC_union.pc, T0, T1, gamma=gamma, inversion_kernel=inversion_kernel,
-            compute_weights=compute_weights, hpr_radius=hpr_radius)
+            compute_weights=compute_weights, hpr_radius=hpr_radius, batch_size=batch_size)
     else:
         visible_inds, visible_inds_pc0, visible_inds_pc1 = covisible_inds(
             PC0.pc, PC_union.pc, T0, T1, gamma=gamma, inversion_kernel=inversion_kernel,
-            compute_weights=compute_weights, hpr_radius=hpr_radius)
+            compute_weights=compute_weights, hpr_radius=hpr_radius, batch_size=batch_size)
 
     device = PC0.device
     PC_union_covisible = PC(PC_union.pc[visible_inds], PC_union.distances_to_origin[visible_inds], label=2,

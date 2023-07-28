@@ -68,8 +68,10 @@ def sinkhorn_divergence(PC_pair, neighbor_mask_0, neighbor_mask_1, recalling=Fal
         del not_nan_mask_pc0, not_nan_mask_pc1
 
         # Use the sorted indices to gather the points in the desired sorted order
-        sorted_pc0 = torch.gather(batch_neighborhood_pc0, 1, sorted_indices_pc0.unsqueeze(2).expand(-1, -1, 3))
-        sorted_pc1 = torch.gather(batch_neighborhood_pc1, 1, sorted_indices_pc1.unsqueeze(2).expand(-1, -1, 3))
+        sorted_pc0 = torch.gather(batch_neighborhood_pc0, 1,
+                                  sorted_indices_pc0.unsqueeze(2).expand(-1, -1, 3))
+        sorted_pc1 = torch.gather(batch_neighborhood_pc1, 1,
+                                  sorted_indices_pc1.unsqueeze(2).expand(-1, -1, 3))
         del sorted_indices_pc0, sorted_indices_pc1
         del batch_neighborhood_pc0, batch_neighborhood_pc1
 

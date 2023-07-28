@@ -42,6 +42,10 @@ def test(model, loader, num_class=2):
     return instance_acc, class_acc
 
 
+# TODO: Maybe add functionality so that we can extract one feature at the time, and
+# add this to previous extracted features. Note that we then have to save the
+# pointcloud (the distorted versions) which should be unfeasible.
+# TODO: However, I could add functionality so that we resume feature extraction after crash ...
 def run_cls(n_samples, feature_filter, args, logger, pretrained=True):
     PCAC_TRAIN_DATASET = PCAC_dataset(n_samples=n_samples, root=args.feature_folder, split='train',
                                       feature_filter=feature_filter, train_ratio=args.train_ratio)
@@ -56,6 +60,7 @@ def run_cls(n_samples, feature_filter, args, logger, pretrained=True):
     '''MODEL LOADING'''
     args.num_class = args.perturb_settings.n_classes
     args.input_dim = number_of_features(feature_filter)
+    print(f"Input dim: {args.input_dim}")
 
     shutil.copy(hydra.utils.to_absolute_path(
         'classifiers/PointTransformers/models/{}/model.py'.format(args.model.name)),
@@ -92,7 +97,7 @@ def run_cls(n_samples, feature_filter, args, logger, pretrained=True):
     else:
         optimizer = torch.optim.SGD(classifier.parameters(), lr=0.01, momentum=0.9)
 
-    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.8)
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.85)
     global_epoch = 0
     global_step = 0
     best_instance_acc = 0.0

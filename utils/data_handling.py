@@ -219,7 +219,8 @@ def features_to_txt_files(scenes_lower, scenes_upper, n_scenes_per_loop, params,
                 params.nusc, n_scenes=read_n_scenes, n_samples=read_n_samples,
                 perturb_settings=params.perturb_settings, downsample_factor=params.downsample_factor,
                 T_close_thresh=params.T_close_thresh, scene_counter=scene_counter, verbose=params.verbose,
-                preprocess=params.preprocess, params=params)
+                preprocess=params.preprocess, cov_params=params.covisibilty, use_c=params.use_c,
+                batch_size=params.batch_size_feature_extraction)
 
             if params.do_fps:
                 # Compute the differential entropy features for the scenes
