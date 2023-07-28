@@ -1,4 +1,3 @@
-import numpy as np
 import torch
 from scipy.spatial import ConvexHull
 import time
@@ -44,7 +43,6 @@ def calculate_visibility_angles(viewpoint, pc_inverted, vertices_map, batch_size
     dtype = pc_inverted.dtype
 
     visibility_angles = torch.zeros(len(vertices_map), device=device, dtype=dtype)
-
     keys = list(vertices_map.keys())
     for i in range(0, len(keys), batch_size):
         batch_keys = keys[i:i+batch_size]
@@ -57,13 +55,12 @@ def calculate_visibility_angles(viewpoint, pc_inverted, vertices_map, batch_size
             elements = vertices_map[k]
             neighbor_indices.append(elements)
             neighbor_lengths.append(len(elements))
-
         N_max_neighbors = max(neighbor_lengths)
 
-        padded_indices = torch.zeros(N_batch_keys, N_max_neighbors, dtype=torch.long, device=device)
+        padded_indices = torch.zeros(N_batch_keys, N_max_neighbors, dtype=torch.long)
 
         for j, inds in enumerate(neighbor_indices):
-            padded_indices[j, :neighbor_lengths[j]] = torch.tensor(inds, dtype=torch.long, device=device)
+            padded_indices[j, :neighbor_lengths[j]] = torch.tensor(inds, dtype=torch.long)
 
         mask = (padded_indices != 0).to(device)
         batch_neighbors = (mask.unsqueeze(dim=2))*pc_inverted[padded_indices]
