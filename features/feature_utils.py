@@ -115,7 +115,8 @@ def run_ablation_features(n_samples, feature_filter, args, logger):
                                                    pretrained=False)
         all_train_accuracies[i] = train_accuracies
         all_val_accuracies[i] = val_accuracies
-    plot_accuracies_ablation(all_train_accuracies, all_val_accuracies, true_keys, plot_train=False)
+    plot_accuracies_ablation(all_train_accuracies, all_val_accuracies, true_keys,
+                             plot_train=args.plot_train_acc)
     return None
 
 

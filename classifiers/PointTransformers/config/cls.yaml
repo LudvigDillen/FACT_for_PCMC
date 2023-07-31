@@ -1,6 +1,6 @@
 batch_size: 20  # 27
-epoch: 10  # 500
-learning_rate: 0.0001 # 0.0005
+epoch: 250  # 500
+learning_rate: 0.00005 # 0.0005
 gpu: 0
 optimizer: Adam
 weight_decay: 0.0001
@@ -38,20 +38,22 @@ covisibilty:
 # Data setup
 num_point: 1024  # 512
 re_use_data: false
-n_scenes: 10
-n_samples_per_scene: 1
-dataset: 'v1.0-mini'  # 'v1.0-trainval'
+n_scenes: 335
+n_samples_per_scene: 40
+dataset: 'v1.0-trainval'  # 'v1.0-trainval'
 feature_folder: '/home/luddi824/thesis/PCAC/data/PCAC_data'  # TODO: Set by new user ...
-downsample_factor: 8  # Make sure that the point cloud is not so downsampled that num_point does not exist
-train_ratio: 0.60
+downsample_factor: 1  # Make sure that the point cloud is not so downsampled that num_point does not exist
+train_ratio: 0.70
 # Perturbation settings
 perturb_settings:
-  n_classes: 6
-  r_bin: 0.02
-  t_bin: 0.2
+  n_classes: 10
+  r_bin: 0.01
+  t_bin: 0.1
   class_distribution: uniform
 # Other settings
-debug: true
-ablation: false
+debug: false
 #load_model_path: "/home/luddi824/thesis/PCAC/outputs/2023-07-23/12-36-00/best_model.pth"
 load_model_path: false
+# Plot settings
+ablation: false
+plot_train_acc: true

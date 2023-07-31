@@ -137,15 +137,17 @@ def run_cls(n_samples, feature_filter, args, logger, pretrained=True):
             optimizer.step()
             global_step += 1
 
-        train_instance_acc = np.mean(mean_correct)
-        train_accuracies[epoch] = train_instance_acc
-
         scheduler.step()
 
         train_instance_acc = np.mean(mean_correct)
-        logger.info('Train Instance Accuracy: %f' % train_instance_acc)
+        logger.info('Train Instance Accuracy (augmented data): %f' % train_instance_acc)
 
         with torch.no_grad():
+            if args.plot_train_acc:
+                instance_acc_train, class_acc_train = test(classifier.eval(), trainDataLoader,
+                                                           num_class=args.num_class)
+                logger.info('Train Instance Accuracy (regular data): %f' % instance_acc_train)
+                train_accuracies[epoch] = instance_acc_train
             instance_acc, class_acc = test(classifier.eval(), testDataLoader, num_class=args.num_class)
             val_accuracies[epoch] = instance_acc
 
@@ -213,7 +215,7 @@ def main(args):
         run_ablation_features(n_samples, feature_filter, args, logger)
     else:
         train_accuracies, val_accuracies = run_cls(n_samples, feature_filter, args, logger)
-        plot_accuracies(train_accuracies, val_accuracies)
+        plot_accuracies(train_accuracies, val_accuracies, args.plot_train_acc)
 
 
 if __name__ == '__main__':
