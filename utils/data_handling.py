@@ -164,9 +164,9 @@ def classes_to_txt(PC_scenes, class_counts, file, class_names):
 def display_progress(scene_counter, scenes_lower, scenes_upper, mode, start, train_ratio):
     amount_loaded = (scene_counter-scenes_lower)/(scenes_upper-scenes_lower)
     if mode == 'train':
-        amount_loaded *= 0.6
+        amount_loaded *= train_ratio
     elif mode == 'test':
-        amount_loaded *= 0.4
+        amount_loaded *= 1-train_ratio
         amount_loaded += train_ratio
 
     print(f"Have loaded {scene_counter-scenes_lower} of {scenes_upper-scenes_lower} {mode} scenes " +
