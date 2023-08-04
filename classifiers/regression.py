@@ -3,8 +3,9 @@ from tqdm import tqdm
 import numpy as np
 
 """
-Kudos to Denny Loevlie from whom I've got code inspiration from. See link.
+Kudos to Denny Loevlie from whom I've got code inspiration from. See link. (MIT license exists)
 https://towardsdatascience.com/logistic-regression-with-pytorch-3c8bbea594be
+https://gist.github.com/loevlie/5044e62aea2ce625b70d6d6d75113d25
 """
 
 
