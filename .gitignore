@@ -2,3 +2,5 @@ data/
 __pycache__
 nohups/
 outputs/
+images/
+to_remove.py
