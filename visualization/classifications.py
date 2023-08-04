@@ -1,6 +1,7 @@
 from datetime import datetime
 import matplotlib.pyplot as plt
 import numpy as np
+from sklearn.metrics import confusion_matrix
 
 
 def model_plot(model, X, y, title):
@@ -144,6 +145,58 @@ def extract_accuracies(filename):
     test_accuracies = np.array(test_accuracies)
 
     return train_accuracies, test_accuracies
+
+
+def text_color(bg_color):
+    """Return 'black' or 'white' depending on the perceived brightness of bg_color."""
+    brightness = 0.299 * bg_color[0] + 0.587 * bg_color[1] + 0.114 * bg_color[2]
+    return 'black' if brightness > 0.5 else 'white'
+
+
+def store_confusion_matrix(y_pred, y_true, N_classes):
+    # Calculate the confusion matrix
+    cm = confusion_matrix(y_true, y_pred)
+
+    # Plot the confusion matrix
+    fig, ax = plt.subplots()
+    cax = ax.matshow(cm, cmap=plt.cm.Blues)
+    plt.title('Confusion matrix of the classifier')
+    fig.colorbar(cax)
+
+    # Setting x and y axis labels
+    class_labels = ['Class {}'.format(i) for i in range(N_classes)]
+    ax.set_xticks(np.arange(N_classes))
+    ax.set_yticks(np.arange(N_classes))
+    fontsize = min(int(60/N_classes), 12)
+    ax.set_xticklabels(class_labels, fontsize=fontsize)
+    ax.set_yticklabels(class_labels, fontsize=fontsize)
+    plt.xlabel('Predicted')
+    plt.ylabel('True')
+    plt.grid(False)  # Hide the grid lines
+
+    # Display the counts on the matrix
+    for i in range(N_classes):
+        for j in range(N_classes):
+            cell_color = cax.to_rgba(cm[i, j])[:3]
+            plt.text(j, i, cm[i, j], ha='center', va='center', color=text_color(cell_color))
+
+    plt.tight_layout()
+
+    # Define the directory and filename
+    directory = '/home/luddi824/thesis/PCAC/images/classification/PointTransformer'
+
+    # Get the current time and format it as a string
+    now = datetime.now()
+    time_string = now.strftime('%Y%m%d_%H%M%S')
+
+    filename = f'confusion_matrix_{time_string}'
+
+    # Save the figure to an .eps file
+    fig.savefig(f'{directory}/{filename}.eps', format='eps')
+    # Save the figure to an .eps file
+    fig.savefig(f'{directory}/{filename}.jpg', format='jpg')
+
+    plt.close()  # Close the figure
 
 
 if __name__ == "__main__":
