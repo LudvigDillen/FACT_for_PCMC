@@ -7,8 +7,8 @@ from utils.geometrics import change_coordinate_system
 
 
 class PCAC_dataset(torch.utils.data.Dataset):
-    def __init__(self, n_samples, root, split='train',
-                 cache_size=3000, feature_filter=None, train_ratio=0.6):
+    def __init__(self, n_samples, root, train_ratio, split='train',
+                 cache_size=3000, feature_filter=None):
         self.root = root
         self.catfile = os.path.join(self.root, 'PCAC_data_class_names.txt')
 
@@ -16,15 +16,18 @@ class PCAC_dataset(torch.utils.data.Dataset):
         self.classes = dict(zip(self.cat, range(len(self.cat))))
 
         class_ids = {}
-        class_ids['train'] = [line.rstrip() for line in open(os.path.join(self.root, 'PCAC_data_train.txt'))]
-        class_ids['test'] = [line.rstrip() for line in open(os.path.join(self.root, 'PCAC_data_test.txt'))]
+        modes = ["train", "validation", "test"]
+        total_samples_available = 0
+        for mode in modes:
+            mode_file = 'PCAC_data_' + mode + '.txt'
+            class_ids[mode] = [line.rstrip() for line in open(os.path.join(self.root, mode_file))]
+            total_samples_available += len(class_ids[mode])
 
-        # Possiblity to not use all data
-        total_samples_available = len(class_ids['train']) + len(class_ids['test'])
+        self.n_samples = n_samples
         if total_samples_available != n_samples:
             class_ids = self._change_data_usage(class_ids, n_samples, total_samples_available, train_ratio)
 
-        assert (split == 'train' or split == 'test')
+        assert split in modes, "Error valid split not given!"
         class_names = ['_'.join(x.split('_')[0:-1]) for x in class_ids[split]]
         # list of (class_name, class_txt_file_path) tuple
         self.datapath = [(class_names[i],
@@ -49,6 +52,7 @@ class PCAC_dataset(torch.utils.data.Dataset):
             cls = self.classes[self.datapath[index][0]]
             cls = np.array([cls]).astype(np.int32)
             point_set = np.loadtxt(fn[1], delimiter=',').astype(np.float32)
+            # TODO: Not sure why to do the normalization, but seems important for performance...
             point_set[:, 0:3] = pc_normalize(point_set[:, 0:3])
             # Remove some of the features which we do not want to use
             point_set = point_set[:, self.feature_channels]
@@ -102,12 +106,12 @@ class PC:
         self.label = label
 
     def init_features(self):
-        # TODO: DO I need to clone here?
+        # TODO: Do I need to clone here?
         empty_feature = torch.empty(self.N_fps_points, dtype=self.pc.dtype).to(self.device)
         self.metric_jde = empty_feature.clone()
         self.metric_sde = empty_feature.clone()
         self.metric_wd = empty_feature.clone()
-        # TODO: perhapsd do this in a more clean way ...
+        # TODO: perhaps do this in a more clean way ...
         if self.label == 2:
             if self.weight_c is not None:
                 self.weight_c = self.weight_c[self.fps_inds]

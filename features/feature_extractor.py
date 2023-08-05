@@ -171,6 +171,7 @@ def write_features_to_txt_files(flat_PC_scenes, data_folder, params):
         if not os.path.exists(dir_name):
             # If the directory doesn't exist, create it
             os.makedirs(dir_name)
+        # If the file already contains content, we overwrite it
         np.savetxt(save_file, feature_map, delimiter=',', fmt='%.6f')
 
 
@@ -195,7 +196,9 @@ def extract_features_to_txt_files(nusc, args):
                     preprocess=preprocess, pointwise=True, do_fps=True, device=device)
     # Set which features to use
     params.set_which_features_to_use(args.features_to_create)
-    generate_class_names_file(
-        folder=args.feature_folder, filename="PCAC_data_class_names.txt",
-        n_classes=args.perturb_settings.n_classes, class_names=params.class_names)
+    # We do not have to recreate the file if we are re-running after crash
+    if not params.args.rerun_crash:
+        generate_class_names_file(
+            folder=args.feature_folder, filename="PCAC_data_class_names.txt",
+            n_classes=args.perturb_settings.n_classes, class_names=params.class_names)
     setup_inputs_to_dnn(params)

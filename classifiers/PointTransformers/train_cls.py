@@ -17,19 +17,21 @@ from features.feature_utils import process_features, run_ablation_features, numb
 import classifiers.PointTransformers.provider as provider
 from utils.other import start_debug
 from utils.pointclouds import PCAC_dataset
-from visualization.classifications import plot_accuracies
+from visualization.classifications import plot_accuracies, store_confusion_matrix
 
 
-def test(model, loader, num_class=2):
+def track_accuracy(model, loader, num_class):
     mean_correct = []
     class_acc = np.zeros((num_class, 3))
-    for j, data in tqdm(enumerate(loader), total=len(loader)):
+    for data in tqdm(loader, total=len(loader)):
         points, target = data
         target = target[:, 0]
+
         points, target = points.cuda(), target.cuda()
         classifier = model.eval()
-        pred = classifier(points)
-        pred_choice = pred.data.max(1)[1]
+        pred = classifier(points)  # [B, n_classes], here we have a score for each class
+        pred_choice = pred.data.max(1)[1]  # highest score wins
+
         for cat in np.unique(target.cpu()):
             classacc = pred_choice[target == cat].eq(target[target == cat].long().data).cpu().sum()
             class_acc[cat, 0] += classacc.item()/float(points[target == cat].size()[0])
@@ -42,20 +44,58 @@ def test(model, loader, num_class=2):
     return instance_acc, class_acc
 
 
+def test_results(model, loader, num_class):
+    mean_correct = []
+    class_acc = np.zeros((num_class, 3))
+    N_samples = len(loader.dataset)
+    y_true = np.zeros(N_samples)
+    y_pred = np.zeros(N_samples)
+    ind = 0
+    for data in tqdm(loader, total=len(loader)):
+        points, target = data
+        target = target[:, 0]
+
+        current_batch_size = len(target)
+        y_true[ind:ind + current_batch_size] = target.numpy()
+
+        points, target = points.cuda(), target.cuda()
+        classifier = model.eval()
+        pred = classifier(points)  # [B, n_classes], here we have a score for each class
+        pred_choice = pred.data.max(1)[1]  # highest score wins
+
+        y_pred[ind:ind + current_batch_size] = pred_choice.cpu().numpy()
+        ind = ind + current_batch_size
+
+        for cat in np.unique(target.cpu()):
+            classacc = pred_choice[target == cat].eq(target[target == cat].long().data).cpu().sum()
+            class_acc[cat, 0] += classacc.item()/float(points[target == cat].size()[0])
+            class_acc[cat, 1] += 1
+        correct = pred_choice.eq(target.long().data).cpu().sum()
+        mean_correct.append(correct.item()/float(points.size()[0]))
+    class_acc[:, 2] = class_acc[:, 0] / class_acc[:, 1]
+    class_acc = np.mean(class_acc[:, 2])
+    instance_acc = np.mean(mean_correct)
+    return instance_acc, class_acc, y_true, y_pred
+
+
 # TODO: Maybe add functionality so that we can extract one feature at the time, and
 # add this to previous extracted features. Note that we then have to save the
 # pointcloud (the distorted versions) which should be unfeasible.
-# TODO: However, I could add functionality so that we resume feature extraction after crash ...
 def run_cls(n_samples, feature_filter, args, logger, pretrained=True):
     PCAC_TRAIN_DATASET = PCAC_dataset(n_samples=n_samples, root=args.feature_folder, split='train',
                                       feature_filter=feature_filter, train_ratio=args.train_ratio)
+    PCAC_VAL_DATASET = PCAC_dataset(n_samples=n_samples, root=args.feature_folder, split='validation',
+                                    feature_filter=feature_filter, train_ratio=args.train_ratio)
     PCAC_TEST_DATASET = PCAC_dataset(n_samples=n_samples, root=args.feature_folder, split='test',
                                      feature_filter=feature_filter, train_ratio=args.train_ratio)
+
     trainDataLoader = torch.utils.data.DataLoader(PCAC_TRAIN_DATASET, batch_size=args.batch_size,
                                                   shuffle=True, num_workers=4)
+    valDataLoader = torch.utils.data.DataLoader(PCAC_VAL_DATASET, batch_size=args.batch_size,
+                                                shuffle=True, num_workers=4)
     testDataLoader = torch.utils.data.DataLoader(PCAC_TEST_DATASET, batch_size=args.batch_size,
                                                  shuffle=False, num_workers=4)
-    del PCAC_TRAIN_DATASET, PCAC_TEST_DATASET
+    del PCAC_TRAIN_DATASET, PCAC_VAL_DATASET, PCAC_TEST_DATASET
 
     '''MODEL LOADING'''
     args.num_class = args.perturb_settings.n_classes
@@ -118,8 +158,9 @@ def run_cls(n_samples, feature_filter, args, logger, pretrained=True):
             points, target = data
             points = points.data.numpy()
             points = provider.random_point_dropout(points)
+            # TODO: How to do with the augmentation?
             points[:, :, 0:3] = provider.random_scale_point_cloud(points[:, :, 0:3])
-            points[:, :, 0:3] = provider.shift_point_cloud(points[:, :, 0:3])
+            # points[:, :, 0:3] = provider.shift_point_cloud(points[:, :, 0:3])
             points = torch.Tensor(points)
             target = target[:, 0]
 
@@ -144,11 +185,13 @@ def run_cls(n_samples, feature_filter, args, logger, pretrained=True):
 
         with torch.no_grad():
             if args.plot_train_acc:
-                instance_acc_train, class_acc_train = test(classifier.eval(), trainDataLoader,
-                                                           num_class=args.num_class)
+                instance_acc_train, class_acc_train = track_accuracy(classifier.eval(), trainDataLoader,
+                                                                     num_class=args.num_class)
                 logger.info('Train Instance Accuracy (regular data): %f' % instance_acc_train)
                 train_accuracies[epoch] = instance_acc_train
-            instance_acc, class_acc = test(classifier.eval(), testDataLoader, num_class=args.num_class)
+
+            instance_acc, class_acc = track_accuracy(classifier.eval(), valDataLoader,
+                                                     num_class=args.num_class)
             val_accuracies[epoch] = instance_acc
 
             if (instance_acc >= best_instance_acc):
@@ -175,15 +218,22 @@ def run_cls(n_samples, feature_filter, args, logger, pretrained=True):
                 torch.save(state, savepath)
             global_epoch += 1
 
+    # Load the best validation model
+    best_model_path = 'best_model.pth'
+    checkpoint = torch.load(best_model_path)
+    classifier.load_state_dict(checkpoint['model_state_dict'])
+
+    # Test best validation settings on test data
+    test_instance_acc, test_class_acc, y_true, y_pred = test_results(classifier.eval(), testDataLoader,
+                                                                     num_class=args.num_class)
+    logger.info(f'Test Overall Accuracy: {test_instance_acc}')
+    logger.info(f'Test Mean Class Accuracy: {test_class_acc}')
     logger.info('End of training...')
-    return train_accuracies, val_accuracies
+    return train_accuracies, val_accuracies, test_instance_acc, test_class_acc, y_true, y_pred
 
 
 @hydra.main(config_path='config', config_name='cls')
 def main(args):
-    # TODO: Change it to torch.float64, I think this is better, and then move it to torch.float32 for
-    # certain calculations. If we want to go back to torch.float32, we need to check that epsilon does not
-    # cause nan-values in the differential entropy method
     if args.debug:
         start_debug()
     omegaconf.OmegaConf.set_struct(args, False)
@@ -214,8 +264,12 @@ def main(args):
     if args.ablation:
         run_ablation_features(n_samples, feature_filter, args, logger)
     else:
-        train_accuracies, val_accuracies = run_cls(n_samples, feature_filter, args, logger)
+        train_accuracies, val_accuracies, test_instance_acc, test_class_acc, y_true, y_pred =\
+            run_cls(n_samples, feature_filter, args, logger)
         plot_accuracies(train_accuracies, val_accuracies, args.plot_train_acc)
+        # TODO: Have test set to do confusion matrix, and final accuracy result on as well ...
+        store_confusion_matrix(y_pred, y_true, N_classes=args.perturb_settings.n_classes,
+                               logger=logger)
 
 
 if __name__ == '__main__':

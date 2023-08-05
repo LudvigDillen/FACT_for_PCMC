@@ -204,7 +204,6 @@ def visible_points(pc, viewpoint, hpr_radius, gamma=-0.0001, inversion_kernel="e
         del vertices_map[n_points]
         visible_inds = visible_inds[0:-1]
 
-    # TODO: Set batch size here to what we give in the cls-file
     visibility_angles = calculate_visibility_angles(
         viewpoint_origin, pc_inverted, vertices_map, batch_size=batch_size)
 

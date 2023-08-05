@@ -79,7 +79,7 @@ def vis_2pcs_aligned_vs_misaligned(pc0, pc1_CS1, pc1_CS0, cam_pose=None):
     vis2.destroy_window()
 
 
-# TODO: I do not get think function working for some reason ...
+# The function does not work ...
 def set_camera_pose(cam_pose, view_control):
     # Get the current camera parameters
     camera_parameters = view_control.convert_to_pinhole_camera_parameters()

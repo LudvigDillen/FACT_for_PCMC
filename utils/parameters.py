@@ -50,7 +50,8 @@ class Params:
         self.preprocess = preprocess
         self.pointwise = pointwise
         self.do_fps = do_fps
-        self.N_fps_points = args.num_point
+        assert args.num_point % 2 == 0, "args.num_point must be even"
+        self.N_fps_points = int(args.num_point/2)
 
         # Set device
         self.device = device

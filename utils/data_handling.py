@@ -161,16 +161,24 @@ def classes_to_txt(PC_scenes, class_counts, file, class_names):
     return class_counts, flat_PC_scenes
 
 
-def display_progress(scene_counter, scenes_lower, scenes_upper, mode, start, train_ratio):
-    amount_loaded = (scene_counter-scenes_lower)/(scenes_upper-scenes_lower)
-    if mode == 'train':
-        amount_loaded *= train_ratio
-    elif mode == 'test':
-        amount_loaded *= 1-train_ratio
-        amount_loaded += train_ratio
+# TODO: Check that this new display progress function works
+def display_progress(scene_counter, n_scenes, mode, start, train_ratio, val_ratio):
+    amount_loaded = scene_counter/n_scenes
+    max_train_scenes = round(train_ratio*n_scenes)
+    max_val_scenes = round(val_ratio*n_scenes)
 
-    print(f"Have loaded {scene_counter-scenes_lower} of {scenes_upper-scenes_lower} {mode} scenes " +
-          f"({np.around(100*amount_loaded, 1)}% of both train and test scenes)", flush=True)
+    if amount_loaded <= train_ratio:
+        print(f"Have loaded {scene_counter} of {max_train_scenes} {mode} scenes ")
+    elif amount_loaded <= train_ratio + val_ratio:
+        val_scenes_loaded = scene_counter - max_train_scenes
+        print(f"Have loaded {val_scenes_loaded} of {max_val_scenes} {mode} scenes ")
+    else:
+        test_scenes_loaded = scene_counter - max_train_scenes - max_val_scenes
+        tot_test_scenes = n_scenes - max_train_scenes - max_val_scenes
+        print(f"Have loaded {test_scenes_loaded} of {tot_test_scenes} {mode} scenes ")
+
+    print(f"Have loaded {scene_counter} of {n_scenes} scenes " +
+          f"({np.around(100*amount_loaded, 1)}% of train, validation, and test scenes)", flush=True)
     if amount_loaded != 0:
         time_check = time.time()
         time_gone = time_check - start
@@ -180,7 +188,8 @@ def display_progress(scene_counter, scenes_lower, scenes_upper, mode, start, tra
         print(f"Estimated time left: {np.around(estimated_time_left / 3600, 2)} hours\n", flush=True)
 
 
-def features_to_txt_files(scenes_lower, scenes_upper, n_scenes_per_loop, params, mode, class_counts, start):
+def features_to_txt_files(scenes_lower, scenes_upper, n_scenes_per_loop, params, mode, class_counts, start,
+                          write_mode):
     """
     Extract differential entropy features from a range of scenes.
 
@@ -195,17 +204,19 @@ def features_to_txt_files(scenes_lower, scenes_upper, n_scenes_per_loop, params,
     y (np.array): The corresponding labels.
     """
     # Prepare storage for features
+    assert mode in ["train", "validation", "test"], f"Specified mode ({mode}) is not known!"
+
     from features.feature_extractor import write_features_to_txt_files, feature_extraction
     data_folder = params.args.feature_folder
     filename = "PCAC_data_" + mode + ".txt"
-    assert (mode == "train" or mode == "test"), f"Specified mode ({mode}) is not known!"
     data_file = os.path.join(data_folder, filename)
 
-    with open(data_file, 'w') as file:
+    with open(data_file, write_mode) as file:
         data_folder = params.args.feature_folder
         for scene_counter in range(scenes_lower, scenes_upper, n_scenes_per_loop):
             # Display data loading progress
-            display_progress(scene_counter, scenes_lower, scenes_upper, mode, start, params.train_ratio)
+            display_progress(scene_counter, params.n_scenes, mode, start, params.train_ratio,
+                             params.args.val_ratio)
 
             # Determine the number of scenes to read in this loop
             if scene_counter + n_scenes_per_loop > scenes_upper:
@@ -294,7 +305,7 @@ def get_n_scenes_per_loop(n_samples_per_scene, n_training_scenes, n_scenes):
     n_test_scenes = n_scenes - n_training_scenes
     smallest_loop = min(n_test_scenes, n_training_scenes)
     # TODO: Maybe try to increase from 40, could give faster computations ...
-    n_scenes_per_loop = max(round(10/n_samples_per_scene), 1)
+    n_scenes_per_loop = max(round(40/n_samples_per_scene), 1)
     n_scenes_per_loop = min(n_scenes_per_loop, smallest_loop)
     return n_scenes_per_loop
 
@@ -337,17 +348,89 @@ def setup_inputs_to_dnn(params):
     Returns:
     """
     n_training_scenes = round(params.train_ratio*params.n_scenes)
+    n_val_scenes = round(params.args.val_ratio*params.n_scenes)
     # Determine the number of scenes to process in each loop
     n_scenes_per_loop = get_n_scenes_per_loop(params.n_samples_per_scene, n_training_scenes, params.n_scenes)
 
-    class_counts = np.zeros(params.perturb_settings.n_classes, dtype=int)
+    scenes_lower_train = 0
+    scenes_lower_val = n_training_scenes
+    scenes_lower_test = n_training_scenes + n_val_scenes
+    write_mode_train = 'w'
+    write_mode_val = 'w'
+    write_mode_test = 'w'
+
+    continue_training_extraction = True
+    continue_val_extraction = True
+    if n_val_scenes == 0:
+        continue_val_extraction = False  # This means do not use validation dataset
     start = time.time()
-    # Extract features from the training scenes
-    class_counts = features_to_txt_files(
-        scenes_lower=0, scenes_upper=n_training_scenes, n_scenes_per_loop=n_scenes_per_loop,
-        params=params, mode="train", class_counts=class_counts, start=start)
+
+    if params.args.rerun_crash:
+        assert (params.args.scenes_finished < params.n_scenes), "Cannot extract data, already extracted all"
+        if params.args.scenes_finished < n_training_scenes:
+            scenes_lower_train = params.args.scenes_finished
+            continue_training_extraction = True
+            filename = "PCAC_data_train.txt"
+            write_mode_train = 'a'  # append, not write
+        elif params.args.scenes_finished < n_training_scenes + n_val_scenes:
+            scenes_lower_val = params.args.scenes_finished
+            continue_training_extraction = False
+            filename = "PCAC_data_validation.txt"
+            write_mode_val = 'a'  # append, not write
+        else:
+            scenes_lower_test = params.args.scenes_finished
+            continue_training_extraction = False
+            continue_val_extraction = False
+            filename = "PCAC_data_test.txt"
+            write_mode_test = 'a'  # append, not write
+        path_folder = os.path.join(params.args.feature_folder, filename)
+        class_counts = extract_max_values_from_end(path_folder)
+        start = start - 3600*params.args.time_gone
+    else:
+        class_counts = np.zeros(params.perturb_settings.n_classes, dtype=int)
+        # Extract features from the training scenes
+
+    if continue_training_extraction:
+        class_counts = features_to_txt_files(
+            scenes_lower=scenes_lower_train, scenes_upper=n_training_scenes,
+            n_scenes_per_loop=n_scenes_per_loop, params=params, mode="train", class_counts=class_counts,
+            start=start, write_mode=write_mode_train)
+
+    # Extract features from the validation scenes
+    if continue_val_extraction:
+        class_counts = features_to_txt_files(
+            scenes_lower=scenes_lower_val, scenes_upper=n_training_scenes+n_val_scenes,
+            n_scenes_per_loop=n_scenes_per_loop, params=params, mode="validation", class_counts=class_counts,
+            start=start, write_mode=write_mode_val)
 
     # Extract features from the test scenes
     class_counts = features_to_txt_files(
-        scenes_lower=n_training_scenes, scenes_upper=params.n_scenes, n_scenes_per_loop=n_scenes_per_loop,
-        params=params, mode="test", class_counts=class_counts, start=start)
+        scenes_lower=scenes_lower_test, scenes_upper=params.n_scenes, n_scenes_per_loop=n_scenes_per_loop,
+        params=params, mode="test", class_counts=class_counts, start=start, write_mode=write_mode_test)
+
+
+def extract_max_values_from_end(file_path):
+    with open(file_path, 'r') as f:
+        data = f.read()
+
+    lines = data.strip().split("\n")
+    max_values = np.zeros(10, dtype=int) - 1  # Use -1 as the initial value to indicate "not found"
+    found_categories = set()  # To track which categories we've already found
+
+    for line in reversed(lines):  # Start from the end of the file
+        class_category = int(line.split("_")[2])
+        if class_category not in found_categories:
+            value = int(line.split("_")[-1])
+            max_values[class_category] = value
+            found_categories.add(class_category)
+
+        # If we've found all categories, we can break out of the loop
+        if len(found_categories) == 10:
+            break
+
+    # Check if all categories were found and replace unfound ones with an error message
+    error_indices = np.where(max_values == -1)
+    for idx in error_indices[0]:
+        print(f"Error: No entry found for class_category_{idx}")
+
+    return max_values
