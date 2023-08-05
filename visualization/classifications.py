@@ -153,9 +153,13 @@ def text_color(bg_color):
     return 'black' if brightness > 0.5 else 'white'
 
 
-def store_confusion_matrix(y_pred, y_true, N_classes):
-    # Calculate the confusion matrix
-    cm = confusion_matrix(y_true, y_pred)
+def store_confusion_matrix(y_pred, y_true, N_classes, logger):
+    # Create a list of all expected classes
+    classes = list(range(N_classes))
+
+    # Calculate the confusion matrix, ensuring it has the expected shape
+    cm = confusion_matrix(y_true, y_pred, labels=classes)
+    logger.info(f'Confusion matrix\n {cm}')
 
     # Plot the confusion matrix
     fig, ax = plt.subplots()
@@ -167,7 +171,7 @@ def store_confusion_matrix(y_pred, y_true, N_classes):
     class_labels = ['Class {}'.format(i) for i in range(N_classes)]
     ax.set_xticks(np.arange(N_classes))
     ax.set_yticks(np.arange(N_classes))
-    fontsize = min(int(60/N_classes), 12)
+    fontsize = min(int(60/N_classes), 11)
     ax.set_xticklabels(class_labels, fontsize=fontsize)
     ax.set_yticklabels(class_labels, fontsize=fontsize)
     plt.xlabel('Predicted')
