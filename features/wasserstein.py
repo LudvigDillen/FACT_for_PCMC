@@ -36,8 +36,6 @@ def sinkhorn_divergence(PC_pair, neighbor_mask_0, neighbor_mask_1, recalling=Fal
         neighbors_per_batch1 = not_nan_mask_pc1.sum(dim=1)
         max_neighbors_size = max(neighbors_per_batch0.max().item(), neighbors_per_batch1.max().item())
         if max_neighbors_size == 0:
-            # TODO: Maybe try to fix this ... This caused one crash after 4.5 hours of running before.
-            # Train scenes 130-140 when loading 30 samples per scene
             print("Very weird that no neighbors exist but can be numerical problems ...")
             dists = torch.full((current_batch_size,), 1e3, dtype=dtype, device=device)
             return dists
@@ -49,15 +47,17 @@ def sinkhorn_divergence(PC_pair, neighbor_mask_0, neighbor_mask_1, recalling=Fal
         # the GPU. So, if a computation threshold is reached, we decrease the batch_size by a factor 2.
         # This threshold could probably be tuned more carefully.
         if computation_size > COMPUTATION_THRESHOLD:
-            current_batch_size = current_batch_size//2
+            old_batch_size = current_batch_size
+            current_batch_size = (current_batch_size + 1)//2
             neighbor_mask_0 = torch.split(neighbor_mask_0, current_batch_size)
             neighbor_mask_1 = torch.split(neighbor_mask_1, current_batch_size)
-            N_batches = len(neighbor_mask_0)
-            dists = torch.empty((N_batches, current_batch_size), dtype=dtype, device=device)
-            for i, (small_mask0, small_mask1) in enumerate(zip(neighbor_mask_0, neighbor_mask_1)):
-                dists[i] = sinkhorn_divergence(PC_pair, small_mask0, small_mask1)
-            return_dists = torch.reshape(dists, (current_batch_size*N_batches, 1)).squeeze()
-            return return_dists
+            dists = torch.empty((old_batch_size), dtype=dtype, device=device)
+            ind = 0
+            for small_mask0, small_mask1 in zip(neighbor_mask_0, neighbor_mask_1):
+                small_batch_size = small_mask0.shape[0]
+                dists[ind:ind + small_batch_size] = sinkhorn_divergence(PC_pair, small_mask0, small_mask1)
+                ind += small_batch_size
+            return dists
         del neighbors_per_batch0, neighbors_per_batch1, masked_tensor0, masked_tensor1
 
         # 1. Sort the Points
@@ -120,15 +120,9 @@ def sinkhorn_divergence(PC_pair, neighbor_mask_0, neighbor_mask_1, recalling=Fal
         # Some distances invalid, set these to the max distance calculated
         inds_nan_distances = torch.isnan(res_distances)
         valid_distances = res_distances[~inds_nan_distances].to(dtype)
-        if valid_distances.numel() > 0:
-            max_distance = valid_distances.max()
-        else:
-            # Handle the case where the tensor is empty. Maybe set max_distance to a default value or raise a
-            # specific error.
-            max_distance = 1e3  # TODO what to do otherwise, it is unclear.
-            print(f"Set max distance to {max_distance}, why is still unclear (unstable function?...)")
+        max_distance = get_max_distances(valid_distances)
         valid_distances[inds_nan_distances] = max_distance
-        # del inds_nan_distances  # TODO: Add this back when necessary
+        del inds_nan_distances
 
         # Initialize batch_distances tensor with the max_distance
         batch_distances = torch.full((current_batch_size,), max_distance, dtype=dtype, device=device)
@@ -142,24 +136,12 @@ def sinkhorn_divergence(PC_pair, neighbor_mask_0, neighbor_mask_1, recalling=Fal
     except RuntimeError as e:
         # Log the error message and any other relevant info
         print(f"RuntimeError: {e}")
-        # Printing the last CUDA error message
-        print(f"Last device error message: {torch.cuda.get_last_error()}")
 
         # Debugging info
         print("\n--- DEBUGGING INFO ---")
         print("Batch size:", current_batch_size)
         print("Device:", device)
         print("Dtype:", dtype)
-
-        # Check shapes and details of tensors which might cause issues
-        print("Shape of res_distances:", res_distances.shape)
-        print("Shape of inds_nan_distances:", inds_nan_distances.shape)
-        print("Number of NaN distances:", inds_nan_distances.sum().item())
-        if valid_distances.numel() > 0:
-            print("Max valid distance:", valid_distances.max().item())
-        else:
-            print("No valid distances found.")
-        print("Shape of valid_distances:", valid_distances.shape)
 
         if recalling:
             batch_distances = torch.full((current_batch_size,), 1e3, dtype=dtype, device=device)
