@@ -18,6 +18,7 @@ import classifiers.PointTransformers.provider as provider
 from utils.other import start_debug
 from utils.pointclouds import PCAC_dataset
 from visualization.classifications import plot_accuracies, store_confusion_matrix
+from classifiers.loss_functions import get_loss
 
 
 def track_accuracy(model, loader, num_class):
@@ -158,7 +159,7 @@ def run_cls(n_samples, feature_filter, args, logger, pretrained=True):
             points, target = data
             points = points.data.numpy()
             points = provider.random_point_dropout(points)
-            # TODO: How to do with the augmentation?
+            # TODO: How to do with the augmentation? Scale can change class ...
             points[:, :, 0:3] = provider.random_scale_point_cloud(points[:, :, 0:3])
             # points[:, :, 0:3] = provider.shift_point_cloud(points[:, :, 0:3])
             points = torch.Tensor(points)
@@ -168,7 +169,8 @@ def run_cls(n_samples, feature_filter, args, logger, pretrained=True):
             optimizer.zero_grad()
 
             pred = classifier(points)
-            loss = criterion(pred, target.long())
+            loss = get_loss(args.loss_function, criterion, pred, target.long())
+
             pred_choice = pred.data.max(1)[1]
             correct = pred_choice.eq(target.long().data).cpu().sum()
             mean_correct.append(correct.item() / float(points.size()[0]))
@@ -200,7 +202,7 @@ def run_cls(n_samples, feature_filter, args, logger, pretrained=True):
 
             if (class_acc >= best_class_acc):
                 best_class_acc = class_acc
-            logger.info('Test Instance Accuracy: %f, Class Accuracy: %f' % (instance_acc, class_acc))
+            logger.info('Vali Instance Accuracy: %f, Class Accuracy: %f' % (instance_acc, class_acc))
             logger.info('Best Instance Accuracy: %f, Class Accuracy: %f' % (best_instance_acc,
                                                                             best_class_acc))
 
