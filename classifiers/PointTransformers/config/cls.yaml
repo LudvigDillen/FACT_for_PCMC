@@ -1,6 +1,7 @@
 batch_size: 20  # 27
-epoch: 40 # 500, TODO: Could reduce training time by not running test(), maybe decrease time by 40%
+epoch: 150 # 500, TODO: Could reduce training time by not running test(), maybe decrease time by 40%
 learning_rate: 0.00005 # 0.0005
+loss_function: emd_cross_entropy # cross_entropy, or emd
 gpu: 0
 optimizer: Adam
 weight_decay: 0.0001
@@ -37,12 +38,12 @@ covisibilty:
   hpr_radius: 3.25  # Parameter for the spherical flipping method
 # Data setup
 num_point: 2048  # 512
-re_use_data: false
-n_scenes: 100
-n_samples_per_scene: 1
+re_use_data: true
+n_scenes: 335
+n_samples_per_scene: 10
 dataset: 'v1.0-trainval'  # 'v1.0-trainval'
 feature_folder: '/home/luddi824/thesis/PCAC/data/PCAC_data'  # TODO: Set by new user ...
-downsample_factor: 8 # Make sure that the point cloud is not so downsampled that num_point does not exist
+downsample_factor: 1 # Make sure that the point cloud is not so downsampled that num_point does not exist
 train_ratio: 0.60  # The test ratio automatically becomes 1 - train_ratio - val_ratio
 val_ratio: 0.15  # Simply set to 0 if validation set in not needed
 # Rerun settings, enables us to rerun after a crash, without rerunning everything
@@ -51,15 +52,10 @@ scenes_finished: 256  # How many scenes we managed to extract before crash
 time_gone: 19.10  # Time spent, so we can keep track of time left
 # If error is displayed, reduce scenes_finished, so that we do not look at test data ...
 # Perturbation settings
-# perturb_settings:
-#   n_classes: 10
-#   r_bin: 0.01
-#   t_bin: 0.1
-#   class_distribution: uniform
 perturb_settings:
-  n_classes: 2
-  r_bin: 0.1
-  t_bin: 1
+  n_classes: 10
+  r_bin: 0.01
+  t_bin: 0.1
   class_distribution: uniform
 # Other settings
 debug: false

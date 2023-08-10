@@ -14,8 +14,8 @@ def sinkhorn_divergence(PC_pair, neighbor_mask_0, neighbor_mask_1, recalling=Fal
     try:
         # start = time.time()
         # Mask the point clouds with NaN for non-neighboring points
-        masked_tensor0 = torch.where(neighbor_mask_0, neighbor_mask_0.float(), torch.tensor(float('nan')))
-        masked_tensor1 = torch.where(neighbor_mask_1, neighbor_mask_1.float(), torch.tensor(float('nan')))
+        masked_tensor0 = torch.where(neighbor_mask_0, neighbor_mask_0.to(dtype), torch.tensor(float('nan')))
+        masked_tensor1 = torch.where(neighbor_mask_1, neighbor_mask_1.to(dtype), torch.tensor(float('nan')))
 
         # Apply the mask to the point clouds
         batch_neighborhood_pc0 = (PC_pair.PC0.pc.unsqueeze(dim=0))*(masked_tensor0.unsqueeze(dim=2))
@@ -49,13 +49,15 @@ def sinkhorn_divergence(PC_pair, neighbor_mask_0, neighbor_mask_1, recalling=Fal
         if computation_size > COMPUTATION_THRESHOLD:
             old_batch_size = current_batch_size
             current_batch_size = (current_batch_size + 1)//2
-            neighbor_mask_0 = torch.split(neighbor_mask_0, current_batch_size)
-            neighbor_mask_1 = torch.split(neighbor_mask_1, current_batch_size)
+            neighbor_mask_batches_0 = torch.split(neighbor_mask_0, current_batch_size)
+            neighbor_mask_batches_1 = torch.split(neighbor_mask_1, current_batch_size)
+            del neighbor_mask_0, neighbor_mask_1
             dists = torch.empty((old_batch_size), dtype=dtype, device=device)
             ind = 0
-            for small_mask0, small_mask1 in zip(neighbor_mask_0, neighbor_mask_1):
-                small_batch_size = small_mask0.shape[0]
-                dists[ind:ind + small_batch_size] = sinkhorn_divergence(PC_pair, small_mask0, small_mask1)
+            for neighbor_mask_0, neighbor_mask_1 in zip(neighbor_mask_batches_0, neighbor_mask_batches_1):
+                small_batch_size = neighbor_mask_0.shape[0]
+                dists[ind:ind + small_batch_size] = sinkhorn_divergence(PC_pair, neighbor_mask_0,
+                                                                        neighbor_mask_1)
                 ind += small_batch_size
             return dists
         del neighbors_per_batch0, neighbors_per_batch1, masked_tensor0, masked_tensor1

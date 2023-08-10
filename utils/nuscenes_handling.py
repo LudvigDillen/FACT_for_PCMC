@@ -218,7 +218,7 @@ class NuscenesHandling:
         return num_lidar_sweeps
 
     def sample_from_scenes(self, n_samples, cov_params, use_c, n_scenes='all',
-                           batch_size=256):
+                           batch_size=128):
         """
         Here we return the sample from the dataset s.t. we evenly distribute the sample of the number
         of scenes we want to utilize.

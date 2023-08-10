@@ -116,7 +116,7 @@ def visible_points(pc, viewpoint, hpr_radius, gamma=-0.0001, inversion_kernel="e
     Visibility of points is determined according to the method presented in "Direct Visibility of Point Sets".
     Visibility Scores is based on the method presented in "On the Visibility of Point Clouds"
     """
-    # TODO: There are two drawbacks with this function.
+    # There are two drawbacks with this function.
     # 1. It does not take the orientation into account. This is necessary to model the points that
     #    are in the field of view.
     # 2. Even, with not changing the orientation, due to translational movements the points will
@@ -313,22 +313,3 @@ def keep_covisible_points(PC0, PC1, PC_union, T0, T1, compute_weights, hpr_radiu
     PC1_covisible = PC(PC1.pc[visible_inds_pc1], PC1.distances_to_origin[visible_inds_pc1], label=1,
                        device=device)
     return PC0_covisible, PC1_covisible, PC_union_covisible
-
-
-# COMMENTS
-
-# TWO SMALLEST
-# Code if using the two smalles angles:
-# angles_masked = angles.clone()
-# angles_masked[~(mask.squeeze(dim=2))] = float('inf')
-# two_smallest_angles = torch.topk(angles_masked, k=2, dim=1, largest=False).values
-# two_smallest_angles[two_smallest_angles == float('inf')] = torch.pi/2
-# visibility_angles[i:i+batch_size] = torch.sum(two_smallest_angles, dim=1)
-
-# SUM
-# visibility_angles[i:i+batch_size] = torch.sum(angles, dim=1)
-
-# Number of neighbors
-# visibility_angles[i:i+batch_size] = torch.sum(angles, dim=1)/torch.tensor(
-#     neighbor_lengths, dtype=dtype, device=device) + torch.tensor(
-#     neighbor_lengths, dtype=dtype, device=device)

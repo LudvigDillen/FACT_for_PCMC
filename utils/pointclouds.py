@@ -199,7 +199,8 @@ class PCPair:
         return None
 
 
-# TODO: If I want to a speed up I should do this in batches
+# TODO: If I want to a speed up I should do this in batches,
+# TODO: Why didn't I perturb T1 instead of PC1?
 def perform_random_perturbation_CorAl(pc, angular_offset=0.01, translational_offset=0.1):
     """
     This function a point cloud perturb it with an angular and translational offset.

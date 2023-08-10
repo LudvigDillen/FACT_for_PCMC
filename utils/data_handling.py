@@ -167,9 +167,9 @@ def display_progress(scene_counter, n_scenes, mode, start, train_ratio, val_rati
     max_train_scenes = round(train_ratio*n_scenes)
     max_val_scenes = round(val_ratio*n_scenes)
 
-    if amount_loaded <= train_ratio:
+    if mode == "train":
         print(f"Have loaded {scene_counter} of {max_train_scenes} {mode} scenes ")
-    elif amount_loaded <= train_ratio + val_ratio:
+    elif mode == "validation":
         val_scenes_loaded = scene_counter - max_train_scenes
         print(f"Have loaded {val_scenes_loaded} of {max_val_scenes} {mode} scenes ")
     else:
