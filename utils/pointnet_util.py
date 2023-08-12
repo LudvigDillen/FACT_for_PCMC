@@ -42,7 +42,12 @@ def square_distance(src, dst):
     Output:
         dist: per-point square distance, [B, N, M]
     """
-    return torch.sum((src[:, :, None] - dst[:, None]) ** 2, dim=-1)
+    square_dists = (src[:, :, None, 0] - dst[:, None, :, 0]) ** 2
+    square_dists += (src[:, :, None, 1] - dst[:, None, :, 1]) ** 2
+    square_dists += (src[:, :, None, 2] - dst[:, None, :, 2]) ** 2
+    # This version below is the original one, but it is more memory consuming
+    # square_dists = torch.sum((src[:, :, None] - dst[:, None]) ** 2, dim=-1)
+    return square_dists
 
 
 def index_points(points, idx):
@@ -239,7 +244,7 @@ class PointNetSetAbstraction(nn.Module):
             bn = self.mlp_bns[i]
             new_points = F.relu(bn(conv(new_points)))
 
-        new_points = torch.max(new_points, 2)[0].transpose(1, 2)
+        new_points = torch.max(new_points, 2)[0].transpose(1, 2)  # TODO: Would be interest to the avr. pool. instead
         return new_xyz, new_points
 
 
