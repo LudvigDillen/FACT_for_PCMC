@@ -169,7 +169,7 @@ def run_cls(n_samples, feature_filter, args, logger, pretrained=True):
             optimizer.zero_grad()
 
             pred = classifier(points)
-            loss = get_loss(args.loss_function, criterion, pred, target.long())
+            loss = get_loss(args.loss_function, criterion, pred, target.long(), args.gamma_lf)
 
             pred_choice = pred.data.max(1)[1]
             correct = pred_choice.eq(target.long().data).cpu().sum()

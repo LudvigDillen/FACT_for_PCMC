@@ -1,7 +1,8 @@
 batch_size: 20  # 27
-epoch: 150 # 500, TODO: Could reduce training time by not running test(), maybe decrease time by 40%
-learning_rate: 0.00005 # 0.0005
+epoch: 150
+learning_rate: 0.00005  # 0.00005
 loss_function: emd_cross_entropy # cross_entropy, or emd
+gamma_lf: 1  # how to weight emd vs cross entropy
 gpu: 0
 optimizer: Adam
 weight_decay: 0.0001
@@ -59,7 +60,7 @@ perturb_settings:
   class_distribution: uniform
 # Other settings
 debug: false
-#load_model_path: "/home/luddi824/thesis/PCAC/outputs/2023-08-04/15-07-23/best_model.pth"
+#load_model_path: "/home/luddi824/thesis/PCAC/outputs/2023-08-11/20-16-49/best_model.pth"
 load_model_path: false
 # Plot settings
 ablation: false
