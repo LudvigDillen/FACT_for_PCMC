@@ -27,28 +27,32 @@ class TransformerBlock(nn.Module):
 
     # xyz: b x n x 3, features: b x n x f
     def forward(self, xyz, features):
-        dists = square_distance(xyz, xyz)
-        knn_idx = dists.argsort()[:, :, :self.k]  # b x n x k
-        del dists
+        # Get index to nearest neighbors
+        knn_idx = square_distance(xyz, xyz).argsort()[:, :, :self.k]  # b x n x k
+        knn_xyz = index_points(xyz, knn_idx)  # kN neighbors
 
-        knn_xyz = index_points(xyz, knn_idx)
+        pre = features  # residual connection
+        x = self.fc1(features)  # first fully connected
 
-        pre = features
-        x = self.fc1(features)
-        q, k, v = self.w_qs(x), index_points(self.w_ks(x), knn_idx), index_points(self.w_vs(x), knn_idx)
-
+        # positional enc. + MLP
         pos_enc = self.fc_delta(xyz[:, :, None] - knn_xyz)  # b x n x k x f
-        values = v + pos_enc
+        del xyz, knn_xyz
 
-        del knn_xyz, xyz, knn_idx, v, x
+        # embedd features
+        q, k, v = self.w_qs(x), index_points(self.w_ks(x), knn_idx), index_points(self.w_vs(x), knn_idx)
+        del knn_idx, x
 
-        attn = self.fc_gamma(q[:, :, None] - k + pos_enc)
+        v += pos_enc  # right part of sum
+
+        attn = self.fc_gamma(q[:, :, None] - k + pos_enc)  # gamma of key-query+rel_enc
 
         normalizer = np.sqrt(k.size(-1))
         del k, q, pos_enc
 
-        attn = F.softmax(attn / normalizer, dim=-2)  # b x n x k x f
+        attn = F.softmax(attn / normalizer, dim=-2)  # b x n x k x f, rho
 
-        res = torch.einsum('bmnf,bmnf->bmf', attn, values)
-        res = self.fc2(res) + pre
-        return res, attn
+        res = torch.einsum('bmnf,bmnf->bmf', attn, v)  # combine attention and values, and sum (Hadamard)
+        del attn, v
+
+        res = self.fc2(res) + pre  # second fully connected + residual connection
+        return res

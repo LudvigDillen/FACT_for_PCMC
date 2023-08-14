@@ -52,55 +52,37 @@ def test_results(model, loader, num_class):
     y_true = np.zeros(N_samples)
     y_pred = np.zeros(N_samples)
     ind = 0
-    for data in tqdm(loader, total=len(loader)):
-        points, target = data
-        target = target[:, 0]
+    with torch.no_grad():
+        for data in tqdm(loader, total=len(loader)):
+            points, target = data
+            target = target[:, 0]
 
-        current_batch_size = len(target)
-        y_true[ind:ind + current_batch_size] = target.numpy()
+            current_batch_size = len(target)
+            y_true[ind:ind + current_batch_size] = target.numpy()
 
-        points, target = points.cuda(), target.cuda()
-        classifier = model.eval()
-        pred = classifier(points)  # [B, n_classes], here we have a score for each class
-        pred_choice = pred.data.max(1)[1]  # highest score wins
+            points, target = points.cuda(), target.cuda()
+            classifier = model.eval()
+            pred = classifier(points)  # [B, n_classes], here we have a score for each class
+            pred_choice = pred.data.max(1)[1]  # highest score wins
 
-        y_pred[ind:ind + current_batch_size] = pred_choice.cpu().numpy()
-        ind = ind + current_batch_size
+            y_pred[ind:ind + current_batch_size] = pred_choice.cpu().numpy()
+            ind = ind + current_batch_size
 
-        for cat in np.unique(target.cpu()):
-            classacc = pred_choice[target == cat].eq(target[target == cat].long().data).cpu().sum()
-            class_acc[cat, 0] += classacc.item()/float(points[target == cat].size()[0])
-            class_acc[cat, 1] += 1
-        correct = pred_choice.eq(target.long().data).cpu().sum()
-        mean_correct.append(correct.item()/float(points.size()[0]))
+            for cat in np.unique(target.cpu()):
+                classacc = pred_choice[target == cat].eq(target[target == cat].long().data).cpu().sum()
+                class_acc[cat, 0] += classacc.item()/float(points[target == cat].size()[0])
+                class_acc[cat, 1] += 1
+            correct = pred_choice.eq(target.long().data).cpu().sum()
+            mean_correct.append(correct.item()/float(points.size()[0]))
     class_acc[:, 2] = class_acc[:, 0] / class_acc[:, 1]
     class_acc = np.mean(class_acc[:, 2])
     instance_acc = np.mean(mean_correct)
     return instance_acc, class_acc, y_true, y_pred
 
 
-# TODO: Maybe add functionality so that we can extract one feature at the time, and
-# add this to previous extracted features. Note that we then have to save the
-# pointcloud (the distorted versions) which should be unfeasible.
-def run_cls(n_samples, feature_filter, args, logger, pretrained=True):
-    PCAC_TRAIN_DATASET = PCAC_dataset(n_samples=n_samples, root=args.feature_folder, split='train',
-                                      feature_filter=feature_filter, train_ratio=args.train_ratio)
-    PCAC_VAL_DATASET = PCAC_dataset(n_samples=n_samples, root=args.feature_folder, split='validation',
-                                    feature_filter=feature_filter, train_ratio=args.train_ratio)
-    PCAC_TEST_DATASET = PCAC_dataset(n_samples=n_samples, root=args.feature_folder, split='test',
-                                     feature_filter=feature_filter, train_ratio=args.train_ratio)
-
-    trainDataLoader = torch.utils.data.DataLoader(PCAC_TRAIN_DATASET, batch_size=args.batch_size,
-                                                  shuffle=True, num_workers=4)
-    valDataLoader = torch.utils.data.DataLoader(PCAC_VAL_DATASET, batch_size=args.batch_size,
-                                                shuffle=True, num_workers=4)
-    testDataLoader = torch.utils.data.DataLoader(PCAC_TEST_DATASET, batch_size=args.batch_size,
-                                                 shuffle=False, num_workers=4)
-    del PCAC_TRAIN_DATASET, PCAC_VAL_DATASET, PCAC_TEST_DATASET
-
-    '''MODEL LOADING'''
+def load_best_model(args, logger, pretrained=True):
     args.num_class = args.perturb_settings.n_classes
-    args.input_dim = number_of_features(feature_filter)
+    args.input_dim = number_of_features(args.feature_filter)
     print(f"Input dim: {args.input_dim}")
 
     shutil.copy(hydra.utils.to_absolute_path(
@@ -109,8 +91,8 @@ def run_cls(n_samples, feature_filter, args, logger, pretrained=True):
     classifier = getattr(importlib.import_module(
         'classifiers.PointTransformers.models.{}.model'.format(args.model.name)),
                          'PointTransformerCls')(args).cuda()
-    criterion = torch.nn.CrossEntropyLoss()
 
+    start_epoch = 0
     if pretrained:
         try:
             if args.load_model_path:
@@ -124,8 +106,27 @@ def run_cls(n_samples, feature_filter, args, logger, pretrained=True):
             logger.info(f'Error loading model: {e}')
             logger.info('No existing model, starting training from scratch...')
             start_epoch = 0
-    else:
-        start_epoch = 0
+
+    return classifier, start_epoch
+
+
+# TODO: Maybe add functionality so that we can extract one feature at the time, and
+# add this to previous extracted features. Note that we then have to save the
+# pointcloud (the distorted versions) which should be unfeasible.
+def run_cls(n_samples, args, logger, pretrained=True):
+    PCAC_TRAIN_DATASET = PCAC_dataset(n_samples=n_samples, root=args.feature_folder, split='train',
+                                      feature_filter=args.feature_filter, train_ratio=args.train_ratio)
+    PCAC_VAL_DATASET = PCAC_dataset(n_samples=n_samples, root=args.feature_folder, split='validation',
+                                    feature_filter=args.feature_filter, train_ratio=args.train_ratio)
+    trainDataLoader = torch.utils.data.DataLoader(PCAC_TRAIN_DATASET, batch_size=args.batch_size,
+                                                  shuffle=True, num_workers=4)
+    valDataLoader = torch.utils.data.DataLoader(PCAC_VAL_DATASET, batch_size=args.batch_size,
+                                                shuffle=True, num_workers=4)
+    del PCAC_TRAIN_DATASET, PCAC_VAL_DATASET
+
+    '''MODEL LOADING'''
+    classifier, start_epoch, args = load_best_model(args, logger, pretrained=pretrained)
+    criterion = torch.nn.CrossEntropyLoss()
 
     if args.optimizer == 'Adam':
         optimizer = torch.optim.Adam(
@@ -175,7 +176,6 @@ def run_cls(n_samples, feature_filter, args, logger, pretrained=True):
             correct = pred_choice.eq(target.long().data).cpu().sum()
             mean_correct.append(correct.item() / float(points.size()[0]))
 
-            # torch.cuda.empty_cache()
             loss.backward()
             optimizer.step()
             global_step += 1
@@ -224,6 +224,15 @@ def run_cls(n_samples, feature_filter, args, logger, pretrained=True):
     best_model_path = 'best_model.pth'
     checkpoint = torch.load(best_model_path)
     classifier.load_state_dict(checkpoint['model_state_dict'])
+    return train_accuracies, val_accuracies, classifier
+
+
+def run_test(n_samples, args, logger, classifier):
+    PCAC_TEST_DATASET = PCAC_dataset(n_samples=n_samples, root=args.feature_folder, split='test',
+                                     feature_filter=args.feature_filter, train_ratio=args.train_ratio)
+    testDataLoader = torch.utils.data.DataLoader(PCAC_TEST_DATASET, batch_size=args.batch_size,
+                                                 shuffle=False, num_workers=4)
+    del PCAC_TEST_DATASET
 
     # Test best validation settings on test data
     test_instance_acc, test_class_acc, y_true, y_pred = test_results(classifier.eval(), testDataLoader,
@@ -231,7 +240,7 @@ def run_cls(n_samples, feature_filter, args, logger, pretrained=True):
     logger.info(f'Test Overall Accuracy: {test_instance_acc}')
     logger.info(f'Test Mean Class Accuracy: {test_class_acc}')
     logger.info('End of training...')
-    return train_accuracies, val_accuracies, test_instance_acc, test_class_acc, y_true, y_pred
+    return test_instance_acc, test_class_acc, y_true, y_pred
 
 
 @hydra.main(config_path='config', config_name='cls')
@@ -255,21 +264,27 @@ def main(args):
         nusc = ns.nuscenes.NuScenes(version=version, dataroot=data_folder, verbose=False)
 
         # Get features
-        extract_features_to_txt_files(nusc, args=args)
+        with torch.no_grad():
+            extract_features_to_txt_files(nusc, args=args)
         torch.cuda.empty_cache()
         del nusc
     n_samples = args.n_scenes*args.n_samples_per_scene
     # Get dataset (features in a data loader)
-    feature_filter = process_features(args.features_to_use, args.features_to_create)
+    args.feature_filter = process_features(args.features_to_use, args.features_to_create)
 
     # Run all
     if args.ablation:
-        run_ablation_features(n_samples, feature_filter, args, logger)
+        run_ablation_features(n_samples, args, logger)
     else:
-        train_accuracies, val_accuracies, test_instance_acc, test_class_acc, y_true, y_pred =\
-            run_cls(n_samples, feature_filter, args, logger)
-        plot_accuracies(train_accuracies, val_accuracies, args.plot_train_acc)
-        # TODO: Have test set to do confusion matrix, and final accuracy result on as well ...
+        if args.rerun_only_test is False:
+            train_accuracies, val_accuracies, classifier = run_cls(
+                n_samples, args, logger)
+            plot_accuracies(train_accuracies, val_accuracies, args.plot_train_acc)
+        else:
+            classifier, _ = load_best_model(args, logger)
+
+        test_instance_acc, test_class_acc, y_true, y_pred = run_test(
+                n_samples, args, logger, classifier)
         store_confusion_matrix(y_pred, y_true, N_classes=args.perturb_settings.n_classes,
                                logger=logger)
 

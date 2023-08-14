@@ -97,11 +97,11 @@ def process_features(features_to_use, features_to_create):
             raise ValueError(f"'use' is True for {key}, but 'create' is False. This is not allowed.")
         # If both are False, we don't append anything and continue to the next iteration.
 
-    return np.array(result)
+    return result
 
 
-def run_ablation_features(n_samples, feature_filter, args, logger):
-    N_features = feature_filter.shape[0]
+def run_ablation_features(n_samples, args, logger):
+    N_features = args.feature_filter.shape[0]
     from classifiers.PointTransformers.train_cls import run_cls
     all_train_accuracies = np.empty((N_features, args.epoch))
     all_val_accuracies = np.empty((N_features, args.epoch))
@@ -111,6 +111,7 @@ def run_ablation_features(n_samples, feature_filter, args, logger):
         print(f"Start feature {true_keys[i]} ({np.around(100*i/N_features, 2)}%)", flush=True)
         ablation_feature_filter = np.zeros(N_features, dtype=int)
         ablation_feature_filter[i] = 1
+        # TODO: If running this function, I have to handle the ablation_feature_filter input ...
         train_accuracies, val_accuracies = run_cls(n_samples, ablation_feature_filter, args, logger,
                                                    pretrained=False)
         all_train_accuracies[i] = train_accuracies

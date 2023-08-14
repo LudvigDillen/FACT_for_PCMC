@@ -8,7 +8,7 @@ from utils.geometrics import change_coordinate_system
 
 class PCAC_dataset(torch.utils.data.Dataset):
     def __init__(self, n_samples, root, train_ratio, split='train',
-                 cache_size=3000, feature_filter=None):
+                 cache_size=1000, feature_filter=None):
         self.root = root
         self.catfile = os.path.join(self.root, 'PCAC_data_class_names.txt')
 
@@ -38,7 +38,7 @@ class PCAC_dataset(torch.utils.data.Dataset):
         self.cache_size = cache_size  # how many data points to cache in memory
         self.cache = {}  # from index to (point_set, cls) tuple
 
-        feature_filter_with_xyz = np.concatenate((np.ones(3, dtype=int), feature_filter))
+        feature_filter_with_xyz = np.concatenate((np.ones(3, dtype=int), np.array(feature_filter)))
         self.feature_channels = np.where(feature_filter_with_xyz == 1)[0]
 
     def __len__(self):
