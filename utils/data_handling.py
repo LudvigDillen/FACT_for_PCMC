@@ -138,6 +138,10 @@ def count_decimal_digits(f):
 
 
 def generate_class_names_file(folder, filename, n_classes, class_names):
+    # Check if folder exists, if not, create it
+    if not os.path.exists(folder):
+        os.makedirs(folder)
+
     # Construct the full path to the output file
     file_path = os.path.join(folder, filename)
 

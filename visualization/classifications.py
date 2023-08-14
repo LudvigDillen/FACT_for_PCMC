@@ -135,9 +135,9 @@ def extract_accuracies(filename):
             words = line.split()
 
             # Check if the line contains the accuracies
-            if "Train Instance Accuracy" in line:
+            if "Train Instance Accuracy (regular data)" in line:
                 train_accuracies.append(float(words[-1]))
-            elif "Test Instance Accuracy" in line:
+            elif "Vali Instance Accuracy" in line:
                 test_accuracies.append(float(words[-1]))
 
     # Convert lists to numpy arrays
@@ -208,4 +208,4 @@ if __name__ == "__main__":
     train_accuracies, test_accuracies = extract_accuracies(filename)
     print("Train Accuracies:", train_accuracies)
     print("Test Accuracies:", test_accuracies)
-    plot_accuracies(train_accuracies, test_accuracies)
+    plot_accuracies(train_accuracies, test_accuracies, plot_train_acc=True)
