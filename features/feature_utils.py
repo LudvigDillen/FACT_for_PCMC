@@ -70,9 +70,9 @@ def get_data_batches(PC, params):
     pc_batches = divide_into_batches(PC.pc[PC.fps_inds], batch_size)
 
     # Calculate radii
-    radii = get_dynamic_radii(PC.distances_to_origin, params.params_diff_entropy).to(PC.device)
+    radii = get_dynamic_radii(PC.distances_to_origin[PC.fps_inds], params.params_diff_entropy).to(PC.device)
     # Split radii into batches
-    radii_batches = divide_into_batches(radii[PC.fps_inds], batch_size)
+    radii_batches = divide_into_batches(radii, batch_size)
 
     return index_batches, pc_batches, radii_batches
 
