@@ -1,8 +1,8 @@
-from utils.pointnet_util import index_points, square_distance
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
+from utils.pointnet_util import index_points, square_distance
 
 
 class TransformerBlock(nn.Module):
@@ -38,7 +38,7 @@ class TransformerBlock(nn.Module):
         pos_enc = self.fc_delta(xyz[:, :, None] - knn_xyz)  # b x n x k x f
         del xyz, knn_xyz
 
-        # embedd features
+        # embed features
         q, k, v = self.w_qs(x), index_points(self.w_ks(x), knn_idx), index_points(self.w_vs(x), knn_idx)
         del knn_idx, x
 
@@ -50,7 +50,7 @@ class TransformerBlock(nn.Module):
         del k, q, pos_enc
 
         attn = F.softmax(attn / normalizer, dim=-2)  # b x n x k x f, rho
-
+        # sum over all kNN and perform Hadamard product over attention and values 
         res = torch.einsum('bmnf,bmnf->bmf', attn, v)  # combine attention and values, and sum (Hadamard)
         del attn, v
 

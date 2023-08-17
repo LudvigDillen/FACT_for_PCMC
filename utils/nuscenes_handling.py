@@ -7,13 +7,12 @@ from utils.visibility import keep_covisible_points
 from nuscenes.utils.data_classes import LidarPointCloud
 
 
-DTYPE = torch.float64
+DTYPE = torch.float64  # TODO: Add to settings
 
 
 class NuscenesHandling:
-    def __init__(self, nusc, downsample_factor=1, lidar_token=None, T_close_thresh=0,
-                 scene_counter=0, verbose=True, preprocess=True, perturb_settings=None):
-        self.nusc = nusc
+    def __init__(self, params, lidar_token=None, scene_counter=0):
+        self.nusc = params.nusc
         self.scene_counter_init = scene_counter
         self.scene_counter = scene_counter
         self.number_of_scenes_in_dataset = len(self.nusc.scene)
@@ -21,11 +20,11 @@ class NuscenesHandling:
         self.scene_read = False
 
         # Set settings
-        self.T_close_thresh = T_close_thresh
-        self.downsample_factor = downsample_factor  # Randomly downsample point clouds
-        self.verbose = verbose
-        self.preprocess = preprocess
-        self.perturb_settings = perturb_settings
+        self.T_close_thresh = params.args.preprocessing.T_close
+        self.downsample_factor = params.downsample_factor  # Randomly downsample point clouds
+        self.verbose = params.verbose
+        self.preprocess = params.args.preprocessing.preprocess
+        self.perturb_settings = params.args.perturb_settings
 
         # Setup scene data
         self.setup_new_scene_data(lidar_token)
@@ -217,8 +216,7 @@ class NuscenesHandling:
         num_lidar_sweeps = len(lidar_data)
         return num_lidar_sweeps
 
-    def sample_from_scenes(self, n_samples, cov_params, use_c, n_scenes='all',
-                           batch_size=128):
+    def sample_from_scenes(self, params, n_samples, n_scenes):
         """
         Here we return the sample from the dataset s.t. we evenly distribute the sample of the number
         of scenes we want to utilize.
@@ -233,11 +231,12 @@ class NuscenesHandling:
         PC_scene = []
         count = 0
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        cov_params = params.args.cov_params
 
         # HACK: Avoid circular imports
         from utils.data_handling import list_of_samples_per_scene, calculate_sample_gaps
 
-        samples_per_scene = list_of_samples_per_scene(n_samples, n_scenes)
+        samples_per_scene = list_of_samples_per_scene(n_samples, params.n_scenes)
 
         skip_sample_index = 0
         skip_samples_list = calculate_sample_gaps(
@@ -260,9 +259,9 @@ class NuscenesHandling:
                 # Calculate the co-visible points
                 PC0_cov, PC1_cov, PCUnion_cov = keep_covisible_points(
                     PC0, PC1, currentPCPair.PCUnion, currentPCPair.pose0, currentPCPair.pose1,
-                    compute_weights=use_c, hpr_radius=cov_params.hpr_radius,
+                    compute_weights=params.use_c, hpr_radius=cov_params.hpr_radius,
                     gamma=cov_params.gamma, inversion_kernel=cov_params.inversion_kernel,
-                    batch_size=batch_size)
+                    batch_size=params.batch_size_feature_extraction)
                 currentPCPair.set_new_PC(PC0_cov, PC1_cov, PCUnion_cov)
             # Append pair to list
             PC_scene.append(currentPCPair)
@@ -304,15 +303,9 @@ class NuscenesHandling:
         return PC_scenes
 
 
-def read_nuscenes_data(nusc, n_samples, perturb_settings, cov_params, use_c, downsample_factor=1, n_scenes='all',
-                       T_close_thresh=0, lidar_token=None, scene_counter=0,
-                       verbose=True, preprocess=True, batch_size=256):
+def read_nuscenes_data(params, n_samples, n_scenes='all', lidar_token=None, scene_counter=0):
     # Read data
-    PCHandler = NuscenesHandling(nusc, downsample_factor=downsample_factor,
-                                 T_close_thresh=T_close_thresh, lidar_token=lidar_token,
-                                 scene_counter=scene_counter, verbose=verbose, preprocess=preprocess,
-                                 perturb_settings=perturb_settings)
-    PC_scenes = PCHandler.sample_from_scenes(n_samples=n_samples, cov_params=cov_params, n_scenes=n_scenes,
-                                             use_c=use_c, batch_size=batch_size)
+    PCHandler = NuscenesHandling(params, lidar_token=lidar_token, scene_counter=scene_counter)
+    PC_scenes = PCHandler.sample_from_scenes(params, n_samples, n_scenes)
     del PCHandler
     return PC_scenes

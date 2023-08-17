@@ -74,15 +74,14 @@ def calculate_visibility_angles(viewpoint, pc_inverted, vertices_map, batch_size
         # Selecting the two smallest ones feels somewhat unmotivated, and might favor points with many
         # neighbors, which does not necessarily simply that those points are visible.
 
-        # However, taking the sum seems to work best is also the recommended way in the article. So,
-        # I'll stick with that going forward.
-
         # MEAN
         visibility_angles[i:i+batch_size] = torch.sum(angles, dim=1)/torch.tensor(neighbor_lengths,
                                                                                   dtype=dtype, device=device)
     return visibility_angles
 
 
+# TODO: It suffices to calculate visiblity scores for the the points we choose to select after FPS.
+# Potential speed-up possible here. But, maybe it is more difficult than I imagine ...
 def visible_points(pc, viewpoint, hpr_radius, gamma=-0.0001, inversion_kernel="exponential",
                    compute_weights=False, batch_size=256):
     """

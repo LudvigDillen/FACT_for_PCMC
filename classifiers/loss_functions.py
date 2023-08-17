@@ -27,6 +27,8 @@ def get_loss(mode, cross_entropy, pred, target, gamma_lf):
         loss_cross_entropy = cross_entropy(pred, target)
         loss_emd = emd_loss(pred, target)
         loss = loss_cross_entropy + gamma_lf*loss_emd
-    else:  # assume args.loss == "cross_entropy"
+    elif mode == "cross_entropy":
         loss = cross_entropy(pred, target)
+    else:
+        exit("ERROR: Loss function mode invalid")
     return loss

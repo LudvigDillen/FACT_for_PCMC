@@ -1,16 +1,16 @@
+## TODO: Remember that the radius parameter is not set here ... Change back to [1, 5]
 batch_size: 20  # 27
 epoch: 150
 learning_rate: 0.00005  # 0.00005
-loss_function: emd_cross_entropy # cross_entropy, or emd
+loss_function: cross_entropy  # cross_entropy, or emd TODO: Change to convex combination ...
 gamma_lf: 1  # how to weight emd vs cross entropy
 gpu: 0
 optimizer: Adam
 weight_decay: 0.0001
-normal: true
 model:
   nneighbor: 16
   nblocks: 4  # Number of transformer-transition blocks in backbone
-  transformer_dim: 128  # TODO: Investigate if I could decrease this ... Should save lots of memory
+  transformer_dim: 128
   name: Hengshuang
 # Which features to use (we always use xyz)
 features_to_create:
@@ -35,15 +35,16 @@ batch_size_feature_extraction: 128
 # Covisibility parameters (see Katz and Tal)
 covisibilty:
   inversion_kernel: "exponential"  # spherical_flipping is the other choice
-  gamma: -0.0001   # Parameter for the exponential inversion kernel
-  hpr_radius: 3.25  # Parameter for the spherical flipping method
+  gamma: -0.0001  # Parameter for the exponential inversion kernel
+  hpr_radius: 2.75  # Parameter for the spherical flipping method
 # Data setup
 num_point: 2048  # 512
-re_use_data: true
-n_scenes: 335
-n_samples_per_scene: 10
+re_use_data: false
+n_scenes: 335  # 335
+n_samples_per_scene: 10  # 10  
 dataset: 'v1.0-trainval'  # 'v1.0-trainval'
-feature_folder: '/home/luddi824/thesis/PCAC/data/PCAC_data'  # TODO: Set by new user ...
+data_folder: '/home/luddi824/thesis/PCAC/data/nuscenes/'
+feature_folder: '/home/luddi824/thesis/PCAC/data/PCAC_data/r0_5_to_7_5_k_joint'  # TODO: Set by new user ...
 downsample_factor: 1 # Make sure that the point cloud is not so downsampled that num_point does not exist
 train_ratio: 0.60  # The test ratio automatically becomes 1 - train_ratio - val_ratio
 val_ratio: 0.15  # Simply set to 0 if validation set in not needed
@@ -52,6 +53,7 @@ rerun_crash: false
 scenes_finished: 256  # How many scenes we managed to extract before crash
 time_gone: 19.10  # Time spent, so we can keep track of time left
 # If error is displayed, reduce scenes_finished, so that we do not look at test data ...
+rerun_only_test: false
 # Perturbation settings
 perturb_settings:
   n_classes: 10
@@ -60,8 +62,42 @@ perturb_settings:
   class_distribution: uniform
 # Other settings
 debug: false
-#load_model_path: "/home/luddi824/thesis/PCAC/outputs/2023-08-11/20-16-49/best_model.pth"
+#load_model_path: /home/luddi824/thesis/PCAC/outputs/2023-08-13/17-39-23/best_model.pth
 load_model_path: false
 # Plot settings
 ablation: false
 plot_train_acc: true
+# Sensor settings (HDL-32E)
+sensor_settings:
+  vertical_angular_res: 0.02327481098473072  # [rad]. Corresponds to 1.333548387 degrees
+  horizontal_angular_res: 0.005817764173314432  # [rad]. Corresponds to 1/3 degrees
+  scan_frequency: 20  # [Hz]. Can be changed between 5-20 Hz, but the nuScenes data is 20 Hz.
+  lower_vert_fov: -0.5352925062179565  # [rad]. Lower vertical field of view. Corresponds to -30.67 degrees.
+  upper_vert_fov: 0.18622663617134094  # [rad]. Upper vertical field of view. Corresponds to 10.67 degrees.
+  max_distance: 100  # [m]
+  vert_channels: 32
+  hori_channels: 1080
+# Neighborhood settings
+neighborhood:
+  rmin: 0.5
+  rmax: 7.5
+  alpha_scale: 5
+  k: joint  # adaptive, joint
+# Differential entropy settings
+diff_entropy:
+  log_epsilon: -18.0
+  E_reject: 0.20  # does not matter when we work point-wise
+# Sinkhorn divergence settings
+sinkhorn_div:
+  p: 2
+  blur: 0.05
+# Preprocessing
+preprocessing:
+  T_close: 1.5  # remove all points within 1.5 meters
+  preprocess: true  # (bool): whether to preprocess the point cloud or not
+
+# Choose classifier
+classifier: FACT  # CorAl
+
+# Other settings
+verbose: false  # (bool): If True, print additional information.
