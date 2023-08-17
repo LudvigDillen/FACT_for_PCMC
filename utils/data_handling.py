@@ -1,5 +1,5 @@
-import numpy as np
 import os
+import numpy as np
 import time
 
 from features.differential_entropy import differential_entropy_dataset
@@ -13,10 +13,10 @@ def sample_from_scene(scene, samples):
     """
     if samples == 0:
         return []
-    N_samples_in_scene = len(scene)
-    step_length = int(N_samples_in_scene/samples)
+    n_samples_in_scene = len(scene)
+    step_length = int(n_samples_in_scene/samples)
     sampled_scene = []
-    for i in range(int(step_length/2), N_samples_in_scene, step_length):
+    for i in range(int(step_length/2), n_samples_in_scene, step_length):
         sampled_scene.append(scene[i])
     return sampled_scene
 
@@ -202,18 +202,14 @@ def features_to_txt_files(scenes_lower, scenes_upper, n_scenes_per_loop, params,
     scenes_upper (int): The ending scene index.
     n_scenes_per_loop (int): The number of scenes to process in each loop.
     params (see the class Params in utils.parameters)
-
-    Returns:
-    X (np.array): The differential entropy features extracted from the scenes.
-    y (np.array): The corresponding labels.
     """
     # Prepare storage for features
     assert mode in ["train", "validation", "test"], f"Specified mode ({mode}) is not known!"
 
     from features.feature_extractor import write_features_to_txt_files, feature_extraction
     data_folder = params.args.feature_folder
-    filename = "PCAC_data_" + mode + ".txt"
-    data_file = os.path.join(data_folder, filename)
+    file_name = "PCAC_data_" + mode + ".txt"
+    data_file = os.path.join(data_folder, file_name)
 
     with open(data_file, write_mode) as file:
         data_folder = params.args.feature_folder
@@ -230,12 +226,8 @@ def features_to_txt_files(scenes_lower, scenes_upper, n_scenes_per_loop, params,
             read_n_samples = read_n_scenes*params.n_samples_per_scene
 
             # Load data sequentially (can't read all at once, too high memory requirement)
-            PC_scenes = read_nuscenes_data(
-                params.nusc, n_scenes=read_n_scenes, n_samples=read_n_samples,
-                perturb_settings=params.perturb_settings, downsample_factor=params.downsample_factor,
-                T_close_thresh=params.T_close_thresh, scene_counter=scene_counter, verbose=params.verbose,
-                preprocess=params.preprocess, cov_params=params.covisibilty, use_c=params.use_c,
-                batch_size=params.batch_size_feature_extraction)
+            PC_scenes = read_nuscenes_data(params, n_samples=read_n_samples, n_scenes=read_n_scenes,
+                                           scene_counter=scene_counter)
 
             if params.do_fps:
                 # Compute the differential entropy features for the scenes
@@ -278,16 +270,14 @@ def get_diff_entropy_features(scenes_lower, scenes_upper, n_scenes_per_loop, par
             read_n_scenes = n_scenes_per_loop
         read_n_samples = read_n_scenes*params.n_samples_per_scene
         # Load data sequentially
-        PC_scenes = read_nuscenes_data(
-            params.nusc, n_scenes=read_n_scenes, n_samples=read_n_samples,
-            downsample_factor=params.downsample_factor, T_close_thresh=params.T_close_thresh,
-            scene_counter=scene_counter, verbose=params.verbose, hpr_radius=params.hpr_radius)
+        PC_scenes = read_nuscenes_data(params, n_samples=read_n_samples, n_scenes=read_n_scenes,
+                                       scene_counter=scene_counter)
+
         if params.do_fps:
             # Compute the differential entropy features for the scenes
             farthest_point_sample_PC_scenes(PC_scenes, params.N_fps_points)
         # Compute the differential entropy features for the scenes
-        X_loop, y_loop = differential_entropy_dataset(
-            PC_scenes, params.params_diff_entropy, verbose=params.verbose)
+        X_loop, y_loop = differential_entropy_dataset(PC_scenes, params)
         # Append the features and labels to the storage arrays
         X = np.concatenate((X, X_loop), axis=0)
         y = np.concatenate((y, y_loop), axis=0)
@@ -328,18 +318,32 @@ def run_differential_entropy_on_dataset(params):
     y_test (np.array): The corresponding labels for the test data.
     """
     n_training_scenes = round(params.train_ratio*params.n_scenes)
+    n_val_scenes = round(params.args.val_ratio*params.n_scenes)
+
+    scenes_lower_train = 0
+    scenes_lower_val = n_training_scenes
+    scenes_lower_test = n_training_scenes + n_val_scenes
+
     # Determine the number of scenes to process in each loop
-    n_scenes_per_loop = get_n_scenes_per_loop(params.n_samples_per_scene, n_training_scenes, params.n_scenes)
+    n_scenes_per_loop = get_n_scenes_per_loop(params.n_samples_per_scene, n_training_scenes,
+                                              params.n_scenes)
 
     # Extract features from the training scenes
     X_train, y_train = get_diff_entropy_features(
-        scenes_lower=0, scenes_upper=n_training_scenes, n_scenes_per_loop=n_scenes_per_loop, params=params)
+        scenes_lower=scenes_lower_train, scenes_upper=n_training_scenes,
+        n_scenes_per_loop=n_scenes_per_loop, params=params)
+
+    # Extract features from the validation scenes
+    X_val, y_val = get_diff_entropy_features(
+        scenes_lower=scenes_lower_val, scenes_upper=n_training_scenes+n_val_scenes,
+        n_scenes_per_loop=n_scenes_per_loop, params=params)
 
     # Extract features from the test scenes
     X_test, y_test = get_diff_entropy_features(
-        scenes_lower=n_training_scenes, scenes_upper=params.n_scenes, n_scenes_per_loop=n_scenes_per_loop,
-        params=params)
-    return X_train, y_train, X_test, y_test
+        scenes_lower=scenes_lower_test, scenes_upper=params.n_scenes,
+        n_scenes_per_loop=n_scenes_per_loop, params=params)
+
+    return X_train, y_train, X_val, y_val, X_test, y_test
 
 
 def setup_inputs_to_dnn(params):
@@ -354,7 +358,8 @@ def setup_inputs_to_dnn(params):
     n_training_scenes = round(params.train_ratio*params.n_scenes)
     n_val_scenes = round(params.args.val_ratio*params.n_scenes)
     # Determine the number of scenes to process in each loop
-    n_scenes_per_loop = get_n_scenes_per_loop(params.n_samples_per_scene, n_training_scenes, params.n_scenes)
+    n_scenes_per_loop = get_n_scenes_per_loop(params.n_samples_per_scene, n_training_scenes,
+                                              params.n_scenes)
 
     scenes_lower_train = 0
     scenes_lower_val = n_training_scenes
@@ -370,7 +375,8 @@ def setup_inputs_to_dnn(params):
     start = time.time()
 
     if params.args.rerun_crash:
-        assert (params.args.scenes_finished < params.n_scenes), "Cannot extract data, already extracted all"
+        assert (params.args.scenes_finished < params.n_scenes), (
+            "Cannot extract data, already extracted all")
         if params.args.scenes_finished < n_training_scenes:
             scenes_lower_train = params.args.scenes_finished
             continue_training_extraction = True
@@ -397,20 +403,21 @@ def setup_inputs_to_dnn(params):
     if continue_training_extraction:
         class_counts = features_to_txt_files(
             scenes_lower=scenes_lower_train, scenes_upper=n_training_scenes,
-            n_scenes_per_loop=n_scenes_per_loop, params=params, mode="train", class_counts=class_counts,
-            start=start, write_mode=write_mode_train)
+            n_scenes_per_loop=n_scenes_per_loop, params=params, mode="train",
+            class_counts=class_counts, start=start, write_mode=write_mode_train)
 
     # Extract features from the validation scenes
     if continue_val_extraction:
         class_counts = features_to_txt_files(
             scenes_lower=scenes_lower_val, scenes_upper=n_training_scenes+n_val_scenes,
-            n_scenes_per_loop=n_scenes_per_loop, params=params, mode="validation", class_counts=class_counts,
-            start=start, write_mode=write_mode_val)
+            n_scenes_per_loop=n_scenes_per_loop, params=params, mode="validation",
+            class_counts=class_counts, start=start, write_mode=write_mode_val)
 
     # Extract features from the test scenes
     class_counts = features_to_txt_files(
-        scenes_lower=scenes_lower_test, scenes_upper=params.n_scenes, n_scenes_per_loop=n_scenes_per_loop,
-        params=params, mode="test", class_counts=class_counts, start=start, write_mode=write_mode_test)
+        scenes_lower=scenes_lower_test, scenes_upper=params.n_scenes,
+        n_scenes_per_loop=n_scenes_per_loop, params=params, mode="test",
+        class_counts=class_counts, start=start, write_mode=write_mode_test)
 
 
 def extract_max_values_from_end(file_path):

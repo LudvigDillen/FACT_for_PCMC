@@ -19,6 +19,7 @@ from utils.other import start_debug
 from utils.pointclouds import PCAC_dataset
 from visualization.classifications import plot_accuracies, store_confusion_matrix
 from classifiers.loss_functions import get_loss
+from classifiers.coral import coral
 
 
 def track_accuracy(model, loader, num_class):
@@ -107,7 +108,7 @@ def load_best_model(args, logger, pretrained=True):
             logger.info('No existing model, starting training from scratch...')
             start_epoch = 0
 
-    return classifier, start_epoch
+    return classifier, start_epoch, args
 
 
 # TODO: Maybe add functionality so that we can extract one feature at the time, and
@@ -124,7 +125,7 @@ def run_cls(n_samples, args, logger, pretrained=True):
                                                 shuffle=True, num_workers=4)
     del PCAC_TRAIN_DATASET, PCAC_VAL_DATASET
 
-    '''MODEL LOADING'''
+    # MODEL LOADING
     classifier, start_epoch, args = load_best_model(args, logger, pretrained=pretrained)
     criterion = torch.nn.CrossEntropyLoss()
 
@@ -150,13 +151,13 @@ def run_cls(n_samples, args, logger, pretrained=True):
     train_accuracies = np.empty((args.epoch))
     val_accuracies = np.empty((args.epoch))
 
-    '''TRANING'''
+    # TRANING
     logger.info('Start training...')
     for epoch in range(start_epoch, args.epoch):
         logger.info('Epoch %d (%d/%s):' % (global_epoch + 1, epoch + 1, args.epoch))
 
         classifier.train()
-        for batch_id, data in tqdm(enumerate(trainDataLoader, 0), total=len(trainDataLoader), smoothing=0.9):
+        for _, data in tqdm(enumerate(trainDataLoader, 0), total=len(trainDataLoader), smoothing=0.9):
             points, target = data
             points = points.data.numpy()
             points = provider.random_point_dropout(points)
@@ -187,8 +188,8 @@ def run_cls(n_samples, args, logger, pretrained=True):
 
         with torch.no_grad():
             if args.plot_train_acc:
-                instance_acc_train, class_acc_train = track_accuracy(classifier.eval(), trainDataLoader,
-                                                                     num_class=args.num_class)
+                instance_acc_train, _ = track_accuracy(classifier.eval(), trainDataLoader,
+                                                       num_class=args.num_class)
                 logger.info('Train Instance Accuracy (regular data): %f' % instance_acc_train)
                 train_accuracies[epoch] = instance_acc_train
 
@@ -196,17 +197,11 @@ def run_cls(n_samples, args, logger, pretrained=True):
                                                      num_class=args.num_class)
             val_accuracies[epoch] = instance_acc
 
-            if (instance_acc >= best_instance_acc):
-                best_instance_acc = instance_acc
+            if instance_acc >= best_instance_acc:
                 best_epoch = epoch + 1
-
-            if (class_acc >= best_class_acc):
+                best_instance_acc = instance_acc
                 best_class_acc = class_acc
-            logger.info('Vali Instance Accuracy: %f, Class Accuracy: %f' % (instance_acc, class_acc))
-            logger.info('Best Instance Accuracy: %f, Class Accuracy: %f' % (best_instance_acc,
-                                                                            best_class_acc))
 
-            if (instance_acc >= best_instance_acc):
                 logger.info('Save model...')
                 savepath = 'best_model.pth'
                 logger.info('Saving at %s' % savepath)
@@ -218,6 +213,10 @@ def run_cls(n_samples, args, logger, pretrained=True):
                     'optimizer_state_dict': optimizer.state_dict(),
                 }
                 torch.save(state, savepath)
+            logger.info('Vali Instance Accuracy: %f, Class Accuracy: %f' % (instance_acc,
+                                                                            class_acc))
+            logger.info('Best Instance Accuracy: %f, Class Accuracy: %f' % (best_instance_acc,
+                                                                            best_class_acc))
             global_epoch += 1
 
     # Load the best validation model
@@ -249,19 +248,19 @@ def main(args):
         start_debug()
     omegaconf.OmegaConf.set_struct(args, False)
 
-    '''HYPER PARAMETER'''
+    # HYPER PARAMETER
     logger = logging.getLogger(__name__)
 
-    '''DATA LOADING'''
+    # DATA LOADING
     logger.info('Load dataset ...')
 
     # Ludvig's code
     # Init Nusc object
     if not args.re_use_data:
         print("Start feature extraction", flush=True)
-        data_folder = '/home/luddi824/thesis/PCAC/data/nuscenes/'
-        version = args.dataset
-        nusc = ns.nuscenes.NuScenes(version=version, dataroot=data_folder, verbose=False)
+        nusc = ns.nuscenes.NuScenes(version=args.dataset, dataroot=args.data_folder, verbose=False)
+        if args.classifier == "CorAl":
+            coral(nusc, args, logger)
 
         # Get features
         with torch.no_grad():
@@ -281,10 +280,9 @@ def main(args):
                 n_samples, args, logger)
             plot_accuracies(train_accuracies, val_accuracies, args.plot_train_acc)
         else:
-            classifier, _ = load_best_model(args, logger)
+            classifier, _, args = load_best_model(args, logger)
 
-        test_instance_acc, test_class_acc, y_true, y_pred = run_test(
-                n_samples, args, logger, classifier)
+        _, _, y_true, y_pred = run_test(n_samples, args, logger, classifier)
         store_confusion_matrix(y_pred, y_true, N_classes=args.perturb_settings.n_classes,
                                logger=logger)
 
