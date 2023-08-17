@@ -1,7 +1,6 @@
+import os
 import torch
 import numpy as np
-import os
-import gc
 import time
 
 from utils.data_handling import setup_inputs_to_dnn, generate_class_names_file
@@ -29,15 +28,13 @@ def get_neighborhoods(PC_pair, pc_batch, radii_batch):
 def feature_extraction(PC_scenes, params):
     N_scenes, N_samples_per_scene = PC_scenes.shape
     for scene_number in range(N_scenes):
-        # gc.collect()
         torch.cuda.empty_cache()
         for sample_number in range(N_samples_per_scene):
-            start_sample = time.time()
             PC_pair = PC_scenes[scene_number][sample_number]
             PC_joint = PC_pair.PCUnion
             if params.study_neighborhoods:
                 # Setup batches for the points of interest
-                index_batches, pc_batches, radii_batches = get_data_batches(PC_joint, params)
+                index_batches, pc_batches, radii_batches = get_data_batches(PC_pair, params)
 
                 N_batches = len(index_batches)
                 assert N_batches % 2 == 0, f"{N_batches} is not an even number"
@@ -82,7 +79,7 @@ def feature_extraction(PC_scenes, params):
                     # EXTRACT JOINT ENTROPY FEATURE
                     if params.use_jde:
                         # Filter out neighborhoods with only one point
-                        bool_mask_valid_neighborhood_j = (n_neighbors_per_point_in_batch_j > 1)
+                        bool_mask_valid_neighborhood_j = n_neighbors_per_point_in_batch_j > 1
                         inds_to_valid_neighborhood_j = \
                             torch.nonzero(bool_mask_valid_neighborhood_j).squeeze(dim=1)
 
@@ -90,12 +87,13 @@ def feature_extraction(PC_scenes, params):
                             PC_joint, n_neighbors_per_point_in_batch_j, neighbor_mask_j,
                             inds_to_valid_neighborhood_j, params)
                         PC_joint.metric_jde[index] = entropies_batch_j
-                        del n_neighbors_per_point_in_batch_j, neighbor_mask_j, inds_to_valid_neighborhood_j
+                        del n_neighbors_per_point_in_batch_j, neighbor_mask_j
+                        del inds_to_valid_neighborhood_j
 
                     # EXTRACT SEPARATE ENTROPY FEATURE
                     if params.use_sde:
                         # Filter out neighborhoods with only one point
-                        bool_mask_valid_neighborhood_s = (n_neighbors_per_point_in_batch_s > 1)
+                        bool_mask_valid_neighborhood_s = n_neighbors_per_point_in_batch_s > 1
                         inds_to_valid_neighborhood_s = \
                             torch.nonzero(bool_mask_valid_neighborhood_s).squeeze(dim=1)
 
@@ -108,16 +106,16 @@ def feature_extraction(PC_scenes, params):
                             PC_sep, n_neighbors_per_point_in_batch_s, neighbor_mask_s,
                             inds_to_valid_neighborhood_s, params)
                         PC_joint.metric_sde[index] = entropies_batch_s
-                        del n_neighbors_per_point_in_batch_s, neighbor_mask_s, inds_to_valid_neighborhood_s
+                        del n_neighbors_per_point_in_batch_s, neighbor_mask_s
+                        del inds_to_valid_neighborhood_s
 
                     # EXTRACT SINKHORN DIVERGENCE FEATURE
                     if params.use_sd:
-                        dists = sinkhorn_divergence(PC_pair, neighbor_mask_0, neighbor_mask_1)
+                        dists = sinkhorn_divergence(PC_pair, neighbor_mask_0, neighbor_mask_1,
+                                                    params.sinkhorn_div)
                         PC_joint.metric_wd[index] = dists
 
             PC_scenes[scene_number][sample_number].PCUnion = PC_joint
-            end_sample = time.time()
-            # print(f"Time sample {np.around(end_sample - start_sample, 2)}")
     # TODO: Extract more features ...
     return PC_scenes
 
@@ -179,23 +177,17 @@ def extract_features_to_txt_files(nusc, args):
     # TODO: Add some assertions that we do not use more scenes than we actually have
     # TODO: Find suitable parameters. Although, I think these are rather ok
     # Set parameters
-    scale_factor = 5
-    params_diff_entropy = {
-        "rmin": 0.2*scale_factor,
-        "rmax": 1*scale_factor,
-        "log_epsilon": -18.0,
-        "alpha": 1.33*scale_factor,
-        "E_reject": 0.20
-    }
-    T_close_thresh = 1.5
-    verbose = False
-    preprocess = True
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    params = Params(nusc=nusc, args=args, T_close_thresh=T_close_thresh,
-                    params_diff_entropy=params_diff_entropy, verbose=verbose,
-                    preprocess=preprocess, pointwise=True, do_fps=True, device=device)
+    # TODO: Remove
+    # params_diff_entropy = {
+    #     "rmin": args.neighborhood.rmin,
+    #     "rmax": args.neighborhood.rmax,
+    #     "log_epsilon": args.diff_entropy.log_epsilon,
+    #     "alpha": args.sensor_settings.vertical_angular_res*args.neighborhood.alpha_scale,
+    #     "E_reject": args.diff_entropy.E_reject
+    # }
+    params = Params(nusc=nusc, args=args, pointwise=True, do_fps=True)
     # Set which features to use
-    params.set_which_features_to_use(args.features_to_create)
+    params.set_which_features_to_use(args.features_to_create, args.classifier)
     # We do not have to recreate the file if we are re-running after crash
     if not params.args.rerun_crash:
         generate_class_names_file(

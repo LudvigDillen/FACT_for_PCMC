@@ -5,16 +5,41 @@ from visualization.classifications import plot_accuracies_ablation
 
 
 def get_dynamic_radii(d, params):
+    # TODO: Test that this works
     # Unpack parameters
-    rmin = torch.tensor(params["rmin"])
-    rmax = torch.tensor(params["rmax"])
-    alpha = torch.tensor(params["alpha"])
+    # rmin = torch.tensor(params_diff_entropy["rmin"])
+    # rmax = torch.tensor(params_diff_entropy["rmax"])
+    # alpha = torch.tensor(params_diff_entropy["alpha"])
+
+    rmin = params.neighborhood.rmin
+    rmax = params.neighborhood.rmax
     #
-    alpha_rad = torch.deg2rad(alpha)
-    r = d*torch.sin(alpha_rad)
+    r = d*params.sin_alpha
     r_out = r
     r_out[r < rmin] = rmin
     r_out[r > rmax] = rmax
+    return r_out
+
+
+def get_dynamic_radii_joint(PC_pair, params):
+    PC_joint = PC_pair.PCUnion
+
+    pc_joint_fps_lcs0 = PC_joint.pc[PC_joint.fps_inds]
+    dists_to_pose0 = torch.norm(pc_joint_fps_lcs0, dim=1)
+
+    T_lcs0_to_lcs1 = torch.matmul(torch.inverse(PC_pair.pose1), PC_pair.pose0)
+    R = T_lcs0_to_lcs1[:3, :3]
+    t = T_lcs0_to_lcs1[:3, 3]
+    pc_joint_fps_lcs1 = torch.matmul(pc_joint_fps_lcs0, R.T) + t
+    dists_to_pose1 = torch.norm(pc_joint_fps_lcs1, dim=1)
+
+    if params.args.neighborhood.k == "joint":
+        d = (dists_to_pose0 + dists_to_pose1)/2
+    elif params.args.neighborhood.k == "adaptive":
+        d = np.sqrt(2)*dists_to_pose0*dists_to_pose1/torch.sqrt(dists_to_pose0**2 + dists_to_pose1**2)
+    else:
+        exit("ERROR: Neighborhood k-parameter not in [joint, adaptive]")
+    r_out = get_dynamic_radii(d, params)
     return r_out
 
 
@@ -57,7 +82,8 @@ def divide_into_batches(pc, max_batch_size):
     return batches
 
 
-def get_data_batches(PC, params):
+def get_data_batches(PC_pair, params):
+    PC = PC_pair.PCUnion
     batch_size = params.batch_size_feature_extraction
     # Assuming PC_joint.fps_inds is a tensor, create an indices tensor
     indices = torch.arange(PC.fps_inds.shape[0])
@@ -70,8 +96,14 @@ def get_data_batches(PC, params):
     pc_batches = divide_into_batches(PC.pc[PC.fps_inds], batch_size)
 
     # Calculate radii
-    radii = get_dynamic_radii(PC.distances_to_origin[PC.fps_inds], params.params_diff_entropy).to(PC.device)
+    if params.args.neighborhood.k == "normal":
+        radii = get_dynamic_radii(PC.distances_to_origin[PC.fps_inds], params)
+    elif params.args.neighborhood.k in ["joint", "adaptive"]:
+        radii = get_dynamic_radii_joint(PC_pair, params)
+    else:
+        exit("ERROR: Neighborhood k-parameter not in [normal, joint, adaptive]")
     # Split radii into batches
+    # TODO: Check that the radii is on cuda ...
     radii_batches = divide_into_batches(radii, batch_size)
 
     return index_batches, pc_batches, radii_batches
