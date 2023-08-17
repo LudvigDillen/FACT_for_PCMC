@@ -4,3 +4,4 @@ nohups/
 outputs/
 images/
 to_remove.py
+.pylintrc
