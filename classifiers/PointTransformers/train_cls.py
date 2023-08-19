@@ -2,6 +2,7 @@
 Author: Benny
 Date: Nov 2019
 """
+import sys
 import numpy as np
 import torch
 import logging
@@ -94,19 +95,11 @@ def load_best_model(args, logger, pretrained=True):
                          'PointTransformerCls')(args).cuda()
 
     start_epoch = 0
-    if pretrained:
-        try:
-            if args.load_model_path:
-                checkpoint = torch.load(args.load_model_path)
-            else:
-                checkpoint = torch.load('best_model.pth')
-            start_epoch = checkpoint['epoch']
-            classifier.load_state_dict(checkpoint['model_state_dict'])
-            logger.info('Use pretrain model')
-        except FileNotFoundError as e:
-            logger.info(f'Error loading model: {e}')
-            logger.info('No existing model, starting training from scratch...')
-            start_epoch = 0
+    if pretrained and args.load_model_path:
+        checkpoint = torch.load(args.load_model_path)
+        start_epoch = checkpoint['epoch']
+        classifier.load_state_dict(checkpoint['model_state_dict'])
+        logger.info('Use pretrain model')
 
     return classifier, start_epoch, args
 
@@ -163,7 +156,7 @@ def run_cls(n_samples, args, logger, pretrained=True):
             points = provider.random_point_dropout(points)
             # TODO: How to do with the augmentation? Scale can change class ...
             points[:, :, 0:3] = provider.random_scale_point_cloud(points[:, :, 0:3])
-            # points[:, :, 0:3] = provider.shift_point_cloud(points[:, :, 0:3])
+            points[:, :, 0:3] = provider.shift_point_cloud(points[:, :, 0:3])
             points = torch.Tensor(points)
             target = target[:, 0]
 
@@ -171,7 +164,7 @@ def run_cls(n_samples, args, logger, pretrained=True):
             optimizer.zero_grad()
 
             pred = classifier(points)
-            loss = get_loss(args.loss_function, criterion, pred, target.long(), args.gamma_lf)
+            loss = get_loss(criterion, pred, target.long(), args.gamma_lf)
 
             pred_choice = pred.data.max(1)[1]
             correct = pred_choice.eq(target.long().data).cpu().sum()
@@ -259,32 +252,56 @@ def main(args):
     if not args.re_use_data:
         print("Start feature extraction", flush=True)
         nusc = ns.nuscenes.NuScenes(version=args.dataset, dataroot=args.data_folder, verbose=False)
-        if args.classifier == "CorAl":
-            coral(nusc, args, logger)
 
-        # Get features
-        with torch.no_grad():
-            extract_features_to_txt_files(nusc, args=args)
-        torch.cuda.empty_cache()
-        del nusc
-    n_samples = args.n_scenes*args.n_samples_per_scene
-    # Get dataset (features in a data loader)
-    args.feature_filter = process_features(args.features_to_use, args.features_to_create)
-
-    # Run all
-    if args.ablation:
-        run_ablation_features(n_samples, args, logger)
-    else:
-        if args.rerun_only_test is False:
-            train_accuracies, val_accuracies, classifier = run_cls(
-                n_samples, args, logger)
-            plot_accuracies(train_accuracies, val_accuracies, args.plot_train_acc)
+    for i in range(args.running_iterations):
+        # Setup data for new run
+        if i == 0:
+            args.batch_size = 32
+            args.model.transformer_dim = 128
+            args.num_point = 2048
+        elif i == 1:
+            args.batch_size = 16
+            args.model.transformer_dim = 256
+            args.num_point = 2048
+        elif i == 2:
+            args.batch_size = 16
+            args.model.transformer_dim = 128
+            args.num_point = 4096
         else:
-            classifier, _, args = load_best_model(args, logger)
+            sys.exit(f"Not supposed to be more than {args.running_iterations} runs")
+        args.feature_folder = f'/home/luddi824/thesis/PCAC/data/PCAC_data/best_settings_{i+1}'
+        print(f"STARTING RUN {i + 1}. Settings\n")
+        print(f"batch_size: {args.batch_size}")
+        print(f"TD: {args.model.transformer_dim}")
+        print(f"FPS: {args.num_point}")
+        ##
 
-        _, _, y_true, y_pred = run_test(n_samples, args, logger, classifier)
-        store_confusion_matrix(y_pred, y_true, N_classes=args.perturb_settings.n_classes,
-                               logger=logger)
+        if not args.re_use_data:
+            if args.classifier == "CorAl":
+                coral(nusc, args, logger)
+
+            # Get features
+            with torch.no_grad():
+                extract_features_to_txt_files(nusc, args=args)
+            torch.cuda.empty_cache()
+        n_samples = args.n_scenes*args.n_samples_per_scene
+        # Get dataset (features in a data loader)
+        args.feature_filter = process_features(args.features_to_use, args.features_to_create)
+
+        # Run all
+        if args.ablation:
+            run_ablation_features(n_samples, args, logger)
+        else:
+            if args.rerun_only_test is False:
+                train_accuracies, val_accuracies, classifier = run_cls(
+                    n_samples, args, logger)
+                plot_accuracies(train_accuracies, val_accuracies, args.plot_train_acc)
+            else:
+                classifier, _, args = load_best_model(args, logger)
+
+            _, _, y_true, y_pred = run_test(n_samples, args, logger, classifier)
+            store_confusion_matrix(y_pred, y_true, N_classes=args.perturb_settings.n_classes,
+                                   logger=logger)
 
 
 if __name__ == '__main__':
