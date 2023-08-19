@@ -397,7 +397,7 @@ def setup_inputs_to_dnn(params):
         class_counts = extract_max_values_from_end(path_folder)
         start = start - 3600*params.args.time_gone
     else:
-        class_counts = np.zeros(params.perturb_settings.n_classes, dtype=int)
+        class_counts = np.zeros(params.args.perturb_settings.n_classes, dtype=int)
         # Extract features from the training scenes
 
     if continue_training_extraction:

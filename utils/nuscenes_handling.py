@@ -231,12 +231,12 @@ class NuscenesHandling:
         PC_scene = []
         count = 0
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        cov_params = params.args.cov_params
+        cov_params = params.args.covisibility
 
         # HACK: Avoid circular imports
         from utils.data_handling import list_of_samples_per_scene, calculate_sample_gaps
 
-        samples_per_scene = list_of_samples_per_scene(n_samples, params.n_scenes)
+        samples_per_scene = list_of_samples_per_scene(n_samples, n_scenes)
 
         skip_sample_index = 0
         skip_samples_list = calculate_sample_gaps(

@@ -112,7 +112,7 @@ def feature_extraction(PC_scenes, params):
                     # EXTRACT SINKHORN DIVERGENCE FEATURE
                     if params.use_sd:
                         dists = sinkhorn_divergence(PC_pair, neighbor_mask_0, neighbor_mask_1,
-                                                    params.sinkhorn_div)
+                                                    params.args.sinkhorn_div)
                         PC_joint.metric_wd[index] = dists
 
             PC_scenes[scene_number][sample_number].PCUnion = PC_joint
@@ -187,7 +187,7 @@ def extract_features_to_txt_files(nusc, args):
     # }
     params = Params(nusc=nusc, args=args, pointwise=True, do_fps=True)
     # Set which features to use
-    params.set_which_features_to_use(args.features_to_create, args.classifier)
+    params.set_which_features_to_use(args.features_to_create)
     # We do not have to recreate the file if we are re-running after crash
     if not params.args.rerun_crash:
         generate_class_names_file(

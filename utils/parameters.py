@@ -48,8 +48,6 @@ class Params:
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.batch_size_feature_extraction = args.batch_size_feature_extraction
 
-        self.perturb_settings = args.perturb_settings
-        self.covisibilty = args.covisibilty
         self.set_class_names()
 
         # Neighborhood sin alpha
@@ -87,10 +85,10 @@ class Params:
         self.calc_sep_neighbors = (self.use_sde or self.use_cs)
 
     def set_class_names(self):
-        r_digits = count_decimal_digits(self.perturb_settings.r_bin)
-        t_digits = count_decimal_digits(self.perturb_settings.t_bin)
+        r_digits = count_decimal_digits(self.args.perturb_settings.r_bin)
+        t_digits = count_decimal_digits(self.args.perturb_settings.t_bin)
         self.class_names = {}
-        for i in range(self.perturb_settings.n_classes):
+        for i in range(self.args.perturb_settings.n_classes):
             roff = round(self.args.perturb_settings.r_bin*i, r_digits)
             toff = round(self.args.perturb_settings.t_bin*i, t_digits)
             class_name = (f'class_category_{i}' + '_R_offset_' + str(roff) +

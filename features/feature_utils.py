@@ -1,24 +1,18 @@
+import sys
 import torch
 import numpy as np
+
 
 from visualization.classifications import plot_accuracies_ablation
 
 
 def get_dynamic_radii(d, params):
-    # TODO: Test that this works
-    # Unpack parameters
-    # rmin = torch.tensor(params_diff_entropy["rmin"])
-    # rmax = torch.tensor(params_diff_entropy["rmax"])
-    # alpha = torch.tensor(params_diff_entropy["alpha"])
-
-    rmin = params.neighborhood.rmin
-    rmax = params.neighborhood.rmax
-    #
+    rmin = params.args.neighborhood.rmin
+    rmax = params.args.neighborhood.rmax
     r = d*params.sin_alpha
-    r_out = r
-    r_out[r < rmin] = rmin
-    r_out[r > rmax] = rmax
-    return r_out
+    r[r < rmin] = rmin
+    r[r > rmax] = rmax
+    return r
 
 
 def get_dynamic_radii_joint(PC_pair, params):
@@ -38,7 +32,7 @@ def get_dynamic_radii_joint(PC_pair, params):
     elif params.args.neighborhood.k == "adaptive":
         d = np.sqrt(2)*dists_to_pose0*dists_to_pose1/torch.sqrt(dists_to_pose0**2 + dists_to_pose1**2)
     else:
-        exit("ERROR: Neighborhood k-parameter not in [joint, adaptive]")
+        sys.exit("ERROR: Neighborhood k-parameter not in [joint, adaptive]")
     r_out = get_dynamic_radii(d, params)
     return r_out
 
@@ -101,7 +95,7 @@ def get_data_batches(PC_pair, params):
     elif params.args.neighborhood.k in ["joint", "adaptive"]:
         radii = get_dynamic_radii_joint(PC_pair, params)
     else:
-        exit("ERROR: Neighborhood k-parameter not in [normal, joint, adaptive]")
+        sys.exit("ERROR: Neighborhood k-parameter not in [normal, joint, adaptive]")
     # Split radii into batches
     # TODO: Check that the radii is on cuda ...
     radii_batches = divide_into_batches(radii, batch_size)
