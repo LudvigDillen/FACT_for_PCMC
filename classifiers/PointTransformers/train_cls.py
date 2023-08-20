@@ -109,9 +109,11 @@ def load_best_model(args, logger, pretrained=True):
 # pointcloud (the distorted versions) which should be unfeasible.
 def run_cls(n_samples, args, logger, pretrained=True):
     PCAC_TRAIN_DATASET = PCAC_dataset(n_samples=n_samples, root=args.feature_folder, split='train',
-                                      feature_filter=args.feature_filter, train_ratio=args.train_ratio)
+                                      feature_filter=args.feature_filter, train_ratio=args.train_ratio,
+                                      val_ratio=args.val_ratio)
     PCAC_VAL_DATASET = PCAC_dataset(n_samples=n_samples, root=args.feature_folder, split='validation',
-                                    feature_filter=args.feature_filter, train_ratio=args.train_ratio)
+                                    feature_filter=args.feature_filter, train_ratio=args.train_ratio,
+                                    val_ratio=args.val_ratio)
     trainDataLoader = torch.utils.data.DataLoader(PCAC_TRAIN_DATASET, batch_size=args.batch_size,
                                                   shuffle=True, num_workers=4)
     valDataLoader = torch.utils.data.DataLoader(PCAC_VAL_DATASET, batch_size=args.batch_size,
@@ -164,7 +166,7 @@ def run_cls(n_samples, args, logger, pretrained=True):
             optimizer.zero_grad()
 
             pred = classifier(points)
-            loss = get_loss(criterion, pred, target.long(), args.gamma_lf)
+            loss = get_loss(criterion, pred, target.long(), args.lambda_lf)
 
             pred_choice = pred.data.max(1)[1]
             correct = pred_choice.eq(target.long().data).cpu().sum()
@@ -221,7 +223,8 @@ def run_cls(n_samples, args, logger, pretrained=True):
 
 def run_test(n_samples, args, logger, classifier):
     PCAC_TEST_DATASET = PCAC_dataset(n_samples=n_samples, root=args.feature_folder, split='test',
-                                     feature_filter=args.feature_filter, train_ratio=args.train_ratio)
+                                     feature_filter=args.feature_filter,
+                                     train_ratio=args.train_ratio, val_ratio=args.val_ratio)
     testDataLoader = torch.utils.data.DataLoader(PCAC_TEST_DATASET, batch_size=args.batch_size,
                                                  shuffle=False, num_workers=4)
     del PCAC_TEST_DATASET
@@ -254,22 +257,22 @@ def main(args):
         nusc = ns.nuscenes.NuScenes(version=args.dataset, dataroot=args.data_folder, verbose=False)
 
     for i in range(args.running_iterations):
-        # Setup data for new run
-        if i == 0:
-            args.batch_size = 32
-            args.model.transformer_dim = 128
-            args.num_point = 2048
-        elif i == 1:
-            args.batch_size = 16
-            args.model.transformer_dim = 256
-            args.num_point = 2048
-        elif i == 2:
-            args.batch_size = 16
-            args.model.transformer_dim = 128
-            args.num_point = 4096
-        else:
-            sys.exit(f"Not supposed to be more than {args.running_iterations} runs")
-        args.feature_folder = f'/home/luddi824/thesis/PCAC/data/PCAC_data/best_settings_{i+1}'
+        # # Setup data for new run
+        # if i == 0:
+        #     args.batch_size = 32
+        #     args.model.transformer_dim = 128
+        #     args.num_point = 2048
+        # elif i == 1:
+        #     args.batch_size = 16
+        #     args.model.transformer_dim = 256
+        #     args.num_point = 2048
+        # elif i == 2:
+        #     args.batch_size = 16
+        #     args.model.transformer_dim = 128
+        #     args.num_point = 4096
+        # else:
+        #     sys.exit(f"Not supposed to be more than {args.running_iterations} runs")
+        # args.feature_folder = f'/home/luddi824/thesis/PCAC/data/PCAC_data/best_settings_{i+1}'
         print(f"STARTING RUN {i + 1}. Settings\n")
         print(f"batch_size: {args.batch_size}")
         print(f"TD: {args.model.transformer_dim}")

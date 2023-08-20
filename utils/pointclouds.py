@@ -7,7 +7,7 @@ from utils.geometrics import change_coordinate_system
 
 
 class PCAC_dataset(torch.utils.data.Dataset):
-    def __init__(self, n_samples, root, train_ratio, split='train',
+    def __init__(self, n_samples, root, train_ratio, val_ratio, split='train',
                  cache_size=1000, feature_filter=None):
         self.root = root
         self.catfile = os.path.join(self.root, 'PCAC_data_class_names.txt')
@@ -25,7 +25,8 @@ class PCAC_dataset(torch.utils.data.Dataset):
 
         self.n_samples = n_samples
         if total_samples_available != n_samples:
-            class_ids = self._change_data_usage(class_ids, n_samples, total_samples_available, train_ratio)
+            class_ids = self._change_data_usage(class_ids, n_samples, total_samples_available,
+                                                train_ratio, val_ratio)
 
         assert split in modes, "Error valid split not given!"
         class_names = ['_'.join(x.split('_')[0:-1]) for x in class_ids[split]]
@@ -65,18 +66,16 @@ class PCAC_dataset(torch.utils.data.Dataset):
     def __getitem__(self, index):
         return self._get_item(index)
 
-    def _change_data_usage(self, class_ids, n_samples, total_samples_available, train_ratio):
+    def _change_data_usage(self, class_ids, n_samples, total_samples_available, train_ratio,
+                           val_ratio):
         if n_samples > total_samples_available:
             print(f"Only {total_samples_available} are available. Using all!")
         elif n_samples < total_samples_available:
             n_train_samples = round(n_samples*train_ratio)
-            n_test_samples = round(n_samples*(1-train_ratio))
-            if n_train_samples + n_test_samples > n_samples:
-                n_test_samples -= 1
-            elif n_train_samples + n_test_samples < n_samples:
-                n_test_samples += 1
-            assert (n_train_samples + n_test_samples == n_samples), "Division of data gone wrong"
+            n_val_samples = round(n_samples*val_ratio)
+            n_test_samples = round(n_samples*(1-train_ratio-val_ratio))
             class_ids['train'] = class_ids['train'][:n_train_samples]
+            class_ids['validation'] = class_ids['validation'][:n_val_samples]
             class_ids['test'] = class_ids['test'][:n_test_samples]
         return class_ids
 
@@ -149,6 +148,9 @@ class PC:
         self.init_features()
 
 
+# TODO: I do not need to calculate the distance from the origin for all points. It suffices with
+# the point we choose to select after FPS. This might be true for other things we do as well. Like
+# co-visibility score. Potential speed-up possible there.
 class PCPair:
     def __init__(self, PC0, PC1, device, PCHandler, perturb_settings):
         # Set point cloud pair
