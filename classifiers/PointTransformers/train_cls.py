@@ -54,7 +54,7 @@ def test_results(model, loader, num_class):
     y_true = np.zeros(N_samples)
     y_pred = np.zeros(N_samples)
     ind = 0
-    with torch.no_grad():
+    with torch.inference_mode():
         for data in tqdm(loader, total=len(loader)):
             points, target = data
             target = target[:, 0]
@@ -181,7 +181,7 @@ def run_cls(n_samples, args, logger, pretrained=True):
         train_instance_acc = np.mean(mean_correct)
         logger.info('Train Instance Accuracy (augmented data): %f' % train_instance_acc)
 
-        with torch.no_grad():
+        with torch.inference_mode():
             if args.plot_train_acc:
                 instance_acc_train, _ = track_accuracy(classifier.eval(), trainDataLoader,
                                                        num_class=args.num_class)
@@ -284,7 +284,7 @@ def main(args):
                 coral(nusc, args, logger)
 
             # Get features
-            with torch.no_grad():
+            with torch.inference_mode():
                 extract_features_to_txt_files(nusc, args=args)
             torch.cuda.empty_cache()
         n_samples = args.n_scenes*args.n_samples_per_scene
