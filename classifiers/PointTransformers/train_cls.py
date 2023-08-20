@@ -115,9 +115,9 @@ def run_cls(n_samples, args, logger, pretrained=True):
                                     feature_filter=args.feature_filter, train_ratio=args.train_ratio,
                                     val_ratio=args.val_ratio)
     trainDataLoader = torch.utils.data.DataLoader(PCAC_TRAIN_DATASET, batch_size=args.batch_size,
-                                                  shuffle=True, num_workers=4)
+                                                  shuffle=True, num_workers=1)
     valDataLoader = torch.utils.data.DataLoader(PCAC_VAL_DATASET, batch_size=args.batch_size,
-                                                shuffle=True, num_workers=4)
+                                                shuffle=True, num_workers=1)
     del PCAC_TRAIN_DATASET, PCAC_VAL_DATASET
 
     # MODEL LOADING
@@ -226,7 +226,7 @@ def run_test(n_samples, args, logger, classifier):
                                      feature_filter=args.feature_filter,
                                      train_ratio=args.train_ratio, val_ratio=args.val_ratio)
     testDataLoader = torch.utils.data.DataLoader(PCAC_TEST_DATASET, batch_size=args.batch_size,
-                                                 shuffle=False, num_workers=4)
+                                                 shuffle=False, num_workers=1)
     del PCAC_TEST_DATASET
 
     # Test best validation settings on test data
