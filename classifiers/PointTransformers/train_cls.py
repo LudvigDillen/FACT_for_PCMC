@@ -107,13 +107,9 @@ def load_best_model(args, logger, pretrained=True):
 # TODO: Maybe add functionality so that we can extract one feature at the time, and
 # add this to previous extracted features. Note that we then have to save the
 # pointcloud (the distorted versions) which should be unfeasible.
-def run_cls(n_samples, args, logger, pretrained=True):
-    PCAC_TRAIN_DATASET = PCAC_dataset(n_samples=n_samples, root=args.feature_folder, split='train',
-                                      feature_filter=args.feature_filter, train_ratio=args.train_ratio,
-                                      val_ratio=args.val_ratio)
-    PCAC_VAL_DATASET = PCAC_dataset(n_samples=n_samples, root=args.feature_folder, split='validation',
-                                    feature_filter=args.feature_filter, train_ratio=args.train_ratio,
-                                    val_ratio=args.val_ratio)
+def run_cls(args, logger, pretrained=True):
+    PCAC_TRAIN_DATASET = PCAC_dataset(args=args, split='train')
+    PCAC_VAL_DATASET = PCAC_dataset(args=args, split='validation')
     trainDataLoader = torch.utils.data.DataLoader(PCAC_TRAIN_DATASET, batch_size=args.batch_size,
                                                   shuffle=True, num_workers=1)
     valDataLoader = torch.utils.data.DataLoader(PCAC_VAL_DATASET, batch_size=args.batch_size,
@@ -155,10 +151,13 @@ def run_cls(n_samples, args, logger, pretrained=True):
         for _, data in tqdm(enumerate(trainDataLoader, 0), total=len(trainDataLoader), smoothing=0.9):
             points, target = data
             points = points.data.numpy()
-            points = provider.random_point_dropout(points)
+            if args.aug.dropout:
+                points = provider.random_point_dropout(points)
             # TODO: How to do with the augmentation? Scale can change class ...
-            points[:, :, 0:3] = provider.random_scale_point_cloud(points[:, :, 0:3])
-            points[:, :, 0:3] = provider.shift_point_cloud(points[:, :, 0:3])
+            if args.aug.scale:
+                points[:, :, 0:3] = provider.random_scale_point_cloud(points[:, :, 0:3])
+            if args.aug.shift:
+                points[:, :, 0:3] = provider.shift_point_cloud(points[:, :, 0:3])
             points = torch.Tensor(points)
             target = target[:, 0]
 
@@ -221,10 +220,8 @@ def run_cls(n_samples, args, logger, pretrained=True):
     return train_accuracies, val_accuracies, classifier
 
 
-def run_test(n_samples, args, logger, classifier):
-    PCAC_TEST_DATASET = PCAC_dataset(n_samples=n_samples, root=args.feature_folder, split='test',
-                                     feature_filter=args.feature_filter,
-                                     train_ratio=args.train_ratio, val_ratio=args.val_ratio)
+def run_test(args, logger, classifier):
+    PCAC_TEST_DATASET = PCAC_dataset(args=args, split='test')
     testDataLoader = torch.utils.data.DataLoader(PCAC_TEST_DATASET, batch_size=args.batch_size,
                                                  shuffle=False, num_workers=1)
     del PCAC_TEST_DATASET
@@ -287,22 +284,21 @@ def main(args):
             with torch.inference_mode():
                 extract_features_to_txt_files(nusc, args=args)
             torch.cuda.empty_cache()
-        n_samples = args.n_scenes*args.n_samples_per_scene
+        args.n_samples = args.n_scenes*args.n_samples_per_scene
         # Get dataset (features in a data loader)
         args.feature_filter = process_features(args.features_to_use, args.features_to_create)
 
         # Run all
         if args.ablation:
-            run_ablation_features(n_samples, args, logger)
+            run_ablation_features(args, logger)
         else:
             if args.rerun_only_test is False:
-                train_accuracies, val_accuracies, classifier = run_cls(
-                    n_samples, args, logger)
+                train_accuracies, val_accuracies, classifier = run_cls(args, logger)
                 plot_accuracies(train_accuracies, val_accuracies, args.plot_train_acc)
             else:
                 classifier, _, args = load_best_model(args, logger)
 
-            _, _, y_true, y_pred = run_test(n_samples, args, logger, classifier)
+            _, _, y_true, y_pred = run_test(args, logger, classifier)
             store_confusion_matrix(y_pred, y_true, N_classes=args.perturb_settings.n_classes,
                                    logger=logger)
 

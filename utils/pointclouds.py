@@ -7,9 +7,9 @@ from utils.geometrics import change_coordinate_system
 
 
 class PCAC_dataset(torch.utils.data.Dataset):
-    def __init__(self, n_samples, root, train_ratio, val_ratio, split='train',
-                 cache_size=1000, feature_filter=None):
-        self.root = root
+    def __init__(self, args, split='train', cache_size=1000):
+        self.root = args.feature_folder
+        self.args = args
         self.catfile = os.path.join(self.root, 'PCAC_data_class_names.txt')
 
         self.cat = [line.rstrip() for line in open(self.catfile)]
@@ -23,10 +23,9 @@ class PCAC_dataset(torch.utils.data.Dataset):
             class_ids[mode] = [line.rstrip() for line in open(os.path.join(self.root, mode_file))]
             total_samples_available += len(class_ids[mode])
 
-        self.n_samples = n_samples
-        if total_samples_available != n_samples:
-            class_ids = self._change_data_usage(class_ids, n_samples, total_samples_available,
-                                                train_ratio, val_ratio)
+        self.n_samples = self.args.n_samples
+        if total_samples_available != self.args.n_samples:
+            class_ids = self._change_data_usage(class_ids, total_samples_available)
 
         assert split in modes, "Error valid split not given!"
         class_names = ['_'.join(x.split('_')[0:-1]) for x in class_ids[split]]
@@ -39,7 +38,8 @@ class PCAC_dataset(torch.utils.data.Dataset):
         self.cache_size = cache_size  # how many data points to cache in memory
         self.cache = {}  # from index to (point_set, cls) tuple
 
-        feature_filter_with_xyz = np.concatenate((np.ones(3, dtype=int), np.array(feature_filter)))
+        feature_filter_with_xyz = np.concatenate((np.ones(3, dtype=int),
+                                                  np.array(args.feature_filter)))
         self.feature_channels = np.where(feature_filter_with_xyz == 1)[0]
 
     def __len__(self):
@@ -66,14 +66,14 @@ class PCAC_dataset(torch.utils.data.Dataset):
     def __getitem__(self, index):
         return self._get_item(index)
 
-    def _change_data_usage(self, class_ids, n_samples, total_samples_available, train_ratio,
-                           val_ratio):
+    def _change_data_usage(self, class_ids, total_samples_available):
+        n_samples = self.args.n_samples
         if n_samples > total_samples_available:
             print(f"Only {total_samples_available} are available. Using all!")
         elif n_samples < total_samples_available:
-            n_train_samples = round(n_samples*train_ratio)
-            n_val_samples = round(n_samples*val_ratio)
-            n_test_samples = round(n_samples*(1-train_ratio-val_ratio))
+            n_train_samples = round(n_samples*self.args.train_ratio)
+            n_val_samples = round(n_samples*self.args.val_ratio)
+            n_test_samples = round(n_samples*(1-self.args.train_ratio-self.args.val_ratio))
             class_ids['train'] = class_ids['train'][:n_train_samples]
             class_ids['validation'] = class_ids['validation'][:n_val_samples]
             class_ids['test'] = class_ids['test'][:n_test_samples]

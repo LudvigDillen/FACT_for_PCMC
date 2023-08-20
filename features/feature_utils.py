@@ -126,7 +126,7 @@ def process_features(features_to_use, features_to_create):
     return result
 
 
-def run_ablation_features(n_samples, args, logger):
+def run_ablation_features(args, logger):
     N_features = args.feature_filter.shape[0]
     from classifiers.PointTransformers.train_cls import run_cls
     all_train_accuracies = np.empty((N_features, args.epoch))
@@ -138,7 +138,7 @@ def run_ablation_features(n_samples, args, logger):
         ablation_feature_filter = np.zeros(N_features, dtype=int)
         ablation_feature_filter[i] = 1
         # TODO: If running this function, I have to handle the ablation_feature_filter input ...
-        train_accuracies, val_accuracies = run_cls(n_samples, ablation_feature_filter, args, logger,
+        train_accuracies, val_accuracies = run_cls(ablation_feature_filter, args, logger,
                                                    pretrained=False)
         all_train_accuracies[i] = train_accuracies
         all_val_accuracies[i] = val_accuracies
