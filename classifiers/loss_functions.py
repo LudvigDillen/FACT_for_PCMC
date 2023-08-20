@@ -20,16 +20,16 @@ def emd_loss(logits, labels):
     return average_loss
 
 
-def get_loss(cross_entropy, pred, target, gamma_lf):
-    if gamma_lf == 0:
+def get_loss(cross_entropy, pred, target, lambda_lf):
+    if lambda_lf == 0:
         loss = emd_loss(pred, target)
         return loss
 
-    if gamma_lf == 1:
+    if lambda_lf == 1:
         loss = cross_entropy(pred, target)
         return loss
 
     loss_cross_entropy = cross_entropy(pred, target)
     loss_emd = emd_loss(pred, target)
-    loss = gamma_lf*loss_cross_entropy + (1-gamma_lf)*loss_emd
+    loss = lambda_lf*loss_cross_entropy + (1-lambda_lf)*loss_emd
     return loss
