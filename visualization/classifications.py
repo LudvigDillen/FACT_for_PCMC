@@ -29,7 +29,10 @@ def plot_accuracies(train_accuracies, val_accuracies, plot_train_acc=False):
     if plot_train_acc:
         plt.plot(range(1, len(train_accuracies) + 1), 100*np.array(train_accuracies), label='Train Accuracy')
     plt.plot(range(1, len(val_accuracies) + 1), 100*np.array(val_accuracies), label='Validation Accuracy')
-    plt.title('Training and Validation Accuracy')
+    if plot_train_acc:
+        plt.title('Training and Validation Accuracy')
+    else:
+        plt.title('Validation Accuracy')
     plt.xlabel('Epoch')
     plt.ylabel('Accuracy [%]')
     plt.legend()
