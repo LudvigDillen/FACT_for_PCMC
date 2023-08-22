@@ -24,7 +24,7 @@ def model_plot(model, X, y, title):
     plt.show()
 
 
-def plot_accuracies(train_accuracies, val_accuracies, plot_train_acc=False):
+def plot_accuracies(train_accuracies, val_accuracies, plot_train_acc=False, model_identifier='none'):
     plt.figure(figsize=(10, 5))
     if plot_train_acc:
         plt.plot(range(1, len(train_accuracies) + 1), 100*np.array(train_accuracies), label='Train Accuracy')
@@ -51,7 +51,7 @@ def plot_accuracies(train_accuracies, val_accuracies, plot_train_acc=False):
     now = datetime.now()
     time_string = now.strftime('%Y%m%d_%H%M%S')
 
-    filename = f'accuracy_plot_{time_string}'
+    filename = f'accuracy_plot_{time_string}_{model_identifier}'
 
     # Save the figure as .jpg
     plt.savefig(f'{directory}/{filename}.jpg', format='jpg')
@@ -156,13 +156,13 @@ def text_color(bg_color):
     return 'black' if brightness > 0.5 else 'white'
 
 
-def store_confusion_matrix(y_pred, y_true, N_classes, logger):
+def store_confusion_matrix(y_pred, y_true, N_classes, logger, model_identifier):
     # Create a list of all expected classes
     classes = list(range(N_classes))
 
     # Calculate the confusion matrix, ensuring it has the expected shape
     cm = confusion_matrix(y_true, y_pred, labels=classes)
-    logger.info(f'Confusion matrix\n {cm}')
+    logger.info(f'Confusion matrix {model_identifier}\n {cm}')
 
     # Plot the confusion matrix
     fig, ax = plt.subplots()
@@ -196,7 +196,7 @@ def store_confusion_matrix(y_pred, y_true, N_classes, logger):
     now = datetime.now()
     time_string = now.strftime('%Y%m%d_%H%M%S')
 
-    filename = f'confusion_matrix_{time_string}'
+    filename = f'confusion_matrix_{time_string}_{model_identifier}'
 
     # Save the figure to an .eps file
     fig.savefig(f'{directory}/{filename}.eps', format='eps')

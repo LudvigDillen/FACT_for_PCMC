@@ -84,7 +84,7 @@ def test_results(model, loader, num_class):
 
 def load_best_model(args, logger, pretrained=True):
     args.num_class = args.perturb_settings.n_classes
-    args.input_dim = number_of_features(args.feature_filter)
+    args.input_dim, args = number_of_features(args)
     print(f"Input dim: {args.input_dim}")
 
     shutil.copy(hydra.utils.to_absolute_path(
@@ -131,7 +131,7 @@ def run_cls(args, logger, pretrained=True):
     else:
         optimizer = torch.optim.SGD(classifier.parameters(), lr=0.01, momentum=0.9)
 
-    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.85)
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=args.lr_step, gamma=args.lr_gamma)
     global_epoch = 0
     global_step = 0
     best_instance_acc = 0.0
@@ -197,7 +197,7 @@ def run_cls(args, logger, pretrained=True):
                 best_class_acc = class_acc
 
                 logger.info('Save model...')
-                savepath = 'best_model.pth'
+                savepath = 'best_model_' + args.model_identifier + '.pth'
                 logger.info('Saving at %s' % savepath)
                 state = {
                     'epoch': best_epoch,
@@ -214,7 +214,7 @@ def run_cls(args, logger, pretrained=True):
             global_epoch += 1
 
     # Load the best validation model
-    best_model_path = 'best_model.pth'
+    best_model_path = 'best_model_' + args.model_identifier + '.pth'
     checkpoint = torch.load(best_model_path)
     classifier.load_state_dict(checkpoint['model_state_dict'])
     return train_accuracies, val_accuracies, classifier
@@ -255,25 +255,55 @@ def main(args):
 
     for i in range(args.running_iterations):
         # # Setup data for new run
-        # if i == 0:
-        #     args.batch_size = 32
-        #     args.model.transformer_dim = 128
-        #     args.num_point = 2048
-        # elif i == 1:
-        #     args.batch_size = 16
-        #     args.model.transformer_dim = 256
-        #     args.num_point = 2048
-        # elif i == 2:
-        #     args.batch_size = 16
-        #     args.model.transformer_dim = 128
-        #     args.num_point = 4096
-        # else:
-        #     sys.exit(f"Not supposed to be more than {args.running_iterations} runs")
+
+        if i == 0:
+            args.xyz_features.use_xyz = False
+            args.xyz_features.use_z = True
+            args.xyz_features.use_norm_xyz = False
+            args.batch_size = 32
+            args.model_identifier = 'z_BS32'
+        elif i == 1:
+            args.xyz_features.use_xyz = False
+            args.xyz_features.use_z = False
+            args.xyz_features.use_norm_xyz = True
+            args.batch_size = 32
+            args.model_identifier = 'norm_xyz_B32'
+        elif i == 2:
+            args.xyz_features.use_xyz = True
+            args.xyz_features.use_z = False
+            args.xyz_features.use_norm_xyz = False
+            args.batch_size = 32
+            args.model_identifier = 'xyz_B32'
+        elif i == 3:
+            args.xyz_features.use_xyz = False
+            args.xyz_features.use_z = True
+            args.xyz_features.use_norm_xyz = False
+            args.batch_size = 16
+            args.model_identifier = 'z_BS16'
+        elif i == 4:
+            args.xyz_features.use_xyz = False
+            args.xyz_features.use_z = False
+            args.xyz_features.use_norm_xyz = True
+            args.batch_size = 16
+            args.model_identifier = 'norm_xyz_BS16'
+        elif i == 5:
+            args.xyz_features.use_xyz = True
+            args.xyz_features.use_z = False
+            args.xyz_features.use_norm_xyz = False
+            args.batch_size = 16
+            args.model_identifier = 'xyz_BS16'
+        else:
+            sys.exit(f"Not supposed to be more than {args.running_iterations} runs")
         # args.feature_folder = f'/home/luddi824/thesis/PCAC/data/PCAC_data/best_settings_{i+1}'
-        print(f"STARTING RUN {i + 1}. Settings\n")
-        print(f"batch_size: {args.batch_size}")
-        print(f"TD: {args.model.transformer_dim}")
-        print(f"FPS: {args.num_point}")
+        logger.info(f"STARTING RUN {i + 1}. Settings:")
+        logger.info(f"args.xyz_features.use_xyz: {args.xyz_features.use_xyz}")
+        logger.info(f"use_z: {args.xyz_features.use_z}")
+        logger.info(f"use_norm_xyz: {args.xyz_features.use_norm_xyz}")
+        logger.info(f"aug.norm_xyz: {args.aug.norm_xyz}")
+        logger.info(f"scale: {args.aug.scale}")
+        logger.info(f"shift: {args.aug.shift}")
+        logger.info(f"batch_size: {args.batch_size}")
+        logger.info(f"Identifier: {args.model_identifier}")
         ##
 
         if not args.re_use_data:
@@ -294,13 +324,22 @@ def main(args):
         else:
             if args.rerun_only_test is False:
                 train_accuracies, val_accuracies, classifier = run_cls(args, logger)
-                plot_accuracies(train_accuracies, val_accuracies, args.plot_train_acc)
+                plot_accuracies(train_accuracies, val_accuracies, args.plot_train_acc,
+                                args.model_identifier)
             else:
                 classifier, _, args = load_best_model(args, logger)
 
             _, _, y_true, y_pred = run_test(args, logger, classifier)
             store_confusion_matrix(y_pred, y_true, N_classes=args.perturb_settings.n_classes,
-                                   logger=logger)
+                                   logger=logger, model_identifier=args.model_identifier)
+        logger.info(f"FINISHED RUN {i + 1}. Settings:")
+        logger.info(f"args.xyz_features.use_xyz: {args.xyz_features.use_xyz}")
+        logger.info(f"use_z: {args.xyz_features.use_z}")
+        logger.info(f"use_norm_xyz: {args.xyz_features.use_norm_xyz}")
+        logger.info(f"aug.norm_xyz: {args.aug.norm_xyz}")
+        logger.info(f"scale: {args.aug.scale}")
+        logger.info(f"shift: {args.aug.shift}")
+        logger.info(f"LR: {args.learning_rate}")
 
 
 if __name__ == '__main__':
