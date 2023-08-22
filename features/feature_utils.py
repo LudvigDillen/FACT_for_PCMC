@@ -147,7 +147,16 @@ def run_ablation_features(args, logger):
     return None
 
 
-def number_of_features(feature_filter):
-    # xyz is always used (=> 3)
-    N_features = int(3 + sum(feature_filter))
-    return N_features
+def number_of_features(args):
+    n_features = 0
+    if args.xyz_features.use_xyz:
+        if args.xyz_features.use_z:
+            print("xyz and only z is features! This is weird! We override this and only use xyz")
+            args.xyz_features.use_z = False
+        n_features += 3
+    if args.xyz_features.use_z:
+        n_features += 1
+    if args.xyz_features.use_norm_xyz:
+        n_features += 1
+    n_features += int(sum(args.feature_filter))
+    return n_features, args

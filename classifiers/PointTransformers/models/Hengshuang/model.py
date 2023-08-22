@@ -1,4 +1,5 @@
 import torch.nn as nn
+import torch
 from utils.pointnet_util import PointNetFeaturePropagation, PointNetSetAbstraction
 from .transformer import TransformerBlock
 
@@ -67,10 +68,22 @@ class Backbone(nn.Module):
             self.transformers.append(TransformerBlock(channel, cfg.model.transformer_dim, nneighbor))
         self.nblocks = nblocks
 
+        self.xyz_features = cfg.xyz_features
+
     def forward(self, x):
         xyz = x[..., :3]
-        features = self.fc1(x)
+        feature_input = x[..., 3:]
         del x
+        if self.xyz_features.use_xyz:
+            feature_input = torch.cat((feature_input, xyz), dim=-1)
+        if self.xyz_features.use_z:
+            feature_input = torch.cat((feature_input, xyz[..., 2, None]), dim=-1)
+        if self.xyz_features.use_norm_xyz:
+            xyz_norm = torch.norm(xyz, dim=-1, keepdim=True)
+            feature_input = torch.cat((feature_input, xyz_norm), dim=-1)
+            del xyz_norm
+
+        features = self.fc1(feature_input)
         points = self.transformer1(xyz, features)
 
         for i in range(self.nblocks):
