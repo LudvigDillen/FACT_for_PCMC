@@ -14,8 +14,9 @@ import omegaconf
 
 import nuscenes as ns
 from features.feature_extractor import extract_features_to_txt_files
-from features.feature_utils import process_features, run_ablation_features, number_of_features
-import classifiers.PointTransformers.provider as provider
+from features.feature_utils import (process_features, run_ablation_features, number_of_features,
+                                    augment_data, append_spatial_features,
+                                    normalize_data_on_condition)
 from utils.other import start_debug
 from utils.pointclouds import PCAC_dataset
 from visualization.classifications import plot_accuracies, store_confusion_matrix
@@ -23,14 +24,15 @@ from classifiers.loss_functions import get_loss
 from classifiers.coral import coral
 
 
-def track_accuracy(model, loader, num_class):
+def track_accuracy(args, model, loader):
     mean_correct = []
-    class_acc = np.zeros((num_class, 3))
+    class_acc = np.zeros((args.num_class, 3))
     for data in tqdm(loader, total=len(loader)):
         points, target = data
-        target = target[:, 0]
+        points, target = points.cuda(), target[:, 0].cuda()
+        points = append_spatial_features(args, points)
+        points = normalize_data_on_condition(args, points)
 
-        points, target = points.cuda(), target.cuda()
         classifier = model.eval()
         pred = classifier(points)  # [B, n_classes], here we have a score for each class
         pred_choice = pred.data.max(1)[1]  # highest score wins
@@ -47,9 +49,9 @@ def track_accuracy(model, loader, num_class):
     return instance_acc, class_acc
 
 
-def test_results(model, loader, num_class):
+def test_results(args, model, loader):
     mean_correct = []
-    class_acc = np.zeros((num_class, 3))
+    class_acc = np.zeros((args.num_class, 3))
     N_samples = len(loader.dataset)
     y_true = np.zeros(N_samples)
     y_pred = np.zeros(N_samples)
@@ -63,6 +65,9 @@ def test_results(model, loader, num_class):
             y_true[ind:ind + current_batch_size] = target.numpy()
 
             points, target = points.cuda(), target.cuda()
+            points = append_spatial_features(args, points)
+            points = normalize_data_on_condition(args, points)
+
             classifier = model.eval()
             pred = classifier(points)  # [B, n_classes], here we have a score for each class
             pred_choice = pred.data.max(1)[1]  # highest score wins
@@ -150,18 +155,15 @@ def run_cls(args, logger, pretrained=True):
         classifier.train()
         for _, data in tqdm(enumerate(trainDataLoader, 0), total=len(trainDataLoader), smoothing=0.9):
             points, target = data
-            points = points.data.numpy()
-            if args.aug.dropout:
-                points = provider.random_point_dropout(points)
-            # TODO: How to do with the augmentation? Scale can change class ...
-            if args.aug.scale:
-                points[:, :, 0:3] = provider.random_scale_point_cloud(points[:, :, 0:3])
-            if args.aug.shift:
-                points[:, :, 0:3] = provider.shift_point_cloud(points[:, :, 0:3])
-            points = torch.Tensor(points)
-            target = target[:, 0]
+            points, target = points.cuda(), target[:, 0].cuda()
 
-            points, target = points.cuda(), target.cuda()
+            # TODO: We actually should do not need to append the features and normalize the
+            # data all the time, we could do that before instead. But currently, I am post-poning
+            # this a bit.
+            points = append_spatial_features(args, points)
+            points = normalize_data_on_condition(args, points)
+            points = augment_data(args, points)
+
             optimizer.zero_grad()
 
             pred = classifier(points)
@@ -182,13 +184,11 @@ def run_cls(args, logger, pretrained=True):
 
         with torch.inference_mode():
             if args.plot_train_acc:
-                instance_acc_train, _ = track_accuracy(classifier.eval(), trainDataLoader,
-                                                       num_class=args.num_class)
+                instance_acc_train, _ = track_accuracy(args, classifier.eval(), trainDataLoader)
                 logger.info('Train Instance Accuracy (regular data): %f' % instance_acc_train)
                 train_accuracies[epoch] = instance_acc_train
 
-            instance_acc, class_acc = track_accuracy(classifier.eval(), valDataLoader,
-                                                     num_class=args.num_class)
+            instance_acc, class_acc = track_accuracy(args, classifier.eval(), valDataLoader)
             val_accuracies[epoch] = instance_acc
 
             if instance_acc >= best_instance_acc:
@@ -227,8 +227,8 @@ def run_test(args, logger, classifier):
     del PCAC_TEST_DATASET
 
     # Test best validation settings on test data
-    test_instance_acc, test_class_acc, y_true, y_pred = test_results(classifier.eval(), testDataLoader,
-                                                                     num_class=args.num_class)
+    test_instance_acc, test_class_acc, y_true, y_pred = test_results(
+        args, classifier.eval(), testDataLoader)
     logger.info(f'Test Overall Accuracy: {test_instance_acc}')
     logger.info(f'Test Mean Class Accuracy: {test_class_acc}')
     logger.info('End of training...')
@@ -257,21 +257,28 @@ def main(args):
         # # Setup data for new run
 
         if i == 0:
-            args.aug.shift = False
-            args.feature_folder = '/home/luddi824/thesis/PCAC/data/PCAC_data/default_data'
-            args.model_identifier = 'BS32_TD256_default'
+            args.normalization.features = False
+            args.normalization.pos_enc = False
+            args.model_identifier = 'non-norm_features_non-norm_pos_enc'
         elif i == 1:
-            args.aug.shift = True
-            args.feature_folder = '/home/luddi824/thesis/PCAC/data/PCAC_data/best_settings_1'
-            args.model_identifier = 'BS32_TD256_best_settings_1'
+            args.normalization.features = False
+            args.normalization.pos_enc = True
+            args.model_identifier = 'non-norm_features_norm_pos_enc'
+        elif i == 2:
+            args.normalization.features = True
+            args.normalization.pos_enc = False
+            args.model_identifier = 'norm_features_non-norm_pos_enc'
+        elif i == 3:
+            args.normalization.features = True
+            args.normalization.pos_enc = True
+            args.model_identifier = 'norm_features_norm_pos_enc'
         else:
             sys.exit(f"Not supposed to be more than {args.running_iterations} runs")
         # args.feature_folder = f'/home/luddi824/thesis/PCAC/data/PCAC_data/best_settings_{i+1}'
         logger.info(f"STARTING RUN {i + 1}. Settings:")
-        logger.info(f"args.aug.shift: {args.aug.shift}")
-        logger.info(f"args.feature_folder: {args.feature_folder}")
+        logger.info(f"args.normalization.features {args.normalization.features}")
+        logger.info(f"args.normalization.pos_enc {args.normalization.pos_enc}")
         logger.info(f"args.model_identifier: {args.model_identifier}")
-        logger.info(f"shift: {args.aug.shift}")
         ##
 
         if not args.re_use_data:
@@ -301,13 +308,9 @@ def main(args):
             store_confusion_matrix(y_pred, y_true, N_classes=args.perturb_settings.n_classes,
                                    logger=logger, model_identifier=args.model_identifier)
         logger.info(f"FINISHED RUN {i + 1}. Settings:")
-        logger.info(f"args.xyz_features.use_xyz: {args.xyz_features.use_xyz}")
-        logger.info(f"use_z: {args.xyz_features.use_z}")
-        logger.info(f"use_norm_xyz: {args.xyz_features.use_norm_xyz}")
-        logger.info(f"aug.norm_xyz: {args.aug.norm_xyz}")
-        logger.info(f"scale: {args.aug.scale}")
-        logger.info(f"shift: {args.aug.shift}")
-        logger.info(f"LR: {args.learning_rate}")
+        logger.info(f"args.normalization.features {args.normalization.features}")
+        logger.info(f"args.normalization.pos_enc {args.normalization.pos_enc}")
+        logger.info(f"args.model_identifier: {args.model_identifier}")
 
 
 if __name__ == '__main__':

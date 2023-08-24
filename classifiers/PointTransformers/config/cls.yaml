@@ -1,6 +1,6 @@
 ## TODO: Remember that the radius parameter is not set here ... Change back to [1, 5]
-batch_size: 32  # 27
-epoch: 200
+batch_size: 32
+epoch: 150
 learning_rate: 0.00005  # 0.00005
 lr_gamma: 0.85
 lr_step: 10
@@ -34,26 +34,28 @@ features_to_use:
   use_cs: true  # separate cardinality ratio
 xyz_features:
   use_xyz: false
-  use_z: true
+  use_z: false
   use_norm_xyz: true
 aug:
-  norm_xyz: true
   dropout: true
   scale: true
   shift: true
-batch_size_feature_extraction: 128
+normalization:
+  features: true
+  pos_enc: true
+batch_size_feature_extraction: 256  # If crash perhaps decrease this to 128
 # Covisibility parameters (see Katz and Tal)
 covisibility:
   inversion_kernel: "spherical_flipping"  # spherical_flipping is the other choice
   gamma: -0.0001  # Parameter for the exponential inversion kernel
   hpr_radius: 2.75  # Parameter for the spherical flipping method
 # Data setup
-num_point: 2048  # 512
+num_point: 2048
 re_use_data: true  # Set to true if only running training and no feature extraction
-n_scenes: 335  # 335
+n_scenes: 335  # 335, 850 max
 n_samples_per_scene: 10 # 10  
 dataset: 'v1.0-trainval'  # 'v1.0-trainval'
-data_folder: '/home/luddi824/thesis/PCAC/data/nuscenes/'
+data_folder: '/home/luddi824/newdisk/nuscenes/'
 feature_folder: '/home/luddi824/thesis/PCAC/data/PCAC_data/best_settings_2'  # TODO: Set by new user ...
 downsample_factor: 1 # Make sure that the point cloud is not so downsampled that num_point does not exist
 train_ratio: 0.60  # The test ratio automatically becomes 1 - train_ratio - val_ratio
@@ -88,7 +90,7 @@ sensor_settings:
   hori_channels: 1080
 # Neighborhood settings
 neighborhood:
-  rmin: 0.5
+  rmin: 0.5  # TODO: CHANGE BACK TO 0.5
   rmax: 7.5
   alpha_scale: 5
   k: adaptive  # adaptive, joint
@@ -113,4 +115,4 @@ verbose: false  # (bool): If True, print additional information.
 debug: false
 #load_model_path: /home/luddi824/thesis/PCAC/outputs/2023-08-13/17-39-23/best_model.pth
 load_model_path: false
-running_iterations: 6  # This requires a setup in the train_cls.py file. Otherwise, set this to 1.
+running_iterations: 4  # This requires a setup in the train_cls.py file. Otherwise, set this to 1.

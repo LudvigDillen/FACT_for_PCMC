@@ -1,5 +1,5 @@
 """
-This code is taken from: https://github.com/qq456cvb/Point-Transformers/blob/master/pointnet_util.py
+This code is mostly taken from: https://github.com/qq456cvb/Point-Transformers/blob/master/pointnet_util.py
 and is based on the paper PointNet and PointNet++ by Qi and Su et al.
 Paper: https://openaccess.thecvf.com/content_cvpr_2017/papers/Qi_PointNet_Deep_Learning_CVPR_2017_paper.pdf
 Paper: https://proceedings.neurips.cc/paper_files/paper/2017/file/d8bf84be3800d12f74d8b05e9b89836f-Paper.pdf
@@ -26,6 +26,34 @@ def pc_normalize(pc):
     m = np.max(np.sqrt(np.sum(pc**2, axis=1)))
     pc = pc / m
     return pc
+
+
+def pc_normalize_batch(pcs):
+    """"
+    Assumes input is of shape BxNx3
+    Returns a point cloud such that the farthest point for each batch lies on the unit ball.
+    This is possible through centering followed by scaling.
+    Output shape is BxNx3
+    """
+    centroid = torch.mean(pcs, dim=1, keepdim=True)  # Bx1x3
+    pcs_centered = pcs - centroid  # BxNx3
+    m = torch.max(torch.sqrt(torch.sum(pcs_centered**2, dim=2)), dim=1)[0]  # B
+    pcs_normalized = pcs_centered / m[:, None, None]  # BxNx3
+    return pcs_normalized
+
+
+def normalize_features_batch(feature_map):
+    """"
+    Assumes input is of shape BxNxF
+    Output shape is BxNxF
+    """
+    feature_map_min = torch.min(feature_map, dim=1, keepdim=True)[0]  # Bx1xF
+    # Set min value to 0
+    feature_map_from_zero = feature_map - feature_map_min  # BxNxF
+    feature_map_max = torch.max(feature_map_from_zero, dim=1, keepdim=True)[0]  # Bx1x
+    # Maps all values to the range [0, 1]
+    feature_map_normalized = feature_map_from_zero / feature_map_max  # BxNxF
+    return feature_map_normalized
 
 
 def square_distance(src, dst):

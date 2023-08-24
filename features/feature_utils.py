@@ -2,7 +2,7 @@ import sys
 import torch
 import numpy as np
 
-
+from utils.pointnet_util import pc_normalize_batch, normalize_features_batch
 from visualization.classifications import plot_accuracies_ablation
 
 
@@ -160,3 +160,82 @@ def number_of_features(args):
         n_features += 1
     n_features += int(sum(args.feature_filter))
     return n_features, args
+
+
+def append_spatial_features(args, points):
+    if args.xyz_features.use_xyz:
+        points = torch.cat((points, points[..., :3].clone()), dim=-1)
+    if args.xyz_features.use_z:
+        points = torch.cat((points, points[..., 2, None].clone()), dim=-1)
+    if args.xyz_features.use_norm_xyz:
+        xyz_norm = torch.norm(points[..., :3], dim=-1, keepdim=True)
+        points = torch.cat((points, xyz_norm), dim=-1)
+    return points
+
+
+def normalize_data_on_condition(args, points):
+    if args.normalization.pos_enc:
+        points[..., :3] = pc_normalize_batch(points[..., :3])
+    if args.normalization.features:
+        points[..., 3:] = normalize_features_batch(points[..., 3:])
+    return points
+
+
+def augment_data(args, points):
+    if args.aug.dropout:
+        points = random_point_dropout(points)
+    # TODO: How to do with the augmentation? Scale can change class ...
+    if args.aug.scale:
+        points[:, :, 0:3] = random_scale_point_cloud(points[:, :, 0:3])
+    if args.aug.shift:
+        points[:, :, 0:3] = random_shift_point_cloud(points[:, :, 0:3])
+    return points
+
+
+def random_shift_point_cloud(batch_data, shift_range=0.1):
+    """ Randomly shift point cloud. Shift is per point cloud.
+        Input:
+          BxNx3 tensor, original batch of point clouds
+        Return:
+          BxNx3 tensor, shifted batch of point clouds
+    """
+    B, N, C = batch_data.shape
+    batch_max_sample = torch.max(torch.norm(batch_data, dim=2), dim=1, keepdim=True)[0]  # Bx1
+    shifts = torch.rand((B, 3), device=batch_data.device) * 2 * shift_range - shift_range
+    shifts_scaled = batch_max_sample*shifts  # Bx3
+    batch_data_shifted = batch_data + shifts_scaled.unsqueeze(1)  # BxNx3
+    return batch_data_shifted
+
+
+def random_scale_point_cloud(batch_data, scale_low=0.8, scale_high=1.25):
+    """ Randomly scale the point cloud. Scale is per point cloud.
+        Input:
+            BxNx3 tensor, original batch of point clouds
+        Return:
+            BxNx3 tensor, scaled batch of point clouds
+    """
+    B, N, C = batch_data.shape
+    scales = torch.rand(B, device=batch_data.device) * (scale_high - scale_low) + scale_low
+    scaled_batch_data = batch_data*scales[:, None, None]
+    return scaled_batch_data
+
+
+def random_point_dropout(batch_pc, max_dropout_ratio=0.875):
+    """
+    Perform random point dropout on a batch of point clouds.
+
+    Parameters:
+    - batch_pc (torch.Tensor): Input tensor of shape BxNxF.
+    - max_dropout_ratio (float): Maximum ratio of points to dropout.
+
+    Returns:
+    - torch.Tensor: Tensor after dropout of shape BxNxF.
+    """
+    B, N, C = batch_pc.shape
+    dropout_ratios = torch.rand(B, 1, device=batch_pc.device) * max_dropout_ratio  # Bx1
+    drop_mask = torch.rand(B, N, device=batch_pc.device) < dropout_ratios  # BxN
+    first_points = batch_pc[:, 0, :]  # BxF
+    # where drop_mask is True, return first point of batch, otherwise, return batch_pc
+    dropout_batch_pc = torch.where(drop_mask[..., None], first_points[:, None, :],
+                                   batch_pc)  # BxNxF
+    return dropout_batch_pc

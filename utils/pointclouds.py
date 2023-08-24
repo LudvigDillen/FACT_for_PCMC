@@ -53,9 +53,6 @@ class PCAC_dataset(torch.utils.data.Dataset):
             cls = self.classes[self.datapath[index][0]]
             cls = np.array([cls]).astype(np.int32)
             point_set = np.loadtxt(fn[1], delimiter=',').astype(np.float32)
-            # TODO: Not sure why to do the normalization, but seems important for performance...
-            if self.args.aug.norm_xyz:
-                point_set[:, 0:3] = pc_normalize(point_set[:, 0:3])
             # Remove some of the features which we do not want to use
             point_set = point_set[:, self.feature_channels]
 
