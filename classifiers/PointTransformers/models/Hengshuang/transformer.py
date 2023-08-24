@@ -50,8 +50,8 @@ class TransformerBlock(nn.Module):
         del k, q, pos_enc
 
         attn = F.softmax(attn / normalizer, dim=-2)  # b x n x k x f, rho
-        # sum over all kNN and perform Hadamard product over attention and values 
-        res = torch.einsum('bmnf,bmnf->bmf', attn, v)  # combine attention and values, and sum (Hadamard)
+        # sum over all kNN and perform Hadamard product over attention and values
+        res = torch.einsum('bmnf,bmnf->bmf', attn, v)
         del attn, v
 
         res = self.fc2(res) + pre  # second fully connected + residual connection

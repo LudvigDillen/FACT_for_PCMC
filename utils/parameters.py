@@ -4,8 +4,7 @@ from utils.data_handling import count_decimal_digits
 
 
 class Params:
-    def __init__(self, nusc, args, pointwise=True,
-                 do_fps=True, device=torch.device("cuda" if torch.cuda.is_available() else "cpu")):
+    def __init__(self, nusc, args, pointwise=True, do_fps=True):
         """
         nusc: The NuScenes class variable.
 
