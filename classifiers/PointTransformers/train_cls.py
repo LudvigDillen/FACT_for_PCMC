@@ -111,9 +111,9 @@ def run_cls(args, logger, pretrained=True):
     PCAC_TRAIN_DATASET = PCAC_dataset(args=args, split='train')
     PCAC_VAL_DATASET = PCAC_dataset(args=args, split='validation')
     trainDataLoader = torch.utils.data.DataLoader(PCAC_TRAIN_DATASET, batch_size=args.batch_size,
-                                                  shuffle=True, num_workers=1)
+                                                  shuffle=True, num_workers=8)
     valDataLoader = torch.utils.data.DataLoader(PCAC_VAL_DATASET, batch_size=args.batch_size,
-                                                shuffle=True, num_workers=1)
+                                                shuffle=False, num_workers=8)
     del PCAC_TRAIN_DATASET, PCAC_VAL_DATASET
 
     # MODEL LOADING
@@ -223,7 +223,7 @@ def run_cls(args, logger, pretrained=True):
 def run_test(args, logger, classifier):
     PCAC_TEST_DATASET = PCAC_dataset(args=args, split='test')
     testDataLoader = torch.utils.data.DataLoader(PCAC_TEST_DATASET, batch_size=args.batch_size,
-                                                 shuffle=False, num_workers=1)
+                                                 shuffle=False, num_workers=8)
     del PCAC_TEST_DATASET
 
     # Test best validation settings on test data
@@ -257,53 +257,21 @@ def main(args):
         # # Setup data for new run
 
         if i == 0:
-            args.xyz_features.use_xyz = False
-            args.xyz_features.use_z = True
-            args.xyz_features.use_norm_xyz = False
-            args.batch_size = 32
-            args.model_identifier = 'z_BS32'
+            args.aug.shift = False
+            args.feature_folder = '/home/luddi824/thesis/PCAC/data/PCAC_data/default_data'
+            args.model_identifier = 'BS32_TD256_default'
         elif i == 1:
-            args.xyz_features.use_xyz = False
-            args.xyz_features.use_z = False
-            args.xyz_features.use_norm_xyz = True
-            args.batch_size = 32
-            args.model_identifier = 'norm_xyz_B32'
-        elif i == 2:
-            args.xyz_features.use_xyz = True
-            args.xyz_features.use_z = False
-            args.xyz_features.use_norm_xyz = False
-            args.batch_size = 32
-            args.model_identifier = 'xyz_B32'
-        elif i == 3:
-            args.xyz_features.use_xyz = False
-            args.xyz_features.use_z = True
-            args.xyz_features.use_norm_xyz = False
-            args.batch_size = 16
-            args.model_identifier = 'z_BS16'
-        elif i == 4:
-            args.xyz_features.use_xyz = False
-            args.xyz_features.use_z = False
-            args.xyz_features.use_norm_xyz = True
-            args.batch_size = 16
-            args.model_identifier = 'norm_xyz_BS16'
-        elif i == 5:
-            args.xyz_features.use_xyz = True
-            args.xyz_features.use_z = False
-            args.xyz_features.use_norm_xyz = False
-            args.batch_size = 16
-            args.model_identifier = 'xyz_BS16'
+            args.aug.shift = True
+            args.feature_folder = '/home/luddi824/thesis/PCAC/data/PCAC_data/best_settings_1'
+            args.model_identifier = 'BS32_TD256_best_settings_1'
         else:
             sys.exit(f"Not supposed to be more than {args.running_iterations} runs")
         # args.feature_folder = f'/home/luddi824/thesis/PCAC/data/PCAC_data/best_settings_{i+1}'
         logger.info(f"STARTING RUN {i + 1}. Settings:")
-        logger.info(f"args.xyz_features.use_xyz: {args.xyz_features.use_xyz}")
-        logger.info(f"use_z: {args.xyz_features.use_z}")
-        logger.info(f"use_norm_xyz: {args.xyz_features.use_norm_xyz}")
-        logger.info(f"aug.norm_xyz: {args.aug.norm_xyz}")
-        logger.info(f"scale: {args.aug.scale}")
+        logger.info(f"args.aug.shift: {args.aug.shift}")
+        logger.info(f"args.feature_folder: {args.feature_folder}")
+        logger.info(f"args.model_identifier: {args.model_identifier}")
         logger.info(f"shift: {args.aug.shift}")
-        logger.info(f"batch_size: {args.batch_size}")
-        logger.info(f"Identifier: {args.model_identifier}")
         ##
 
         if not args.re_use_data:
