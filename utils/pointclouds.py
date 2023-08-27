@@ -2,7 +2,7 @@ import torch
 import os
 import numpy as np
 
-from utils.pointnet_util import pc_normalize, pad_point_clouds, farthest_point_sample_paddded
+from utils.pointnet_util import pad_point_clouds, farthest_point_sample_paddded
 from utils.geometrics import change_coordinate_system
 
 

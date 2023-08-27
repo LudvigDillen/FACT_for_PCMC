@@ -37,20 +37,33 @@ def pc_normalize_batch(pcs):
     """
     centroid = torch.mean(pcs, dim=1, keepdim=True)  # Bx1x3
     pcs_centered = pcs - centroid  # BxNx3
-    m = torch.max(torch.sqrt(torch.sum(pcs_centered**2, dim=2)), dim=1)[0]  # B
+    m = torch.sqrt(torch.max(torch.sum(pcs_centered**2, dim=2), dim=1)[0])  # B
     pcs_normalized = pcs_centered / m[:, None, None]  # BxNx3
     return pcs_normalized
 
 
-def normalize_features_batch(feature_map):
+def normalize_features_batch(feature_map, args):
     """"
     Assumes input is of shape BxNxF
     Output shape is BxNxF
     """
     feature_map_min = torch.min(feature_map, dim=1, keepdim=True)[0]  # Bx1xF
+    # Change some mins with already known mins
+    diff_entropy_min = 1/2*torch.tensor(args.diff_entropy.log_epsilon)
+    if args.inds_features['ind_joint_de'] != -1:
+        feature_map_min[:, :, args.inds_features['ind_joint_de']] = diff_entropy_min
+    if args.inds_features['ind_sep_de'] != -1:
+        feature_map_min[:, :, args.inds_features['ind_sep_de']] = diff_entropy_min
+
     # Set min value to 0
     feature_map_from_zero = feature_map - feature_map_min  # BxNxF
-    feature_map_max = torch.max(feature_map_from_zero, dim=1, keepdim=True)[0]  # Bx1x
+    feature_map_max = torch.max(feature_map_from_zero, dim=1, keepdim=True)[0]  # Bx1xF
+    # Change some mins with already known mins
+    if args.inds_features['ind_sink_div'] != -1:
+        sink_div_max = (args.sinkhorn_div.max_dist -
+                        feature_map_min[:, :, args.inds_features['ind_sink_div']])
+        feature_map_max[:, :, args.inds_features['ind_sink_div']] = sink_div_max
+
     # Maps all values to the range [0, 1]
     feature_map_normalized = feature_map_from_zero / feature_map_max  # BxNxF
     return feature_map_normalized

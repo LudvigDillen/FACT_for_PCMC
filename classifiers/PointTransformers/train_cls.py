@@ -255,29 +255,11 @@ def main(args):
 
     for i in range(args.running_iterations):
         # # Setup data for new run
+        # sys.exit(f"Not supposed to be more than {args.running_iterations} runs")
 
-        if i == 0:
-            args.normalization.features = False
-            args.normalization.pos_enc = False
-            args.model_identifier = 'non-norm_features_non-norm_pos_enc'
-        elif i == 1:
-            args.normalization.features = False
-            args.normalization.pos_enc = True
-            args.model_identifier = 'non-norm_features_norm_pos_enc'
-        elif i == 2:
-            args.normalization.features = True
-            args.normalization.pos_enc = False
-            args.model_identifier = 'norm_features_non-norm_pos_enc'
-        elif i == 3:
-            args.normalization.features = True
-            args.normalization.pos_enc = True
-            args.model_identifier = 'norm_features_norm_pos_enc'
-        else:
-            sys.exit(f"Not supposed to be more than {args.running_iterations} runs")
-        # args.feature_folder = f'/home/luddi824/thesis/PCAC/data/PCAC_data/best_settings_{i+1}'
         logger.info(f"STARTING RUN {i + 1}. Settings:")
-        logger.info(f"args.normalization.features {args.normalization.features}")
-        logger.info(f"args.normalization.pos_enc {args.normalization.pos_enc}")
+        logger.info(f"args.features_to_create.use_csj {args.features_to_create.use_csj}")
+        logger.info(f"args.features_to_use.use_csj {args.features_to_use.use_csj}")
         logger.info(f"args.model_identifier: {args.model_identifier}")
         ##
 
@@ -291,8 +273,7 @@ def main(args):
             torch.cuda.empty_cache()
         args.n_samples = args.n_scenes*args.n_samples_per_scene
         # Get dataset (features in a data loader)
-        args.feature_filter = process_features(args.features_to_use, args.features_to_create)
-
+        args = process_features(args)
         # Run all
         if args.ablation:
             run_ablation_features(args, logger)
@@ -308,8 +289,8 @@ def main(args):
             store_confusion_matrix(y_pred, y_true, N_classes=args.perturb_settings.n_classes,
                                    logger=logger, model_identifier=args.model_identifier)
         logger.info(f"FINISHED RUN {i + 1}. Settings:")
-        logger.info(f"args.normalization.features {args.normalization.features}")
-        logger.info(f"args.normalization.pos_enc {args.normalization.pos_enc}")
+        logger.info(f"args.features_to_create.use_csj {args.features_to_create.use_csj}")
+        logger.info(f"args.features_to_use.use_csj {args.features_to_use.use_csj}")
         logger.info(f"args.model_identifier: {args.model_identifier}")
 
 

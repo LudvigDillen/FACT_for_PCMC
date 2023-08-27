@@ -103,27 +103,36 @@ def get_data_batches(PC_pair, params):
     return index_batches, pc_batches, radii_batches
 
 
-def process_features(features_to_use, features_to_create):
+def process_features(args):
     # The order of the keys matters. Ensure both dictionaries have the same order.
-    keys = list(features_to_use.keys())
+    keys = list(args.features_to_use.keys())
 
-    if set(keys) != set(features_to_create.keys()):
+    if set(keys) != set(args.features_to_create.keys()):
         raise ValueError("Both dictionaries should have the same set of keys.")
 
     result = []
-    for key in keys:
-        use_val = features_to_use[key]
-        create_val = features_to_create[key]
+    for feature_ind, key in enumerate(keys):
+        use_val = args.features_to_use[key]
+        create_val = args.features_to_create[key]
 
         if use_val and create_val:
             result.append(1)
         elif not use_val and create_val:
             result.append(0)
         elif use_val and not create_val:
-            raise ValueError(f"'use' is True for {key}, but 'create' is False. This is not allowed.")
+            raise ValueError(f"'use' is True for {key} but 'create' is False. This is prohibited.")
         # If both are False, we don't append anything and continue to the next iteration.
 
-    return result
+        if use_val:
+            if key == "use_jde":
+                args.inds_features.ind_joint_de = feature_ind
+            elif key == "use_sde":
+                args.inds_features.ind_sep_de = feature_ind
+            elif key == "use_sd":
+                args.inds_features.ind_sink_div = feature_ind
+
+    args.feature_filter = result
+    return args
 
 
 def run_ablation_features(args, logger):
@@ -174,21 +183,49 @@ def append_spatial_features(args, points):
 
 
 def normalize_data_on_condition(args, points):
+    """
+    Normalize point cloud data based on the given conditions.
+
+    Parameters:
+    - args: Argument object containing normalization settings.
+    - points: The point cloud data to normalize.
+
+    Returns:
+    - Normalized point cloud data.
+    """
+    B, N, C = points.shape
     if args.normalization.pos_enc:
-        points[..., :3] = pc_normalize_batch(points[..., :3])
+        if args.normalization.pos_enc_batch:
+            xyz_flatten = points[..., :3].reshape(1, B*N, 3)
+            xyz_flatten_norm = pc_normalize_batch(xyz_flatten)
+            points[..., :3] = xyz_flatten_norm.reshape(B, N, 3)
+        else:
+            points[..., :3] = pc_normalize_batch(points[..., :3])
     if args.normalization.features:
-        points[..., 3:] = normalize_features_batch(points[..., 3:])
+        if args.normalization.features_batch:
+            features_flatten = points[..., 3:].reshape(1, B*N, C-3)
+            features_flatten_norm = normalize_features_batch(features_flatten, args)
+            points[..., 3:] = features_flatten_norm.reshape(B, N, C-3)
+        else:
+            points[..., 3:] = normalize_features_batch(points[..., 3:], args)
     return points
 
 
 def augment_data(args, points):
     if args.aug.dropout:
         points = random_point_dropout(points)
-    # TODO: How to do with the augmentation? Scale can change class ...
     if args.aug.scale:
         points[:, :, 0:3] = random_scale_point_cloud(points[:, :, 0:3])
     if args.aug.shift:
         points[:, :, 0:3] = random_shift_point_cloud(points[:, :, 0:3])
+    if args.aug.rotate:
+        points[:, :, 0:3] = random_rotate_point_cloud(points[:, :, 0:3])
+    if args.aug.jitter:
+        points[:, :, 0:3] = random_jitter_point_cloud(
+            points[:, :, 0:3],
+            sigma=args.aug.jitter_settings.sigma,
+            clip=args.aug.jitter_settings.clip,
+        )
     return points
 
 
@@ -239,3 +276,50 @@ def random_point_dropout(batch_pc, max_dropout_ratio=0.875):
     dropout_batch_pc = torch.where(drop_mask[..., None], first_points[:, None, :],
                                    batch_pc)  # BxNxF
     return dropout_batch_pc
+
+
+def random_rotate_point_cloud(batch_pc):
+    """
+    This function a point cloud perturb it with an angular and translational offset.
+
+    :param pc: point cloud
+    :param angular_offset: float, angular offset in radians around the sensor's vertical axis
+    :return: perturbed point cloud
+    """
+    B, N, C = batch_pc.shape
+    device = batch_pc.device
+    dtype = batch_pc.dtype
+    angular_offsets = (
+        torch.rand(B, 1, 1, device=device, dtype=dtype) * 2 * torch.pi
+    )  # B
+
+    # Define rotation with angle "angular_offset" around the up-vector
+    cos_off = torch.cos(angular_offsets)  # B x 1 x 1
+    sin_off = torch.sin(angular_offsets)  # B x 1 x 1
+
+    # Batching R_peturb
+    zeros_tensor = torch.zeros(B, 1, 1, device=device, dtype=dtype)
+    ones_tensor = torch.ones(B, 1, 1, device=device, dtype=dtype)
+
+    R_peturb = torch.cat(
+        (
+            torch.cat((cos_off, -sin_off, zeros_tensor), dim=2),
+            torch.cat((sin_off, cos_off, zeros_tensor), dim=2),
+            torch.cat((zeros_tensor, zeros_tensor, ones_tensor), dim=2),
+        ),
+        dim=1,
+    )  # Bx3x3
+    batch_pc_rotated = torch.matmul(batch_pc, R_peturb.transpose(1, 2))  # BxNx3
+
+    return batch_pc_rotated
+
+
+# Jittering
+def random_jitter_point_cloud(batch_pc, sigma=0.01, clip=0.05):
+    device = batch_pc.device
+    dtype = batch_pc.dtype
+    # Default vals give: Jitter points at most +- 5cm. The average absolute offset is approx. 8mm.
+    batch_pc_jittered = batch_pc + torch.clamp(
+        sigma * torch.randn(batch_pc.shape, device=device, dtype=dtype), -clip, clip
+    )
+    return batch_pc_jittered

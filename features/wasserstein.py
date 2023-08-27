@@ -40,7 +40,7 @@ def sinkhorn_divergence(PC_pair, neighbor_mask_0, neighbor_mask_1, params_sinkho
     max_neighbors_size = max(neighbors_per_batch0.max().item(), neighbors_per_batch1.max().item())
     if max_neighbors_size == 0:
         print("Very weird that no neighbors exist but can be numerical problems ...")
-        dists = torch.full((current_batch_size,), 1e3, dtype=dtype, device=device)
+        dists = torch.full((current_batch_size,), params_sinkhorn.max_dist, dtype=dtype, device=device)
         return dists
 
     # The computational complexity of Sinkhorn is O(M X N) where M and N are the sizes of the point clouds
@@ -101,7 +101,8 @@ def sinkhorn_divergence(PC_pair, neighbor_mask_0, neighbor_mask_1, params_sinkho
     # at least one point in each)
     valid_batches = (weights_pc0.any(dim=1)) & (weights_pc1.any(dim=1))
     if not valid_batches.any().item():
-        batch_distances = torch.full((current_batch_size,), 1e3, dtype=dtype, device=device)
+        batch_distances = torch.full((current_batch_size,), params_sinkhorn.max_dist,
+                                     dtype=dtype, device=device)
         print(f"Found no valid distance for any of the {current_batch_size} batches!")
         return batch_distances
     valid_weights_pc0 = weights_pc0[valid_batches]
@@ -126,7 +127,7 @@ def sinkhorn_divergence(PC_pair, neighbor_mask_0, neighbor_mask_1, params_sinkho
     # Some distances invalid, set these to the max distance calculated
     inds_nan_distances = torch.isnan(res_distances)
     valid_distances = res_distances[~inds_nan_distances].to(dtype)
-    max_distance = get_max_distances(valid_distances)
+    max_distance = params_sinkhorn.max_dist
     valid_distances[inds_nan_distances] = max_distance
     del inds_nan_distances
 
@@ -168,16 +169,5 @@ def sequential_sinkhorn_computations(batch_neighborhood_pc0, batch_neighborhood_
         elif distances.max() > 0:
             distances[i] = distances.max()
         else:
-            distances[i] = 1e3  # TODO: Change this or select something more appropriate later
+            distances[i] = params_sinkhorn.max_dist
     return distances
-
-
-def get_max_distances(distances):
-    if distances.numel() > 0:
-        max_distance = distances.max()
-    else:
-        # Handle the case where the tensor is empty. Maybe set max_distance to a default value or raise a
-        # specific error.
-        max_distance = 1e3  # TODO what to do otherwise, it is unclear.
-        print(f"Set max distance to {max_distance}, why is still unclear (unstable function?...)")
-    return max_distance
