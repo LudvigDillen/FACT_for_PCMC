@@ -11,13 +11,23 @@ from features.wasserstein import sinkhorn_divergence
 
 
 def get_neighborhoods(PC_pair, pc_batch, radii_batch):
+    """
+    PC_pair.PC0.pc Nx3
+    PC_pair.pc1_CS0 Mx3
+    pc_batch Bx3
+    radii_batch B
+    """
     # Note that everything is in the coordinate system of PC0
-    dists_pc0 = torch.cdist(pc_batch, PC_pair.PC0.pc)
-    neighbor_mask_0 = (dists_pc0 < radii_batch[:, None])
+    dists_pc0 = torch.cdist(pc_batch, PC_pair.PC0.pc)  # BxN
+    neighbor_mask_0 = (dists_pc0 < radii_batch[:, None])  # BxN
     del dists_pc0
 
-    dists_pc1 = torch.cdist(pc_batch, PC_pair.pc1_CS0)
-    neighbor_mask_1 = (dists_pc1 < radii_batch[:, None])
+    # TODO: I solved a bug so that PC_pair.pc1_CS0 is actually correct ...
+    dists_pc1 = torch.cdist(pc_batch, PC_pair.pc1_CS0)  # BxM
+    neighbor_mask_1 = (dists_pc1 < radii_batch[:, None])  # BxM
+
+    assert (torch.sum(neighbor_mask_0, dim=1) + torch.sum(neighbor_mask_1, dim=1)).all(), (
+        "There must be a neighbor in the joint neighborhood")
 
     assert not (neighbor_mask_0.sum().item() == 0 and neighbor_mask_1.sum().item() == 0), (
         "ERROR: Neighbor mask"
@@ -51,13 +61,14 @@ def feature_extraction(PC_scenes, params):
                     # EXTRACT NEIGHBOR FEATURES
                     # Count the number of neighbors in the joint/sep pc for each point in the batch
                     if params.calc_joint_neighbors:
-                        neighbor_mask_j = torch.cat((neighbor_mask_0, neighbor_mask_1), dim=1)
-                        n_neighbors_per_point_in_batch_j = torch.sum(neighbor_mask_j, dim=1,
-                                                                     dtype=PC_joint.weight_cj.dtype)
+                        neighbor_mask_j = torch.cat((neighbor_mask_0, neighbor_mask_1), dim=1)  # BxN
+                        n_neighbors_per_point_in_batch_j = torch.sum(
+                            neighbor_mask_j, dim=1, dtype=PC_joint.weight_cj.dtype)  # B
 
                         # EXTRACT JOINT NEIGHBORHOOD CARDINALITY RATIO FEATURE
                         if params.use_cj:
-                            PC_joint.weight_cj[index] = n_neighbors_per_point_in_batch_j/PC_joint.N_points
+                            PC_joint.weight_cj[index] = \
+                                n_neighbors_per_point_in_batch_j/PC_joint.N_points
 
                     if params.calc_sep_neighbors:
                         if current_pc_is_0:
@@ -75,6 +86,13 @@ def feature_extraction(PC_scenes, params):
                             else:
                                 PC_joint.weight_cs[index] = \
                                     n_neighbors_per_point_in_batch_s/PC_pair.PC1.N_points
+
+                    # EXTRACT CARDINALITY RATIO SEPARATE AND JOINT NEIGHBORHOOD
+                    if params.use_csj:
+                        assert (n_neighbors_per_point_in_batch_j > 0).all(), (
+                            "Can't have any joint neighborhood without a point ...")
+                        PC_joint.weight_csj[index] = \
+                            n_neighbors_per_point_in_batch_s/n_neighbors_per_point_in_batch_j
 
                     # EXTRACT JOINT ENTROPY FEATURE
                     if params.use_jde:
@@ -116,27 +134,24 @@ def feature_extraction(PC_scenes, params):
                         PC_joint.metric_wd[index] = dists
 
             PC_scenes[scene_number][sample_number].PCUnion = PC_joint
-    # TODO: Extract more features ...
     return PC_scenes
 
 
 def write_features_to_txt_files(flat_PC_scenes, data_folder, params):
-    # TODO: The feature files are saved for the next run and not deleted. This should not cause any
-    # problems really.
     for PC_pair in flat_PC_scenes:
         category_folder = os.path.join(data_folder, params.class_names[PC_pair.class_category])
         save_file = os.path.join(category_folder, PC_pair.name + ".txt")
         PC0 = PC_pair.PC0
         PC1 = PC_pair.PC1
 
-        # TODO perhaps save with torch instead. More clean to just keep it in torch ...
-        # torch.save() can be used I think
         # Set xyz feature channels
-        xyz_channels = np.vstack((PC0.pc[PC0.fps_inds].cpu().numpy(), PC1.pc[PC1.fps_inds].cpu().numpy()))
+        xyz_channels = np.vstack((PC0.pc[PC0.fps_inds].cpu().numpy(),
+                                  PC1.pc[PC1.fps_inds].cpu().numpy()))
         feature_map = xyz_channels
         if params.use_label:
             # Set label feature (which point cloud the point belongs to)
-            label_channel = np.vstack((np.zeros((PC0.N_fps_points, 1)), np.ones((PC1.N_fps_points, 1))))
+            label_channel = np.vstack((np.zeros((PC0.N_fps_points, 1)),
+                                       np.ones((PC1.N_fps_points, 1))))
             feature_map = np.concatenate((feature_map, label_channel), axis=1)
         if params.use_jde:
             # Set joint differential entropy channel
@@ -162,6 +177,11 @@ def write_features_to_txt_files(flat_PC_scenes, data_folder, params):
             # Set separate number of neighbors ratio
             cs_channel = PC_pair.PCUnion.weight_cs.cpu().numpy()[:, np.newaxis]
             feature_map = np.concatenate((feature_map, cs_channel), axis=1)
+        if params.use_csj:
+            # Set cardinality ratio sep and joint neighborhood
+            # TODO: ...
+            csj_channel = PC_pair.PCUnion.weight_csj.cpu().numpy()[:, np.newaxis]
+            feature_map = np.concatenate((feature_map, csj_channel), axis=1)
 
         # Get the directory name from the save_file path
         dir_name = os.path.dirname(save_file)

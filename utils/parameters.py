@@ -63,6 +63,7 @@ class Params:
         self.use_s = False  # static weight
         self.use_cj = False  # joint cardinality ratio
         self.use_cs = False  # separate cardinality ratio
+        self.use_csj = False  # cardinality ratio sep and joint neighborhood
         # All these feature belows are calculated in neighborhoods (spheres) around points
         self.study_neighborhoods = False
         self.calc_joint_neighbors = False
@@ -77,11 +78,12 @@ class Params:
         self.use_s = features.use_s  # static weight
         self.use_cj = features.use_cj  # joint cardinality ratio
         self.use_cs = features.use_cs  # separate cardinality ratio
+        self.use_csj = features.use_csj  # cardinality ratio sep and joint neighborhood
         # All these feature belows are calculated in neighborhoods (spheres) around points
         self.study_neighborhoods = (self.use_jde or self.use_sde or self.use_sd or
-                                    self.use_cj or self.use_cs)
-        self.calc_joint_neighbors = (self.use_jde or self.use_cj)
-        self.calc_sep_neighbors = (self.use_sde or self.use_cs)
+                                    self.use_cj or self.use_cs or self.use_csj)
+        self.calc_joint_neighbors = (self.use_jde or self.use_cj or self.use_csj)
+        self.calc_sep_neighbors = (self.use_sde or self.use_cs or self.use_csj)
 
     def set_class_names(self):
         r_digits = count_decimal_digits(self.args.perturb_settings.r_bin)

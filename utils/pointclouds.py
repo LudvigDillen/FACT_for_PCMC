@@ -117,6 +117,7 @@ class PC:
         self.weight_s = empty_feature.clone()
         self.weight_cj = empty_feature.clone()
         self.weight_cs = empty_feature.clone()
+        self.weight_csj = empty_feature.clone()
 
     def set_joint_diff_entropy(self, value):
         self.metric_jde = value
@@ -138,6 +139,9 @@ class PC:
 
     def set_cardinality_ratio_sep_weight(self, ratio):
         self.weight_cs = ratio
+
+    def set_cardinality_ratio_sep_and_joint_weight(self, ratio):
+        self.weight_csj = ratio
 
     def set_fps_inds(self, fps_inds):
         self.fps_inds = fps_inds
@@ -168,14 +172,14 @@ class PCPair:
         # if perturb_settings.class_distribution == 'uniform': ... I have variant currently ...
         self.class_category = np.random.choice(np.arange(self.N_classes))
 
-        # If CorAl is implemented we also store the union point cloud
         self.set_union_of_point_clouds()
 
     def set_new_PC(self, PC0, PC1, PCUnion):
         self.PC0 = PC0
         self.PC1 = PC1
+        # TODO: A little weird here. Why do I need the second row?
         self.PCUnion = PCUnion
-        self.pc1_CS0 = change_coordinate_system(PC1.pc, self.pose0, self.pose1)
+        self.pc1_CS0 = PCUnion.pc[PC0.pc.shape[0]:]
 
     def set_name(self, name):
         self.name = name
@@ -191,9 +195,7 @@ class PCPair:
             self.pc1_CS0 = perform_random_perturbation_CorAl(
                 self.pc1_CS0, angular_offset=self.R_offset, translational_offset=self.t_offset)
 
-        # pc_union may be the concatenation of either two aligned point clouds or two misaligned point clouds.
-        # This will depend on if we randomly peturb one of the aligned point cloud or not.
-        # This happen with the peturb probality handed to the constructor of the class.
+        # pc_union is the the coordinate system of pc0
         pc_union = torch.cat((self.PC0.pc, self.pc1_CS0), dim=0)
         self.PCUnion = PC(pc_union, pc_union_dists, label=2, device=self.device)
         return None
