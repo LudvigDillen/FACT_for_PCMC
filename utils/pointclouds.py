@@ -7,10 +7,10 @@ from utils.geometrics import change_coordinate_system
 
 
 class PCAC_dataset(torch.utils.data.Dataset):
-    def __init__(self, args, split='train', cache_size=1000):
+    def __init__(self, args, split="train", cache_size=1000):
         self.root = args.feature_folder
         self.args = args
-        self.catfile = os.path.join(self.root, 'PCAC_data_class_names.txt')
+        self.catfile = os.path.join(self.root, "PCAC_data_class_names.txt")
 
         self.cat = [line.rstrip() for line in open(self.catfile)]
         self.classes = dict(zip(self.cat, range(len(self.cat))))
@@ -19,8 +19,10 @@ class PCAC_dataset(torch.utils.data.Dataset):
         modes = ["train", "validation", "test"]
         total_samples_available = 0
         for mode in modes:
-            mode_file = 'PCAC_data_' + mode + '.txt'
-            class_ids[mode] = [line.rstrip() for line in open(os.path.join(self.root, mode_file))]
+            mode_file = "PCAC_data_" + mode + ".txt"
+            class_ids[mode] = [
+                line.rstrip() for line in open(os.path.join(self.root, mode_file))
+            ]
             total_samples_available += len(class_ids[mode])
 
         self.n_samples = self.args.n_samples
@@ -28,18 +30,28 @@ class PCAC_dataset(torch.utils.data.Dataset):
             class_ids = self._change_data_usage(class_ids, total_samples_available)
 
         assert split in modes, "Error valid split not given!"
-        class_names = ['_'.join(x.split('_')[0:-1]) for x in class_ids[split]]
+        class_names = ["_".join(x.split("_")[0:-1]) for x in class_ids[split]]
         # list of (class_name, class_txt_file_path) tuple
-        self.datapath = [(class_names[i],
-                          os.path.join(self.root, class_names[i], class_ids[split][i]) + '.txt')
-                         for i in range(len(class_ids[split]))]
-        print('The size of %s data is %d' % (split, len(self.datapath)))
+        self.datapath = [
+            (
+                class_names[i],
+                os.path.join(self.root, class_names[i], class_ids[split][i]) + ".txt",
+            )
+            for i in range(len(class_ids[split]))
+        ]
+        print("The size of %s data is %d" % (split, len(self.datapath)))
 
         self.cache_size = cache_size  # how many data points to cache in memory
         self.cache = {}  # from index to (point_set, cls) tuple
 
-        feature_filter_with_xyz = np.concatenate((np.ones(3, dtype=int),
-                                                  np.array(args.feature_filter)))
+        if args.ablation:
+            feature_filter_with_xyz = np.concatenate(
+                (np.ones(3, dtype=int), np.array(args.ablation_feature_filter))
+            )
+        else:
+            feature_filter_with_xyz = np.concatenate(
+                (np.ones(3, dtype=int), np.array(args.feature_filter))
+            )
         self.feature_channels = np.where(feature_filter_with_xyz == 1)[0]
 
     def __len__(self):
@@ -52,7 +64,7 @@ class PCAC_dataset(torch.utils.data.Dataset):
             fn = self.datapath[index]
             cls = self.classes[self.datapath[index][0]]
             cls = np.array([cls]).astype(np.int32)
-            point_set = np.loadtxt(fn[1], delimiter=',').astype(np.float32)
+            point_set = np.loadtxt(fn[1], delimiter=",").astype(np.float32)
             # Remove some of the features which we do not want to use
             point_set = point_set[:, self.feature_channels]
 
@@ -69,12 +81,14 @@ class PCAC_dataset(torch.utils.data.Dataset):
         if n_samples > total_samples_available:
             print(f"Only {total_samples_available} are available. Using all!")
         elif n_samples < total_samples_available:
-            n_train_samples = round(n_samples*self.args.train_ratio)
-            n_val_samples = round(n_samples*self.args.val_ratio)
-            n_test_samples = round(n_samples*(1-self.args.train_ratio-self.args.val_ratio))
-            class_ids['train'] = class_ids['train'][:n_train_samples]
-            class_ids['validation'] = class_ids['validation'][:n_val_samples]
-            class_ids['test'] = class_ids['test'][:n_test_samples]
+            n_train_samples = round(n_samples * self.args.train_ratio)
+            n_val_samples = round(n_samples * self.args.val_ratio)
+            n_test_samples = round(
+                n_samples * (1 - self.args.train_ratio - self.args.val_ratio)
+            )
+            class_ids["train"] = class_ids["train"][:n_train_samples]
+            class_ids["validation"] = class_ids["validation"][:n_val_samples]
+            class_ids["test"] = class_ids["test"][:n_test_samples]
         return class_ids
 
 
@@ -85,6 +99,7 @@ class PC:
         self.dtype = pc.dtype
         self.distances_to_origin = distances.to(device)
         self.N_points = pc.shape[0]
+        self.N_fps_points = self.N_points  # Can be overwritten later
         self.N_dim = pc.shape[1]
 
         self.weight_c = None
@@ -104,7 +119,9 @@ class PC:
 
     def init_features(self):
         # TODO: Do I need to clone here?
-        empty_feature = torch.empty(self.N_fps_points, dtype=self.pc.dtype).to(self.device)
+        empty_feature = torch.empty(self.N_fps_points, dtype=self.pc.dtype).to(
+            self.device
+        )
         self.metric_jde = empty_feature.clone()
         self.metric_sde = empty_feature.clone()
         self.metric_wd = empty_feature.clone()
@@ -174,26 +191,34 @@ class PCPair:
 
         self.set_union_of_point_clouds()
 
-    def set_new_PC(self, PC0, PC1, PCUnion):
+    def set_new_PC(self, PC0, PC1, PCUnion, with_cheaty_bug):
         self.PC0 = PC0
         self.PC1 = PC1
         # TODO: A little weird here. Why do I need the second row?
         self.PCUnion = PCUnion
-        self.pc1_CS0 = PCUnion.pc[PC0.pc.shape[0]:]
+        if with_cheaty_bug:
+            self.pc1_CS0 = change_coordinate_system(PC1.pc, self.pose0, self.pose1)
+        else:
+            self.pc1_CS0 = PCUnion.pc[PC0.pc.shape[0]:]
 
     def set_name(self, name):
         self.name = name
 
     def set_union_of_point_clouds(self):
-        pc_union_dists = torch.cat((self.PC0.distances_to_origin, self.PC1.distances_to_origin))
+        pc_union_dists = torch.cat(
+            (self.PC0.distances_to_origin, self.PC1.distances_to_origin)
+        )
         self.pc1_CS0 = change_coordinate_system(self.PC1.pc, self.pose0, self.pose1)
 
         # if class_category == 0, do not perturb anything ...
-        self.R_offset = self.R_bin*self.class_category
-        self.t_offset = self.t_bin*self.class_category
+        self.R_offset = self.R_bin * self.class_category
+        self.t_offset = self.t_bin * self.class_category
         if self.class_category != 0:
             self.pc1_CS0 = perform_random_perturbation_CorAl(
-                self.pc1_CS0, angular_offset=self.R_offset, translational_offset=self.t_offset)
+                self.pc1_CS0,
+                angular_offset=self.R_offset,
+                translational_offset=self.t_offset,
+            )
 
         # pc_union is the the coordinate system of pc0
         pc_union = torch.cat((self.PC0.pc, self.pc1_CS0), dim=0)
@@ -203,7 +228,9 @@ class PCPair:
 
 # TODO: If I want to a speed up I should do this in batches,
 # TODO: Why didn't I perturb T1 instead of PC1?
-def perform_random_perturbation_CorAl(pc, angular_offset=0.01, translational_offset=0.1):
+def perform_random_perturbation_CorAl(
+    pc, angular_offset=0.01, translational_offset=0.1
+):
     """
     This function a point cloud perturb it with an angular and translational offset.
 
@@ -217,13 +244,13 @@ def perform_random_perturbation_CorAl(pc, angular_offset=0.01, translational_off
     # Define rotation with angle "angular_offset" around the up-vector
     cos_off = torch.cos(torch.tensor(angular_offset))
     sin_off = torch.sin(torch.tensor(angular_offset))
-    R_peturb = torch.tensor([[cos_off,  -sin_off,   0],
-                             [sin_off,  cos_off,    0],
-                             [0,        0,          1]])
+    R_peturb = torch.tensor([[cos_off, -sin_off, 0], [sin_off, cos_off, 0], [0, 0, 1]])
 
     # Define random translation offset of 0.1m in (x,y)-plane
     random_xy_offset = torch.rand((2, 1))
-    scaled_random_xy_offset = translational_offset*random_xy_offset/torch.norm(random_xy_offset)
+    scaled_random_xy_offset = (
+        translational_offset * random_xy_offset / torch.norm(random_xy_offset)
+    )
     z_offset = torch.tensor(0)  # there should be no offset in y-direction
     t_peturb = torch.vstack((scaled_random_xy_offset, z_offset)).squeeze()
 
@@ -236,7 +263,9 @@ def perform_random_perturbation_CorAl(pc, angular_offset=0.01, translational_off
     n_points = pc.shape[0]
     homog_ones = torch.ones(n_points, device=pc.device)
     pc_homog_swapped = torch.vstack((torch.swapaxes(pc, 0, 1), homog_ones))
-    perturbed_point_cloud = torch.swapaxes(torch.matmul(T_peturb, pc_homog_swapped)[:3], 0, 1)
+    perturbed_point_cloud = torch.swapaxes(
+        torch.matmul(T_peturb, pc_homog_swapped)[:3], 0, 1
+    )
     return perturbed_point_cloud
 
 
@@ -264,8 +293,12 @@ def farthest_point_sample_PC_scenes(PC_scenes, fps_N_points):
             k += 1
             PC_scenes[i][j].PC1.set_fps_inds(batch_fps_inds[k])
             k += 1
-            fps_inds_in_union_pc = torch.cat((batch_fps_inds[k-2],
-                                              batch_fps_inds[k-1]+PC_scenes[i][j].PC0.N_points)).to(device)
+            fps_inds_in_union_pc = torch.cat(
+                (
+                    batch_fps_inds[k - 2],
+                    batch_fps_inds[k - 1] + PC_scenes[i][j].PC0.N_points,
+                )
+            ).to(device)
             PC_scenes[i][j].PCUnion.set_fps_inds(fps_inds_in_union_pc)
     # when we e.g. evaluate differential_entropy, the whole
     # neighborhood is considered from the full point cloud, but only points that are
