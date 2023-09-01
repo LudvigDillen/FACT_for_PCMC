@@ -44,6 +44,7 @@ def plot_accuracies(train_accuracies, val_accuracies, plot_train_acc=False, mode
 
     plt.xticks(ticks=np.arange(tick_step, len(val_accuracies) + 1, step=tick_step))
 
+    # TODO: Change directory to something chosen in the .cls file
     # Define the directory and filename
     directory = '/home/luddi824/thesis/PCAC/images/classification/PointTransformer'
 
@@ -100,6 +101,7 @@ def plot_accuracies_ablation(all_train_accuracies, all_val_accuracies, true_keys
     tick_step = np.ceil(result / 10) * 10
     plt.xticks(ticks=np.arange(tick_step, all_train_accuracies.shape[1] + 1, step=tick_step))
 
+    # TODO: Change directory to something chosen in the .cls file
     # Define the directory and filename
     directory = '/home/luddi824/thesis/PCAC/images/classification/PointTransformer'
 
@@ -189,6 +191,7 @@ def store_confusion_matrix(y_pred, y_true, N_classes, logger, model_identifier):
 
     plt.tight_layout()
 
+    # TODO: Change directory to something chosen in the .cls file
     # Define the directory and filename
     directory = '/home/luddi824/thesis/PCAC/images/classification/PointTransformer'
 
