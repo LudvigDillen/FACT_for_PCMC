@@ -38,10 +38,6 @@ def sinkhorn_divergence(PC_pair, neighbor_mask_0, neighbor_mask_1, params_sinkho
     neighbors_per_batch0 = not_nan_mask_pc0.sum(dim=1)
     neighbors_per_batch1 = not_nan_mask_pc1.sum(dim=1)
     max_neighbors_size = max(neighbors_per_batch0.max().item(), neighbors_per_batch1.max().item())
-    if max_neighbors_size == 0:
-        print("Very weird that no neighbors exist but can be numerical problems ...")
-        dists = torch.full((current_batch_size,), params_sinkhorn.max_dist, dtype=dtype, device=device)
-        return dists
 
     # The computational complexity of Sinkhorn is O(M X N) where M and N are the sizes of the point clouds
     # Then, when batching it will become O(B X M X N).
