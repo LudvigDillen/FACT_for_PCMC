@@ -154,18 +154,17 @@ def generate_class_names_file(folder, filename, n_classes, class_names):
             f.write(class_name)
 
 
-def classes_to_txt(PC_scenes, class_counts, file, class_names):
-    flat_PC_scenes = np.reshape(PC_scenes, PC_scenes.size)
-    for PC_pair in flat_PC_scenes:
-        class_counts[PC_pair.class_category] += 1
-        message = (class_names[PC_pair.class_category] + "_" +
-                   str(class_counts[PC_pair.class_category]).zfill(4))
-        PC_pair.set_name(message)
-        file.write(message + '\n')
-    return class_counts, flat_PC_scenes
+def classes_to_txt(PC_scenes, class_counts, file, class_names, scene_counter):
+    for i, PC_scene in enumerate(PC_scenes):
+        for PC_pair in PC_scene:
+            class_counts[PC_pair.class_category] += 1
+            message = (f'scene_{scene_counter+i}_' + class_names[PC_pair.class_category] + "_" +
+                       str(class_counts[PC_pair.class_category]).zfill(4))
+            PC_pair.set_name(message)
+            file.write(message + '\n')
+    return class_counts, PC_scenes
 
 
-# TODO: Check that this new display progress function works
 def display_progress(scene_counter, n_scenes, mode, start, train_ratio, val_ratio):
     amount_loaded = scene_counter/n_scenes
     max_train_scenes = round(train_ratio*n_scenes)
@@ -238,7 +237,7 @@ def features_to_txt_files(scenes_lower, scenes_upper, n_scenes_per_loop, params,
 
             # Write class names to text file
             class_counts, PC_scenes_named = classes_to_txt(
-                PC_scenes_with_features, class_counts, file, params.class_names)
+                PC_scenes_with_features, class_counts, file, params.class_names, scene_counter)
             del PC_scenes_with_features
 
             write_features_to_txt_files(PC_scenes_named, data_folder, params)
@@ -394,7 +393,7 @@ def setup_inputs_to_dnn(params):
             filename = "PCAC_data_test.txt"
             write_mode_test = 'a'  # append, not write
         path_folder = os.path.join(params.args.feature_folder, filename)
-        class_counts = extract_max_values_from_end(path_folder)
+        class_counts = extract_max_values_from_end(params.args, path_folder)
         start = start - 3600*params.args.time_gone
     else:
         class_counts = np.zeros(params.args.perturb_settings.n_classes, dtype=int)
@@ -420,16 +419,24 @@ def setup_inputs_to_dnn(params):
         class_counts=class_counts, start=start, write_mode=write_mode_test)
 
 
-def extract_max_values_from_end(file_path):
+def extract_max_values_from_end(args, file_path):
+    if not os.path.exists(file_path):
+        max_values = np.zeros(args.perturb_settings.n_classes, dtype=int)
+        # If the file doesn't exist, create it by opening it in write mode
+        with open(file_path, 'w') as f:
+            pass  # No need to write anything, just creating the file
+        return max_values
+
     with open(file_path, 'r') as f:
         data = f.read()
 
     lines = data.strip().split("\n")
-    max_values = np.zeros(10, dtype=int) - 1  # Use -1 as the initial value to indicate "not found"
+    # Use -1 as the initial value to indicate "not found"
+    max_values = np.zeros(args.perturb_settings.n_classes, dtype=int) - 1
     found_categories = set()  # To track which categories we've already found
 
     for line in reversed(lines):  # Start from the end of the file
-        class_category = int(line.split("_")[2])
+        class_category = int(line.split("_")[-10])
         if class_category not in found_categories:
             value = int(line.split("_")[-1])
             max_values[class_category] = value

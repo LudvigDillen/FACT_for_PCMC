@@ -28,7 +28,8 @@ class PCAC_dataset(torch.utils.data.Dataset):
             class_ids = self._change_data_usage(class_ids, total_samples_available)
 
         assert split in modes, "Error valid split not given!"
-        class_names = ['_'.join(x.split('_')[0:-1]) for x in class_ids[split]]
+        #class_names = ['_'.join(x.split('_')[0:-1]) for x in class_ids[split]]  # old one
+        class_names = ['_'.join(x.split('_')[2:-1]) for x in class_ids[split]]
         # list of (class_name, class_txt_file_path) tuple
         self.datapath = [(class_names[i],
                           os.path.join(self.root, class_names[i], class_ids[split][i]) + '.txt')
@@ -47,7 +48,7 @@ class PCAC_dataset(torch.utils.data.Dataset):
 
     def _get_item(self, index):
         if index in self.cache:
-            point_set, cls = self.cache[index]
+            point_set, cls, scene_number = self.cache[index]
         else:
             fn = self.datapath[index]
             cls = self.classes[self.datapath[index][0]]
@@ -55,11 +56,12 @@ class PCAC_dataset(torch.utils.data.Dataset):
             point_set = np.loadtxt(fn[1], delimiter=',').astype(np.float32)
             # Remove some of the features which we do not want to use
             point_set = point_set[:, self.feature_channels]
+            scene_number = int(fn[1].split('/')[-1].split('_')[1])
 
             if len(self.cache) < self.cache_size:
-                self.cache[index] = (point_set, cls)
+                self.cache[index] = (point_set, cls, scene_number)
 
-        return point_set, cls
+        return point_set, cls, scene_number
 
     def __getitem__(self, index):
         return self._get_item(index)
@@ -177,8 +179,10 @@ class PCPair:
     def set_new_PC(self, PC0, PC1, PCUnion):
         self.PC0 = PC0
         self.PC1 = PC1
-        # TODO: A little weird here. Why do I need the second row?
         self.PCUnion = PCUnion
+        # There was a bugg here previously where we had this line: 
+        # self.pc1_CS0 = change_coordinate_system(PC1.pc, self.pose0, self.pose1)
+        # instead of the one below
         self.pc1_CS0 = PCUnion.pc[PC0.pc.shape[0]:]
 
     def set_name(self, name):
@@ -195,7 +199,7 @@ class PCPair:
             self.pc1_CS0 = perform_random_perturbation_CorAl(
                 self.pc1_CS0, angular_offset=self.R_offset, translational_offset=self.t_offset)
 
-        # pc_union is the the coordinate system of pc0
+        # pc_union is in the coordinate system of pc0
         pc_union = torch.cat((self.PC0.pc, self.pc1_CS0), dim=0)
         self.PCUnion = PC(pc_union, pc_union_dists, label=2, device=self.device)
         return None

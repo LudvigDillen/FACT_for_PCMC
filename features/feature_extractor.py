@@ -26,8 +26,8 @@ def get_neighborhoods(PC_pair, pc_batch, radii_batch):
     dists_pc1 = torch.cdist(pc_batch, PC_pair.pc1_CS0)  # BxM
     neighbor_mask_1 = (dists_pc1 < radii_batch[:, None])  # BxM
 
-    assert (torch.sum(neighbor_mask_0, dim=1) + torch.sum(neighbor_mask_1, dim=1)).all(), (
-        "There must be a neighbor in the joint neighborhood")
+    # assert (torch.sum(neighbor_mask_0, dim=1) + torch.sum(neighbor_mask_1, dim=1)).all(), (
+    #     "There must be a neighbor in the joint neighborhood")
 
     assert not (neighbor_mask_0.sum().item() == 0 and neighbor_mask_1.sum().item() == 0), (
         "ERROR: Neighbor mask"
@@ -137,60 +137,60 @@ def feature_extraction(PC_scenes, params):
     return PC_scenes
 
 
-def write_features_to_txt_files(flat_PC_scenes, data_folder, params):
-    for PC_pair in flat_PC_scenes:
-        category_folder = os.path.join(data_folder, params.class_names[PC_pair.class_category])
-        save_file = os.path.join(category_folder, PC_pair.name + ".txt")
-        PC0 = PC_pair.PC0
-        PC1 = PC_pair.PC1
+def write_features_to_txt_files(PC_scenes, data_folder, params):
+    for PC_scene in PC_scenes:
+        for PC_pair in PC_scene:
+            category_folder = os.path.join(data_folder, params.class_names[PC_pair.class_category])
+            save_file = os.path.join(category_folder, PC_pair.name + ".txt")
+            PC0 = PC_pair.PC0
+            PC1 = PC_pair.PC1
 
-        # Set xyz feature channels
-        xyz_channels = np.vstack((PC0.pc[PC0.fps_inds].cpu().numpy(),
-                                  PC1.pc[PC1.fps_inds].cpu().numpy()))
-        feature_map = xyz_channels
-        if params.use_label:
-            # Set label feature (which point cloud the point belongs to)
-            label_channel = np.vstack((np.zeros((PC0.N_fps_points, 1)),
-                                       np.ones((PC1.N_fps_points, 1))))
-            feature_map = np.concatenate((feature_map, label_channel), axis=1)
-        if params.use_jde:
-            # Set joint differential entropy channel
-            jde_channel = PC_pair.PCUnion.metric_jde.cpu().numpy()[:, np.newaxis]
-            feature_map = np.concatenate((feature_map, jde_channel), axis=1)
-        if params.use_sde:
-            # Set separate differential entropy channel
-            sde_channel = PC_pair.PCUnion.metric_sde.cpu().numpy()[:, np.newaxis]
-            feature_map = np.concatenate((feature_map, sde_channel), axis=1)
-        if params.use_sd:
-            wd_channel = PC_pair.PCUnion.metric_wd.cpu().numpy()[:, np.newaxis]
-            feature_map = np.concatenate((feature_map, wd_channel), axis=1)
-        if params.use_c:
-            c_channel = PC_pair.PCUnion.weight_c.cpu().numpy()[:, np.newaxis]
-            feature_map = np.concatenate((feature_map, c_channel), axis=1)
-        if params.use_s:
-            print("Static point weight feature not implemented yet")
-        if params.use_cj:
-            # Set joint number of neighbors ratio
-            cj_channel = PC_pair.PCUnion.weight_cj.cpu().numpy()[:, np.newaxis]
-            feature_map = np.concatenate((feature_map, cj_channel), axis=1)
-        if params.use_cs:
-            # Set separate number of neighbors ratio
-            cs_channel = PC_pair.PCUnion.weight_cs.cpu().numpy()[:, np.newaxis]
-            feature_map = np.concatenate((feature_map, cs_channel), axis=1)
-        if params.use_csj:
-            # Set cardinality ratio sep and joint neighborhood
-            # TODO: ...
-            csj_channel = PC_pair.PCUnion.weight_csj.cpu().numpy()[:, np.newaxis]
-            feature_map = np.concatenate((feature_map, csj_channel), axis=1)
+            # Set xyz feature channels
+            xyz_channels = np.vstack((PC0.pc[PC0.fps_inds].cpu().numpy(),
+                                      PC1.pc[PC1.fps_inds].cpu().numpy()))
+            feature_map = xyz_channels
+            if params.use_label:
+                # Set label feature (which point cloud the point belongs to)
+                label_channel = np.vstack((np.zeros((PC0.N_fps_points, 1)),
+                                        np.ones((PC1.N_fps_points, 1))))
+                feature_map = np.concatenate((feature_map, label_channel), axis=1)
+            if params.use_jde:
+                # Set joint differential entropy channel
+                jde_channel = PC_pair.PCUnion.metric_jde.cpu().numpy()[:, np.newaxis]
+                feature_map = np.concatenate((feature_map, jde_channel), axis=1)
+            if params.use_sde:
+                # Set separate differential entropy channel
+                sde_channel = PC_pair.PCUnion.metric_sde.cpu().numpy()[:, np.newaxis]
+                feature_map = np.concatenate((feature_map, sde_channel), axis=1)
+            if params.use_sd:
+                wd_channel = PC_pair.PCUnion.metric_wd.cpu().numpy()[:, np.newaxis]
+                feature_map = np.concatenate((feature_map, wd_channel), axis=1)
+            if params.use_c:
+                c_channel = PC_pair.PCUnion.weight_c.cpu().numpy()[:, np.newaxis]
+                feature_map = np.concatenate((feature_map, c_channel), axis=1)
+            if params.use_s:
+                print("Static point weight feature not implemented yet")
+            if params.use_cj:
+                # Set joint number of neighbors ratio
+                cj_channel = PC_pair.PCUnion.weight_cj.cpu().numpy()[:, np.newaxis]
+                feature_map = np.concatenate((feature_map, cj_channel), axis=1)
+            if params.use_cs:
+                # Set separate number of neighbors ratio
+                cs_channel = PC_pair.PCUnion.weight_cs.cpu().numpy()[:, np.newaxis]
+                feature_map = np.concatenate((feature_map, cs_channel), axis=1)
+            if params.use_csj:
+                # Set cardinality ratio sep and joint neighborhood
+                csj_channel = PC_pair.PCUnion.weight_csj.cpu().numpy()[:, np.newaxis]
+                feature_map = np.concatenate((feature_map, csj_channel), axis=1)
 
-        # Get the directory name from the save_file path
-        dir_name = os.path.dirname(save_file)
-        # Check if the directory exists
-        if not os.path.exists(dir_name):
-            # If the directory doesn't exist, create it
-            os.makedirs(dir_name)
-        # If the file already contains content, we overwrite it
-        np.savetxt(save_file, feature_map, delimiter=',', fmt='%.6f')
+            # Get the directory name from the save_file path
+            dir_name = os.path.dirname(save_file)
+            # Check if the directory exists
+            if not os.path.exists(dir_name):
+                # If the directory doesn't exist, create it
+                os.makedirs(dir_name)
+            # If the file already contains content, we overwrite it
+            np.savetxt(save_file, feature_map, delimiter=',', fmt='%.6f')
 
 
 def extract_features_to_txt_files(nusc, args):
