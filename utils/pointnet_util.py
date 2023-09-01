@@ -105,7 +105,7 @@ def index_points(points, idx):
     return res.reshape(*raw_size, -1)
 
 
-def farthest_point_sample(xyz, npoint):
+def farthest_point_sample(xyz, npoint, inference):
     """
     Input:
         xyz: pointcloud data, [B, N, 3]
@@ -117,7 +117,10 @@ def farthest_point_sample(xyz, npoint):
     B, N, C = xyz.shape
     centroids = torch.zeros(B, npoint, dtype=torch.long).to(device)
     distance = torch.ones(B, N).to(device) * 1e10
-    farthest = torch.randint(0, N, (B,), dtype=torch.long).to(device)
+    if inference:
+        farthest = 0
+    else:
+        farthest = torch.randint(0, N, (B,), dtype=torch.long).to(device)
     batch_indices = torch.arange(B, dtype=torch.long).to(device)
     for i in range(npoint):
         centroids[:, i] = farthest
@@ -188,7 +191,7 @@ def query_ball_point(radius, nsample, xyz, new_xyz):
     return group_idx
 
 
-def sample_and_group(npoint, radius, nsample, xyz, points, returnfps=False, knn=False):
+def sample_and_group(npoint, radius, nsample, xyz, points, returnfps=False, knn=False, inference=False):
     """
     Input:
         npoint:
@@ -202,7 +205,7 @@ def sample_and_group(npoint, radius, nsample, xyz, points, returnfps=False, knn=
     """
     B, N, C = xyz.shape
     S = npoint
-    fps_idx = farthest_point_sample(xyz, npoint)  # [B, npoint]
+    fps_idx = farthest_point_sample(xyz, npoint, inference)  # [B, npoint]
     torch.cuda.empty_cache()
     new_xyz = index_points(xyz, fps_idx)
     torch.cuda.empty_cache()
@@ -264,7 +267,7 @@ class PointNetSetAbstraction(nn.Module):
             last_channel = out_channel
         self.group_all = group_all
 
-    def forward(self, xyz, points):
+    def forward(self, xyz, points, inference):
         """
         Input:
             xyz: input points position data, [B, N, C]
@@ -277,7 +280,7 @@ class PointNetSetAbstraction(nn.Module):
             new_xyz, new_points = sample_and_group_all(xyz, points)
         else:
             new_xyz, new_points = sample_and_group(self.npoint, self.radius, self.nsample, xyz, points,
-                                                   knn=self.knn)
+                                                   knn=self.knn, inference=inference)
         # new_xyz: sampled points position data, [B, npoint, C]
         # new_points: sampled points data, [B, npoint, nsample, C+D]
         new_points = new_points.permute(0, 3, 2, 1)  # [B, C+D, nsample,npoint]

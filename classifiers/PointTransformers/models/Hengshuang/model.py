@@ -9,8 +9,8 @@ class TransitionDown(nn.Module):
         self.sa = PointNetSetAbstraction(k, 0, nneighbor, channels[0], channels[1:], group_all=False,
                                          knn=True)
 
-    def forward(self, xyz, points):
-        return self.sa(xyz, points)
+    def forward(self, xyz, points, inference):
+        return self.sa(xyz, points, inference)
 
 
 class TransitionUp(nn.Module):
@@ -67,7 +67,7 @@ class Backbone(nn.Module):
             self.transformers.append(TransformerBlock(channel, cfg.model.transformer_dim, nneighbor))
         self.nblocks = nblocks
 
-    def forward(self, x):
+    def forward(self, x, inference):
         xyz = x[..., :3]
         feature_input = x[..., 3:]
         del x
@@ -78,7 +78,7 @@ class Backbone(nn.Module):
         del features
 
         for i in range(self.nblocks):
-            xyz, points = self.transition_downs[i](xyz, points)
+            xyz, points = self.transition_downs[i](xyz, points, inference)
             points = self.transformers[i](xyz, points)
         return points
 
@@ -98,7 +98,7 @@ class PointTransformerCls(nn.Module):
         )
         self.nblocks = nblocks
 
-    def forward(self, x):
-        points = self.backbone(x)
+    def forward(self, x, inference):
+        points = self.backbone(x, inference)
         res = self.fc2(points.mean(1))
         return res

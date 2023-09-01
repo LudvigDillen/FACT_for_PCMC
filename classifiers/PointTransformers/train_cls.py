@@ -28,13 +28,13 @@ def track_accuracy(args, model, loader):
     mean_correct = []
     class_acc = np.zeros((args.num_class, 3))
     for data in tqdm(loader, total=len(loader)):
-        points, target = data
+        points, target, scene_numbers = data
         points, target = points.cuda(), target[:, 0].cuda()
         points = append_spatial_features(args, points)
         points = normalize_data_on_condition(args, points)
 
         classifier = model.eval()
-        pred = classifier(points)  # [B, n_classes], here we have a score for each class
+        pred = classifier(points, inference=True)  # [B, n_classes], here we have a score for each class
         pred_choice = pred.data.max(1)[1]  # highest score wins
 
         for cat in np.unique(target.cpu()):
@@ -49,6 +49,17 @@ def track_accuracy(args, model, loader):
     return instance_acc, class_acc
 
 
+def run_val(args, logger, classifier):
+    PCAC_VAL_DATASET = PCAC_dataset(args=args, split='validation')
+    valDataLoader = torch.utils.data.DataLoader(PCAC_VAL_DATASET, batch_size=args.batch_size,
+                                                shuffle=False, num_workers=8)
+    val_instance_acc, val_class_acc = track_accuracy(args, classifier, valDataLoader)
+    logger.info(f'Val Overall Accuracy: {val_instance_acc:.4f}')
+    logger.info(f'Val Mean Class Accuracy: {val_class_acc:.4f}')
+    logger.info('End of validation test..')
+    return None
+
+
 def test_results(args, model, loader):
     mean_correct = []
     class_acc = np.zeros((args.num_class, 3))
@@ -58,9 +69,11 @@ def test_results(args, model, loader):
     ind = 0
     with torch.inference_mode():
         for data in tqdm(loader, total=len(loader)):
-            points, target = data
+            points, target, scene_numbers = data
             target = target[:, 0]
 
+            # same_scene = (scene_numbers == scene_numbers[0]).sum() == len(scene_numbers)
+            # assert same_scene, "All samples does not come from the same scene"
             current_batch_size = len(target)
             y_true[ind:ind + current_batch_size] = target.numpy()
 
@@ -69,7 +82,7 @@ def test_results(args, model, loader):
             points = normalize_data_on_condition(args, points)
 
             classifier = model.eval()
-            pred = classifier(points)  # [B, n_classes], here we have a score for each class
+            pred = classifier(points, inference=True)  # [B, n_classes], here we have a score for each class
             pred_choice = pred.data.max(1)[1]  # highest score wins
 
             y_pred[ind:ind + current_batch_size] = pred_choice.cpu().numpy()
@@ -136,7 +149,8 @@ def run_cls(args, logger, pretrained=True):
     else:
         optimizer = torch.optim.SGD(classifier.parameters(), lr=0.01, momentum=0.9)
 
-    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=args.lr_step, gamma=args.lr_gamma)
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=args.lr_step,
+                                                gamma=args.lr_gamma)
     global_epoch = 0
     global_step = 0
     best_instance_acc = 0.0
@@ -151,10 +165,10 @@ def run_cls(args, logger, pretrained=True):
     logger.info('Start training...')
     for epoch in range(start_epoch, args.epoch):
         logger.info('Epoch %d (%d/%s):' % (global_epoch + 1, epoch + 1, args.epoch))
-
         classifier.train()
-        for _, data in tqdm(enumerate(trainDataLoader, 0), total=len(trainDataLoader), smoothing=0.9):
-            points, target = data
+        for _, data in tqdm(enumerate(trainDataLoader, 0), total=len(trainDataLoader),
+                            smoothing=0.9):
+            points, target, scene_numbers = data
             points, target = points.cuda(), target[:, 0].cuda()
 
             # TODO: We actually should do not need to append the features and normalize the
@@ -166,7 +180,7 @@ def run_cls(args, logger, pretrained=True):
 
             optimizer.zero_grad()
 
-            pred = classifier(points)
+            pred = classifier(points, inference=False)
             loss = get_loss(criterion, pred, target.long(), args.lambda_lf)
 
             pred_choice = pred.data.max(1)[1]
@@ -229,8 +243,8 @@ def run_test(args, logger, classifier):
     # Test best validation settings on test data
     test_instance_acc, test_class_acc, y_true, y_pred = test_results(
         args, classifier.eval(), testDataLoader)
-    logger.info(f'Test Overall Accuracy: {test_instance_acc}')
-    logger.info(f'Test Mean Class Accuracy: {test_class_acc}')
+    logger.info(f'Test Overall Accuracy: {test_instance_acc:.4f}')
+    logger.info(f'Test Mean Class Accuracy: {test_class_acc:.4f}')
     logger.info('End of training...')
     return test_instance_acc, test_class_acc, y_true, y_pred
 
@@ -249,28 +263,31 @@ def main(args):
 
     # Ludvig's code
     # Init Nusc object
-    if not args.re_use_data:
-        print("Start feature extraction", flush=True)
-        nusc = ns.nuscenes.NuScenes(version=args.dataset, dataroot=args.data_folder, verbose=False)
 
     for i in range(args.running_iterations):
-        # # Setup data for new run
+        # # # Setup data for new run
         # sys.exit(f"Not supposed to be more than {args.running_iterations} runs")
 
         logger.info(f"STARTING RUN {i + 1}. Settings:")
         logger.info(f"args.features_to_create.use_csj {args.features_to_create.use_csj}")
         logger.info(f"args.features_to_use.use_csj {args.features_to_use.use_csj}")
+        logger.info(f"args.re_use_data {args.re_use_data}")
+        logger.info(f"args.neighborhood.with_cheaty_bug {args.neighborhood.with_cheaty_bug}")
         logger.info(f"args.model_identifier: {args.model_identifier}")
         ##
 
         if not args.re_use_data:
+            print("Start feature extraction", flush=True)
+            nusc = ns.nuscenes.NuScenes(version=args.dataset, dataroot=args.data_folder, verbose=False)
             if args.classifier == "CorAl":
                 coral(nusc, args, logger)
 
             # Get features
             with torch.inference_mode():
                 extract_features_to_txt_files(nusc, args=args)
+            del nusc
             torch.cuda.empty_cache()
+
         args.n_samples = args.n_scenes*args.n_samples_per_scene
         # Get dataset (features in a data loader)
         args = process_features(args)
@@ -286,11 +303,15 @@ def main(args):
                 classifier, _, args = load_best_model(args, logger)
 
             _, _, y_true, y_pred = run_test(args, logger, classifier)
+            if args.rerun_val_data:
+                run_val(args, logger, classifier)
             store_confusion_matrix(y_pred, y_true, N_classes=args.perturb_settings.n_classes,
                                    logger=logger, model_identifier=args.model_identifier)
         logger.info(f"FINISHED RUN {i + 1}. Settings:")
         logger.info(f"args.features_to_create.use_csj {args.features_to_create.use_csj}")
         logger.info(f"args.features_to_use.use_csj {args.features_to_use.use_csj}")
+        logger.info(f"args.re_use_data {args.re_use_data}")
+        logger.info(f"args.neighborhood.with_cheaty_bug {args.neighborhood.with_cheaty_bug}")
         logger.info(f"args.model_identifier: {args.model_identifier}")
 
 
