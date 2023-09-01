@@ -14,49 +14,88 @@ import omegaconf
 
 import nuscenes as ns
 from features.feature_extractor import extract_features_to_txt_files
-from features.feature_utils import (process_features, run_ablation_features, number_of_features,
-                                    augment_data, append_spatial_features,
-                                    normalize_data_on_condition)
+from utils.experiment_utils import run_ablation_features, setup_coral_args
+from features.feature_utils import (
+    process_features,
+    number_of_features,
+    augment_data,
+    normalize_data_on_condition,
+)
 from utils.other import start_debug
 from utils.pointclouds import PCAC_dataset
-from visualization.classifications import plot_accuracies, store_confusion_matrix
+from visualization.classifications import (
+    plot_accuracies,
+    store_confusion_matrix,
+    model_plot,
+)
 from classifiers.loss_functions import get_loss
-from classifiers.coral import coral
+from classifiers.coral import (
+    get_coral_features,
+    perform_coral_training,
+    perform_coral_inference,
+)
+
+
+def get_mean_acc(class_acc):
+    if class_acc[:, 1].any() == 0:
+        print("No valid class accuracy! All samples not encountered")
+        return 0
+    class_acc[:, 2] = class_acc[:, 0] / class_acc[:, 1]
+    mean_acc = np.mean(class_acc[:, 2])
+    return mean_acc
+
+
+def inference_loop(data, args, model, class_acc, mean_correct):
+    points, target, scene_numbers = data
+    # same_scene = (scene_numbers == scene_numbers[0]).sum() == len(scene_numbers)
+    # assert same_scene, "All samples does not come from the same scene"
+
+    if torch.cuda.is_available():
+        points, target = points.cuda(), target[:, 0].cuda()
+    else:
+        target = target[:, 0]
+
+    # points = append_spatial_features(args, points)
+    points = normalize_data_on_condition(args, points)
+
+    classifier = model.eval()
+    pred = classifier(
+        points, inference=True
+    )  # [B, n_classes], here we have a score for each class
+    pred_choice = pred.data.max(1)[1]  # highest score wins
+
+    for cat in np.unique(target.cpu()):
+        classacc = (
+            pred_choice[target == cat].eq(target[target == cat].long().data).cpu().sum()
+        )
+        class_acc[cat, 0] += classacc.item() / float(points[target == cat].size()[0])
+        class_acc[cat, 1] += 1
+    correct = pred_choice.eq(target.long().data).cpu().sum()
+    mean_correct.append(correct.item() / float(points.size()[0]))
+    return class_acc, mean_correct, target, pred_choice
 
 
 def track_accuracy(args, model, loader):
     mean_correct = []
     class_acc = np.zeros((args.num_class, 3))
     for data in tqdm(loader, total=len(loader)):
-        points, target, scene_numbers = data
-        points, target = points.cuda(), target[:, 0].cuda()
-        points = append_spatial_features(args, points)
-        points = normalize_data_on_condition(args, points)
-
-        classifier = model.eval()
-        pred = classifier(points, inference=True)  # [B, n_classes], here we have a score for each class
-        pred_choice = pred.data.max(1)[1]  # highest score wins
-
-        for cat in np.unique(target.cpu()):
-            classacc = pred_choice[target == cat].eq(target[target == cat].long().data).cpu().sum()
-            class_acc[cat, 0] += classacc.item()/float(points[target == cat].size()[0])
-            class_acc[cat, 1] += 1
-        correct = pred_choice.eq(target.long().data).cpu().sum()
-        mean_correct.append(correct.item()/float(points.size()[0]))
-    class_acc[:, 2] = class_acc[:, 0] / class_acc[:, 1]
-    class_acc = np.mean(class_acc[:, 2])
+        class_acc, mean_correct, _, _ = inference_loop(
+            data, args, model, class_acc, mean_correct
+        )
+    mean_acc = get_mean_acc(class_acc)
     instance_acc = np.mean(mean_correct)
-    return instance_acc, class_acc
+    return instance_acc, mean_acc
 
 
 def run_val(args, logger, classifier):
-    PCAC_VAL_DATASET = PCAC_dataset(args=args, split='validation')
-    valDataLoader = torch.utils.data.DataLoader(PCAC_VAL_DATASET, batch_size=args.batch_size,
-                                                shuffle=False, num_workers=8)
+    PCAC_VAL_DATASET = PCAC_dataset(args=args, split="validation")
+    valDataLoader = torch.utils.data.DataLoader(
+        PCAC_VAL_DATASET, batch_size=args.batch_size, shuffle=False, num_workers=8
+    )
     val_instance_acc, val_class_acc = track_accuracy(args, classifier, valDataLoader)
-    logger.info(f'Val Overall Accuracy: {val_instance_acc:.4f}')
-    logger.info(f'Val Mean Class Accuracy: {val_class_acc:.4f}')
-    logger.info('End of validation test..')
+    logger.info(f"Val Overall Accuracy: {val_instance_acc:.4f}")
+    logger.info(f"Val Mean Class Accuracy: {val_class_acc:.4f}")
+    logger.info("End of validation test..")
     return None
 
 
@@ -69,35 +108,17 @@ def test_results(args, model, loader):
     ind = 0
     with torch.inference_mode():
         for data in tqdm(loader, total=len(loader)):
-            points, target, scene_numbers = data
-            target = target[:, 0]
+            class_acc, mean_correct, target, pred_choice = inference_loop(
+                data, args, model, class_acc, mean_correct
+            )
 
-            # same_scene = (scene_numbers == scene_numbers[0]).sum() == len(scene_numbers)
-            # assert same_scene, "All samples does not come from the same scene"
             current_batch_size = len(target)
-            y_true[ind:ind + current_batch_size] = target.numpy()
-
-            points, target = points.cuda(), target.cuda()
-            points = append_spatial_features(args, points)
-            points = normalize_data_on_condition(args, points)
-
-            classifier = model.eval()
-            pred = classifier(points, inference=True)  # [B, n_classes], here we have a score for each class
-            pred_choice = pred.data.max(1)[1]  # highest score wins
-
-            y_pred[ind:ind + current_batch_size] = pred_choice.cpu().numpy()
+            y_true[ind : ind + current_batch_size] = target.cpu().numpy()
+            y_pred[ind : ind + current_batch_size] = pred_choice.cpu().numpy()
             ind = ind + current_batch_size
-
-            for cat in np.unique(target.cpu()):
-                classacc = pred_choice[target == cat].eq(target[target == cat].long().data).cpu().sum()
-                class_acc[cat, 0] += classacc.item()/float(points[target == cat].size()[0])
-                class_acc[cat, 1] += 1
-            correct = pred_choice.eq(target.long().data).cpu().sum()
-            mean_correct.append(correct.item()/float(points.size()[0]))
-    class_acc[:, 2] = class_acc[:, 0] / class_acc[:, 1]
-    class_acc = np.mean(class_acc[:, 2])
+    mean_acc = get_mean_acc(class_acc)
     instance_acc = np.mean(mean_correct)
-    return instance_acc, class_acc, y_true, y_pred
+    return instance_acc, mean_acc, y_true, y_pred
 
 
 def load_best_model(args, logger, pretrained=True):
@@ -105,52 +126,66 @@ def load_best_model(args, logger, pretrained=True):
     args.input_dim, args = number_of_features(args)
     print(f"Input dim: {args.input_dim}")
 
-    shutil.copy(hydra.utils.to_absolute_path(
-        'classifiers/PointTransformers/models/{}/model.py'.format(args.model.name)),
-                '.')
-    classifier = getattr(importlib.import_module(
-        'classifiers.PointTransformers.models.{}.model'.format(args.model.name)),
-                         'PointTransformerCls')(args).cuda()
+    shutil.copy(
+        hydra.utils.to_absolute_path(
+            "classifiers/PointTransformers/models/{}/model.py".format(args.model.name)
+        ),
+        ".",
+    )
 
+    if torch.cuda.is_available():
+        classifier = getattr(
+            importlib.import_module(
+                "classifiers.PointTransformers.models.{}.model".format(args.model.name)
+            ),
+            "PointTransformerCls",
+        )(args).cuda()
+    else:
+        classifier = getattr(
+            importlib.import_module(
+                "classifiers.PointTransformers.models.{}.model".format(args.model.name)
+            ),
+            "PointTransformerCls",
+        )(args)
     start_epoch = 0
     if pretrained and args.load_model_path:
         checkpoint = torch.load(args.load_model_path)
-        start_epoch = checkpoint['epoch']
-        classifier.load_state_dict(checkpoint['model_state_dict'])
-        logger.info('Use pretrain model')
+        start_epoch = checkpoint["epoch"]
+        classifier.load_state_dict(checkpoint["model_state_dict"])
+        logger.info("Use pretrain model")
 
     return classifier, start_epoch, args
 
 
-# TODO: Maybe add functionality so that we can extract one feature at the time, and
-# add this to previous extracted features. Note that we then have to save the
-# pointcloud (the distorted versions) which should be unfeasible.
 def run_cls(args, logger, pretrained=True):
-    PCAC_TRAIN_DATASET = PCAC_dataset(args=args, split='train')
-    PCAC_VAL_DATASET = PCAC_dataset(args=args, split='validation')
-    trainDataLoader = torch.utils.data.DataLoader(PCAC_TRAIN_DATASET, batch_size=args.batch_size,
-                                                  shuffle=True, num_workers=8)
-    valDataLoader = torch.utils.data.DataLoader(PCAC_VAL_DATASET, batch_size=args.batch_size,
-                                                shuffle=False, num_workers=8)
+    PCAC_TRAIN_DATASET = PCAC_dataset(args=args, split="train")
+    PCAC_VAL_DATASET = PCAC_dataset(args=args, split="validation")
+    trainDataLoader = torch.utils.data.DataLoader(
+        PCAC_TRAIN_DATASET, batch_size=args.batch_size, shuffle=True, num_workers=8
+    )
+    valDataLoader = torch.utils.data.DataLoader(
+        PCAC_VAL_DATASET, batch_size=args.batch_size, shuffle=False, num_workers=8
+    )
     del PCAC_TRAIN_DATASET, PCAC_VAL_DATASET
 
     # MODEL LOADING
     classifier, start_epoch, args = load_best_model(args, logger, pretrained=pretrained)
     criterion = torch.nn.CrossEntropyLoss()
 
-    if args.optimizer == 'Adam':
+    if args.optimizer == "Adam":
         optimizer = torch.optim.Adam(
             classifier.parameters(),
             lr=args.learning_rate,
             betas=(0.9, 0.999),
             eps=1e-08,
-            weight_decay=args.weight_decay
+            weight_decay=args.weight_decay,
         )
     else:
         optimizer = torch.optim.SGD(classifier.parameters(), lr=0.01, momentum=0.9)
 
-    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=args.lr_step,
-                                                gamma=args.lr_gamma)
+    scheduler = torch.optim.lr_scheduler.StepLR(
+        optimizer, step_size=args.lr_step, gamma=args.lr_gamma
+    )
     global_epoch = 0
     global_step = 0
     best_instance_acc = 0.0
@@ -162,19 +197,20 @@ def run_cls(args, logger, pretrained=True):
     val_accuracies = np.empty((args.epoch))
 
     # TRANING
-    logger.info('Start training...')
+    logger.info("Start training...")
     for epoch in range(start_epoch, args.epoch):
-        logger.info('Epoch %d (%d/%s):' % (global_epoch + 1, epoch + 1, args.epoch))
+        logger.info("Epoch %d (%d/%s):" % (global_epoch + 1, epoch + 1, args.epoch))
         classifier.train()
-        for _, data in tqdm(enumerate(trainDataLoader, 0), total=len(trainDataLoader),
-                            smoothing=0.9):
+        for _, data in tqdm(
+            enumerate(trainDataLoader, 0), total=len(trainDataLoader), smoothing=0.9
+        ):
             points, target, scene_numbers = data
-            points, target = points.cuda(), target[:, 0].cuda()
+            if torch.cuda.is_available():
+                points, target = points.cuda(), target[:, 0].cuda()
+            else:
+                target = target[:, 0]
 
-            # TODO: We actually should do not need to append the features and normalize the
-            # data all the time, we could do that before instead. But currently, I am post-poning
-            # this a bit.
-            points = append_spatial_features(args, points)
+            # points = append_spatial_features(args, points)
             points = normalize_data_on_condition(args, points)
             points = augment_data(args, points)
 
@@ -194,15 +230,21 @@ def run_cls(args, logger, pretrained=True):
         scheduler.step()
 
         train_instance_acc = np.mean(mean_correct)
-        logger.info('Train Instance Accuracy (augmented data): %f' % train_instance_acc)
+        logger.info("Train Instance Accuracy (augmented data): %f" % train_instance_acc)
 
         with torch.inference_mode():
             if args.plot_train_acc:
-                instance_acc_train, _ = track_accuracy(args, classifier.eval(), trainDataLoader)
-                logger.info('Train Instance Accuracy (regular data): %f' % instance_acc_train)
+                instance_acc_train, _ = track_accuracy(
+                    args, classifier.eval(), trainDataLoader
+                )
+                logger.info(
+                    "Train Instance Accuracy (regular data): %f" % instance_acc_train
+                )
                 train_accuracies[epoch] = instance_acc_train
 
-            instance_acc, class_acc = track_accuracy(args, classifier.eval(), valDataLoader)
+            instance_acc, class_acc = track_accuracy(
+                args, classifier.eval(), valDataLoader
+            )
             val_accuracies[epoch] = instance_acc
 
             if instance_acc >= best_instance_acc:
@@ -210,46 +252,52 @@ def run_cls(args, logger, pretrained=True):
                 best_instance_acc = instance_acc
                 best_class_acc = class_acc
 
-                logger.info('Save model...')
-                savepath = 'best_model_' + args.model_identifier + '.pth'
-                logger.info('Saving at %s' % savepath)
+                logger.info("Save model...")
+                savepath = "best_model_" + args.model_identifier + ".pth"
+                logger.info("Saving at %s" % savepath)
                 state = {
-                    'epoch': best_epoch,
-                    'instance_acc': instance_acc,
-                    'class_acc': class_acc,
-                    'model_state_dict': classifier.state_dict(),
-                    'optimizer_state_dict': optimizer.state_dict(),
+                    "epoch": best_epoch,
+                    "instance_acc": instance_acc,
+                    "class_acc": class_acc,
+                    "model_state_dict": classifier.state_dict(),
+                    "optimizer_state_dict": optimizer.state_dict(),
                 }
                 torch.save(state, savepath)
-            logger.info('Vali Instance Accuracy: %f, Class Accuracy: %f' % (instance_acc,
-                                                                            class_acc))
-            logger.info('Best Instance Accuracy: %f, Class Accuracy: %f' % (best_instance_acc,
-                                                                            best_class_acc))
+            logger.info(
+                "Vali Instance Accuracy: %f, Class Accuracy: %f"
+                % (instance_acc, class_acc)
+            )
+            logger.info(
+                "Best Instance Accuracy: %f, Class Accuracy: %f"
+                % (best_instance_acc, best_class_acc)
+            )
             global_epoch += 1
 
     # Load the best validation model
-    best_model_path = 'best_model_' + args.model_identifier + '.pth'
+    best_model_path = "best_model_" + args.model_identifier + ".pth"
     checkpoint = torch.load(best_model_path)
-    classifier.load_state_dict(checkpoint['model_state_dict'])
+    classifier.load_state_dict(checkpoint["model_state_dict"])
     return train_accuracies, val_accuracies, classifier
 
 
 def run_test(args, logger, classifier):
-    PCAC_TEST_DATASET = PCAC_dataset(args=args, split='test')
-    testDataLoader = torch.utils.data.DataLoader(PCAC_TEST_DATASET, batch_size=args.batch_size,
-                                                 shuffle=False, num_workers=8)
+    PCAC_TEST_DATASET = PCAC_dataset(args=args, split="test")
+    testDataLoader = torch.utils.data.DataLoader(
+        PCAC_TEST_DATASET, batch_size=args.batch_size, shuffle=False, num_workers=8
+    )
     del PCAC_TEST_DATASET
 
     # Test best validation settings on test data
     test_instance_acc, test_class_acc, y_true, y_pred = test_results(
-        args, classifier.eval(), testDataLoader)
-    logger.info(f'Test Overall Accuracy: {test_instance_acc:.4f}')
-    logger.info(f'Test Mean Class Accuracy: {test_class_acc:.4f}')
-    logger.info('End of training...')
+        args, classifier.eval(), testDataLoader
+    )
+    logger.info(f"Test Overall Accuracy: {test_instance_acc:.4f}")
+    logger.info(f"Test Mean Class Accuracy: {test_class_acc:.4f}")
+    logger.info("End of training...")
     return test_instance_acc, test_class_acc, y_true, y_pred
 
 
-@hydra.main(config_path='config', config_name='cls')
+@hydra.main(config_path="config", config_name="cls")
 def main(args):
     if args.debug:
         start_debug()
@@ -259,7 +307,7 @@ def main(args):
     logger = logging.getLogger(__name__)
 
     # DATA LOADING
-    logger.info('Load dataset ...')
+    logger.info("Load dataset ...")
 
     # Ludvig's code
     # Init Nusc object
@@ -269,51 +317,93 @@ def main(args):
         # sys.exit(f"Not supposed to be more than {args.running_iterations} runs")
 
         logger.info(f"STARTING RUN {i + 1}. Settings:")
-        logger.info(f"args.features_to_create.use_csj {args.features_to_create.use_csj}")
+        logger.info(
+            f"args.features_to_create.use_csj {args.features_to_create.use_csj}"
+        )
         logger.info(f"args.features_to_use.use_csj {args.features_to_use.use_csj}")
         logger.info(f"args.re_use_data {args.re_use_data}")
-        logger.info(f"args.neighborhood.with_cheaty_bug {args.neighborhood.with_cheaty_bug}")
         logger.info(f"args.model_identifier: {args.model_identifier}")
-        ##
-
+        assert args.classifier in [
+            "CorAl",
+            "FACT",
+        ], "ERROR: Did not get a valid classifier!"
+        if args.classifier == "CorAl":
+            args = setup_coral_args(args, logger)
+        # EXTRACT FEATURES
         if not args.re_use_data:
             print("Start feature extraction", flush=True)
-            nusc = ns.nuscenes.NuScenes(version=args.dataset, dataroot=args.data_folder, verbose=False)
-            if args.classifier == "CorAl":
-                coral(nusc, args, logger)
-
-            # Get features
+            nusc = ns.nuscenes.NuScenes(
+                version=args.dataset, dataroot=args.data_folder, verbose=False
+            )
             with torch.inference_mode():
-                extract_features_to_txt_files(nusc, args=args)
-            del nusc
+                if args.classifier == "CorAl":
+                    X_train, y_train, X_val, y_val, X_test, y_test = get_coral_features(
+                        nusc, args, logger
+                    )
+                elif args.classifier == "FACT":
+                    # Get features
+                    extract_features_to_txt_files(nusc, args=args)
             torch.cuda.empty_cache()
 
-        args.n_samples = args.n_scenes*args.n_samples_per_scene
-        # Get dataset (features in a data loader)
-        args = process_features(args)
-        # Run all
-        if args.ablation:
-            run_ablation_features(args, logger)
-        else:
-            if args.rerun_only_test is False:
-                train_accuracies, val_accuracies, classifier = run_cls(args, logger)
-                plot_accuracies(train_accuracies, val_accuracies, args.plot_train_acc,
-                                args.model_identifier)
+        # PERFORM MODEL TRAINING
+        if args.classifier == "CorAl":
+            classifier = perform_coral_training(
+                X_train,
+                y_train,
+                X_val,
+                y_val,
+                logger,
+                epochs=args.coral_settings.epochs,
+                learning_rate=args.coral_settings.learning_rate,
+            )
+        elif args.classifier == "FACT":
+            # Get dataset (features in a data loader)
+            args = process_features(args)
+            # Run all
+            if args.ablation:
+                run_ablation_features(args, logger)
+                sys.exit("Ablation finished!")
             else:
-                classifier, _, args = load_best_model(args, logger)
+                if args.rerun_only_test is False:
+                    train_accuracies, val_accuracies, classifier = run_cls(args, logger)
+                else:
+                    classifier, _, args = load_best_model(args, logger)
 
-            _, _, y_true, y_pred = run_test(args, logger, classifier)
-            if args.rerun_val_data:
-                run_val(args, logger, classifier)
-            store_confusion_matrix(y_pred, y_true, N_classes=args.perturb_settings.n_classes,
-                                   logger=logger, model_identifier=args.model_identifier)
+        # PERFORM MODEL INFERENCE
+        if args.classifier == "CorAl":
+            accuracy_test, y_pred = perform_coral_inference(X_test, y_test, classifier)
+        elif args.classifier == "FACT":
+            _, _, y_test, y_pred = run_test(args, logger, classifier)
+
+        # VISUALIZE RESULTS
+        if args.classifier == "CorAl":
+            logger.info(f"Accuracy CorAl {accuracy_test:.4f}")
+            model_plot(
+                classifier,
+                X_test,
+                y_test,
+                args=args,
+                title=f"CorAl: {100*accuracy_test:.1f}% accuracy",
+            )
+            n_classes = 2
+        elif args.classifier == "FACT":
+            plot_accuracies(train_accuracies, val_accuracies, args=args)
+            n_classes = args.perturb_settings.n_classes
+
+        store_confusion_matrix(
+            y_pred, y_test, N_classes=n_classes, logger=logger, args=args
+        )
+
+        # LOGGING
         logger.info(f"FINISHED RUN {i + 1}. Settings:")
-        logger.info(f"args.features_to_create.use_csj {args.features_to_create.use_csj}")
+        logger.info(
+            f"args.features_to_create.use_csj {args.features_to_create.use_csj}"
+        )
         logger.info(f"args.features_to_use.use_csj {args.features_to_use.use_csj}")
         logger.info(f"args.re_use_data {args.re_use_data}")
-        logger.info(f"args.neighborhood.with_cheaty_bug {args.neighborhood.with_cheaty_bug}")
         logger.info(f"args.model_identifier: {args.model_identifier}")
+        logger.info(f"Classifier: {args.classifier}")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

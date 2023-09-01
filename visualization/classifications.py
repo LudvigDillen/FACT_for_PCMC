@@ -1,121 +1,194 @@
+"""
+Lots of this code was helped create by ChatGPT.
+Also, Kudos to Denny Loevlie from whom I've took the function model_plot().
+See link. (MIT license exists)
+https://towardsdatascience.com/logistic-regression-with-pytorch-3c8bbea594be
+https://gist.github.com/loevlie/5044e62aea2ce625b70d6d6d75113d25
+"""
 from datetime import datetime
 import matplotlib.pyplot as plt
 import numpy as np
 from sklearn.metrics import confusion_matrix
 
 
-def model_plot(model, X, y, title):
+def model_plot(model, X, y, title, args):
     parm = {}
     b = []
     for name, param in model.named_parameters():
         parm[name] = param.detach().numpy()
 
-    w = parm['linear.weight'][0]
-    b = parm['linear.bias'][0]
-    plt.scatter(X[:, 0], X[:, 1], c=y, cmap='jet')
+    w = parm["linear.weight"][0]
+    b = parm["linear.bias"][0]
+
+    for label, color, name in zip(
+        [0, 1], ["#1f77b4", "#d62728"], ["Aligned", "Misaligned"]
+    ):
+        plt.scatter(
+            X[y == label, 0],
+            X[y == label, 1],
+            color=color,
+            s=50,  # Size of the markers
+            edgecolors="k",  # Edge color of the markers
+            linewidth=0.5,  # Line width of the marker edges
+            alpha=1.0,  # Transparency
+            label=name,
+        )
+
     u = np.linspace(X[:, 0].min(), X[:, 0].max(), 2)
-    plt.plot(u, (0.5-b-w[0]*u)/w[1])
-    plt.xlim(X[:, 0].min()-0.1, X[:, 0].max()+0.1)
-    plt.ylim(X[:, 1].min()-0.1, X[:, 1].max()+0.1)
-    # Normally you can just add the argument fontweight='bold' but it does not work with latex
-    plt.xlabel(r'x_1', fontsize=16, fontweight='bold')
-    plt.ylabel(r'x_2', fontsize=16, fontweight='bold')
-    plt.title(title)
-    plt.show()
+
+    u = np.linspace(X[:, 0].min() - 0.5, X[:, 0].max() + 0.5, 400)
+    v = np.linspace(X[:, 1].min() - 0.5, X[:, 1].max() + 0.5, 400)
+    U, V = np.meshgrid(u, v)
+    Z = w[0] * U + w[1] * V + b
+    plt.contourf(
+        U, V, Z, levels=[-np.inf, 0, np.inf], colors=["#1f77b4", "#d62728"], alpha=0.25
+    )
+
+    plt.xlim(U.min(), U.max())
+    plt.ylim(V.min(), V.max())
+    plt.xlabel(r"$H_{joint}$", fontsize=16, fontweight="bold")
+    plt.ylabel(r"$H_{sep}$", fontsize=16, fontweight="bold")
+    plt.legend(fontsize=12)
+    plt.title(title, fontsize=18)
+    # Define the directory and filename
+    directory = args.visualization_folder
+
+    # Get the current time and format it as a string
+    now = datetime.now()
+    time_string = now.strftime("%Y%m%d_%H%M%S")
+
+    file_name = f"model_plot_new_{time_string}_{args.model_identifier}"
+
+    # Save the figure as .jpg
+    plt.savefig(f"{directory}/{file_name}.jpg", format="jpg")
+
+    # Save the figure as .eps
+    plt.savefig(f"{directory}/{file_name}.eps", format="eps")
+
+    plt.close()  # Close the figure
 
 
-def plot_accuracies(train_accuracies, val_accuracies, plot_train_acc=False, model_identifier='none'):
+def plot_accuracies(
+    train_accuracies,
+    val_accuracies,
+    args,
+    default_tick_step=10,
+):
     plt.figure(figsize=(10, 5))
-    if plot_train_acc:
-        plt.plot(range(1, len(train_accuracies) + 1), 100*np.array(train_accuracies), label='Train Accuracy')
-    plt.plot(range(1, len(val_accuracies) + 1), 100*np.array(val_accuracies), label='Validation Accuracy')
-    if plot_train_acc:
-        plt.title('Training and Validation Accuracy')
+    if args.plot_train_acc:
+        plt.plot(
+            range(1, len(train_accuracies) + 1),
+            100 * np.array(train_accuracies),
+            label="Train Accuracy",
+        )
+    plt.plot(
+        range(1, len(val_accuracies) + 1),
+        100 * np.array(val_accuracies),
+        label="Validation Accuracy",
+    )
+    if args.plot_train_acc:
+        plt.title("Training and Validation Accuracy")
     else:
-        plt.title('Validation Accuracy')
-    plt.xlabel('Epoch')
-    plt.ylabel('Accuracy [%]')
+        plt.title("Validation Accuracy")
+    plt.xlabel("Epoch")
+    plt.ylabel("Accuracy [%]")
     plt.legend()
     plt.grid(True)
 
     # Ensure that the x-axis only uses integer values
     result = len(val_accuracies) / 20
-    tick_step = np.ceil(result / 10) * 10
+    tick_step = np.ceil(result / default_tick_step) * default_tick_step
 
     plt.xticks(ticks=np.arange(tick_step, len(val_accuracies) + 1, step=tick_step))
 
-    # TODO: Change directory to something chosen in the .cls file
-    # Define the directory and filename
-    directory = '/home/luddi824/thesis/PCAC/images/classification/PointTransformer'
+    directory = args.visualization_folder
 
     # Get the current time and format it as a string
     now = datetime.now()
-    time_string = now.strftime('%Y%m%d_%H%M%S')
+    time_string = now.strftime("%Y%m%d_%H%M%S")
 
-    filename = f'accuracy_plot_{time_string}_{model_identifier}'
+    file_name = f"accuracy_plot_{time_string}_{args.model_identifier}"
 
     # Save the figure as .jpg
-    plt.savefig(f'{directory}/{filename}.jpg', format='jpg')
+    plt.savefig(f"{directory}/{file_name}.jpg", format="jpg")
 
     # Save the figure as .eps
-    plt.savefig(f'{directory}/{filename}.eps', format='eps')
+    plt.savefig(f"{directory}/{file_name}.eps", format="eps")
 
     plt.close()  # Close the figure
 
 
-def plot_accuracies_ablation(all_train_accuracies, all_val_accuracies, true_keys, plot_train=True):
+def plot_accuracies_ablation(
+    all_val_accuracies,
+    feature_keys,
+    args,
+    all_train_accuracies=None,
+    default_tick_step=10,
+    model_identifier="ablation_all",
+):
     plt.figure(figsize=(10, 5))
 
-    n_features = len(true_keys)
-    legend_names = get_legend_names(true_keys)
-    linestyles = ['-', '--', '-.', ':']
-    markers = ['o', 's', '^', 'D', 'x', 'p', '*', '+']
+    n_features = len(feature_keys)
+    legend_names = get_legend_names(feature_keys)
+    linestyles = ["-", "--", "-.", ":"]
+    markers = ["o", "s", "^", "D", "x", "p", "*", "+"]
 
     for idx in range(n_features):
         linestyle = linestyles[idx % len(linestyles)]
         marker = markers[idx % len(markers)]
 
-        if plot_train:
+        if all_train_accuracies is not None:
             # Plotting training accuracies
-            plt.plot(range(1, all_train_accuracies.shape[1] + 1), 100 * all_train_accuracies[idx, :],
-                     label=f'Train {legend_names[idx]}', linestyle=linestyle,
-                     marker=marker, markevery=1)
-            val_str = f'Val {legend_names[idx]}'
+            plt.plot(
+                range(1, all_train_accuracies.shape[1] + 1),
+                100 * all_train_accuracies[idx, :],
+                label=f"Train {legend_names[idx]}",
+                linestyle=linestyle,
+                marker=marker,
+                markevery=1,
+            )
+            val_str = f"Val {legend_names[idx]}"
         else:
-            val_str = f'{legend_names[idx]}'
+            val_str = f"{legend_names[idx]}"
             # Plotting validation accuracies
-        plt.plot(range(1, all_val_accuracies.shape[1] + 1), 100 * all_val_accuracies[idx, :],
-                 label=val_str, linestyle=linestyle, marker=marker, markevery=1,
-                 alpha=0.7)  # reduced opacity for validation
-    if plot_train:
-        plt.title('Training and Validation Accuracy')
+        plt.plot(
+            range(1, all_val_accuracies.shape[1] + 1),
+            100 * all_val_accuracies[idx, :],
+            label=val_str,
+            linestyle=linestyle,
+            marker=marker,
+            markevery=1,
+            alpha=0.7,
+        )  # reduced opacity for validation
+    if all_train_accuracies is not None:
+        plt.title("Training and Validation Accuracy")
     else:
-        plt.title('Validation Accuracy')
-    plt.xlabel('Epoch')
-    plt.ylabel('Accuracy [%]')
+        plt.title("Validation Accuracy")
+    plt.xlabel("Epoch")
+    plt.ylabel("Accuracy [%]")
     plt.legend()
     plt.grid(True)
 
     # Ensure that the x-axis only uses integer values
-    result = all_train_accuracies.shape[1] / 20
-    tick_step = np.ceil(result / 10) * 10
-    plt.xticks(ticks=np.arange(tick_step, all_train_accuracies.shape[1] + 1, step=tick_step))
+    result = all_val_accuracies.shape[1] / 20
+    tick_step = np.ceil(result / default_tick_step) * default_tick_step
+    plt.xticks(
+        ticks=np.arange(tick_step, all_val_accuracies.shape[1] + 1, step=tick_step)
+    )
 
-    # TODO: Change directory to something chosen in the .cls file
-    # Define the directory and filename
-    directory = '/home/luddi824/thesis/PCAC/images/classification/PointTransformer'
+    directory = args.visualization_folder
 
     # Get the current time and format it as a string
     now = datetime.now()
-    time_string = now.strftime('%Y%m%d_%H%M%S')
+    time_string = now.strftime("%Y%m%d_%H%M%S")
 
-    filename = f'accuracy_plot_{time_string}'
+    file_name = f"accuracy_plot_{time_string}_{model_identifier}"
 
     # Save the figure as .jpg
-    plt.savefig(f'{directory}/{filename}.jpg', format='jpg')
+    plt.savefig(f"{directory}/{file_name}.jpg", format="jpg")
 
     # Save the figure as .eps
-    plt.savefig(f'{directory}/{filename}.eps', format='eps')
+    plt.savefig(f"{directory}/{file_name}.eps", format="eps")
 
     plt.close()  # Close the figure
 
@@ -123,17 +196,17 @@ def plot_accuracies_ablation(all_train_accuracies, all_val_accuracies, true_keys
 def get_legend_names(keys):
     legend_names = []
     for key in keys:
-        legend_names.append(key.split('_')[1])
+        legend_names.append(key.split("_")[1])
     return legend_names
 
 
-def extract_accuracies(filename):
+def extract_accuracies(file_name):
     # Lists to store the accuracies
     train_accuracies = []
     test_accuracies = []
 
     # Open and read the file
-    with open(filename, 'r') as file:
+    with open(file_name, "r") as file:
         lines = file.readlines()
         for line in lines:
             # Split the line into words
@@ -155,63 +228,69 @@ def extract_accuracies(filename):
 def text_color(bg_color):
     """Return 'black' or 'white' depending on the perceived brightness of bg_color."""
     brightness = 0.299 * bg_color[0] + 0.587 * bg_color[1] + 0.114 * bg_color[2]
-    return 'black' if brightness > 0.5 else 'white'
+    return "black" if brightness > 0.5 else "white"
 
 
-def store_confusion_matrix(y_pred, y_true, N_classes, logger, model_identifier):
+def store_confusion_matrix(y_pred, y_true, N_classes, logger, args):
     # Create a list of all expected classes
     classes = list(range(N_classes))
 
     # Calculate the confusion matrix, ensuring it has the expected shape
     cm = confusion_matrix(y_true, y_pred, labels=classes)
-    logger.info(f'Confusion matrix {model_identifier}\n {cm}')
+    logger.info(f"Confusion matrix {args.model_identifier}\n {cm}")
 
     # Plot the confusion matrix
     fig, ax = plt.subplots()
     cax = ax.matshow(cm, cmap=plt.cm.Blues)
-    plt.title('Confusion matrix of the classifier')
+    plt.title("Confusion matrix of the classifier")
     fig.colorbar(cax)
 
     # Setting x and y axis labels
-    class_labels = ['Class {}'.format(i) for i in range(N_classes)]
+    class_labels = ["Class {}".format(i) for i in range(N_classes)]
     ax.set_xticks(np.arange(N_classes))
     ax.set_yticks(np.arange(N_classes))
-    fontsize = min(int(60/N_classes), 11)
+    fontsize = min(int(60 / N_classes), 11)
     ax.set_xticklabels(class_labels, fontsize=fontsize)
     ax.set_yticklabels(class_labels, fontsize=fontsize)
-    plt.xlabel('Predicted')
-    plt.ylabel('True')
+    plt.xlabel("Predicted")
+    plt.ylabel("True")
     plt.grid(False)  # Hide the grid lines
 
     # Display the counts on the matrix
     for i in range(N_classes):
         for j in range(N_classes):
             cell_color = cax.to_rgba(cm[i, j])[:3]
-            plt.text(j, i, cm[i, j], ha='center', va='center', color=text_color(cell_color))
+            plt.text(
+                j, i, cm[i, j], ha="center", va="center", color=text_color(cell_color)
+            )
 
     plt.tight_layout()
 
-    # TODO: Change directory to something chosen in the .cls file
-    # Define the directory and filename
-    directory = '/home/luddi824/thesis/PCAC/images/classification/PointTransformer'
+    directory = args.visualization_folder
 
     # Get the current time and format it as a string
     now = datetime.now()
-    time_string = now.strftime('%Y%m%d_%H%M%S')
+    time_string = now.strftime("%Y%m%d_%H%M%S")
 
-    filename = f'confusion_matrix_{time_string}_{model_identifier}'
+    file_name = f"confusion_matrix_{time_string}_{args.model_identifier}"
 
     # Save the figure to an .eps file
-    fig.savefig(f'{directory}/{filename}.eps', format='eps')
+    fig.savefig(f"{directory}/{file_name}.eps", format="eps")
     # Save the figure to an .eps file
-    fig.savefig(f'{directory}/{filename}.jpg', format='jpg')
+    fig.savefig(f"{directory}/{file_name}.jpg", format="jpg")
 
     plt.close()  # Close the figure
 
 
 if __name__ == "__main__":
     filename = input("Enter the path to the file: ")
-    train_accuracies, test_accuracies = extract_accuracies(filename)
+    train_accuracies, val_accuracies = extract_accuracies(filename)
     print("Train Accuracies:", train_accuracies)
-    print("Test Accuracies:", test_accuracies)
-    plot_accuracies(train_accuracies, test_accuracies, plot_train_acc=True)
+    print("Val Accuracies:", val_accuracies)
+    # plot_accuracies(
+    #     train_accuracies,
+    #     val_accuracies,
+    #     args,
+    #     plot_train_acc=False,
+    #     default_tick_step=10,
+    # )
