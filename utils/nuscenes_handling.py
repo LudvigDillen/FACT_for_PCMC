@@ -21,9 +21,11 @@ class NuscenesHandling:
 
         # Set settings
         self.T_close_thresh = params.args.preprocessing.T_close
-        self.downsample_factor = params.downsample_factor  # Randomly downsample point clouds
+        self.downsample_factor = (
+            params.downsample_factor
+        )  # Randomly downsample point clouds
         self.verbose = params.verbose
-        self.preprocess = params.args.preprocessing.preprocess
+        self.apply_hpr_operator = params.args.preprocessing.apply_hpr_operator
         self.perturb_settings = params.args.perturb_settings
 
         # Setup scene data
@@ -31,18 +33,18 @@ class NuscenesHandling:
 
     def downsample_both_point_clouds(self):
         N_samples_before = self.pc0_CS0.shape[0]
-        N_samples_after = round(N_samples_before/self.downsample_factor)
+        N_samples_after = round(N_samples_before / self.downsample_factor)
         samples_to_keep = np.random.choice(N_samples_before, size=N_samples_after)
         self.pc0_CS0 = self.pc0_CS0[samples_to_keep]  # Downsample point cloud
 
         N_samples_before = self.pc1_CS1.shape[0]
-        N_samples_after = round(N_samples_before/self.downsample_factor)
+        N_samples_after = round(N_samples_before / self.downsample_factor)
         samples_to_keep = np.random.choice(N_samples_before, size=N_samples_after)
         self.pc1_CS1 = self.pc1_CS1[samples_to_keep]  # Downsample point cloud
 
     def downsample_second_point_cloud(self):
         N_samples_before = self.pc1_CS1.shape[0]
-        N_samples_after = round(N_samples_before/self.downsample_factor)
+        N_samples_after = round(N_samples_before / self.downsample_factor)
         samples_to_keep = np.random.choice(N_samples_before, size=N_samples_after)
         self.pc1_CS1 = self.pc1_CS1[samples_to_keep]  # Downsample point cloud
 
@@ -71,27 +73,27 @@ class NuscenesHandling:
 
     def get_first_sample_token(self):
         # Get the sample_token to the first sample in the scene
-        return self.nusc.scene[self.scene_counter]['first_sample_token']
+        return self.nusc.scene[self.scene_counter]["first_sample_token"]
 
     def get_sample_token(self, lidar_token):
         # From lidar_token get sample token
-        return self.nusc.get('sample_data', lidar_token)['sample_token']
+        return self.nusc.get("sample_data", lidar_token)["sample_token"]
 
     def get_scene_token(self, lidar_token):
         """
         From lidar_token get scene_token
         """
         # From lidar_token get sample_token
-        sample_token = self.nusc.get('sample_data', lidar_token)['sample_token']
+        sample_token = self.nusc.get("sample_data", lidar_token)["sample_token"]
         # From sample_token get scene_token
-        return self.nusc.get('sample', sample_token)['scene_token']
+        return self.nusc.get("sample", sample_token)["scene_token"]
 
     def get_lidar_token(self, sample_token):
         # Get the lidar_token for the LIDAR_TOP sensor from sample_token
-        return self.nusc.get('sample', sample_token)['data']['LIDAR_TOP']
+        return self.nusc.get("sample", sample_token)["data"]["LIDAR_TOP"]
 
     def get_lidar_dict(self, lidar_token):
-        return self.nusc.get('sample_data', lidar_token)
+        return self.nusc.get("sample_data", lidar_token)
 
     def get_point_cloud(self, lidar_token):
         # Load the point cloud xyz coordinates from the LIDAR binary file.
@@ -100,7 +102,9 @@ class NuscenesHandling:
         pc = LidarPointCloud.from_file(path_to_lidar_bin_file)
         pc_xyz = torch.swapaxes(torch.from_numpy(pc.points[:3]).to(DTYPE), 0, 1)
         if self.T_close_thresh != 0:
-            pc_xyz_filtered = self.remove_close_points_from_pc(pc_xyz, self.T_close_thresh)
+            pc_xyz_filtered = self.remove_close_points_from_pc(
+                pc_xyz, self.T_close_thresh
+            )
         return pc_xyz_filtered
 
     def remove_close_points_from_pc(self, pc, T_close_thresh=1.5):
@@ -114,36 +118,40 @@ class NuscenesHandling:
     def get_sensor_pose_in_WCS(self, lidar_token):
         lidar_dict = self.get_lidar_dict(lidar_token)
         # Load ego vehicle pose (in WCS)
-        ego_pose = self.nusc.get('ego_pose', lidar_dict['ego_pose_token'])
+        ego_pose = self.nusc.get("ego_pose", lidar_dict["ego_pose_token"])
         # Get translation and rotation in of ego vehicle in WCS
-        rotation_ego_vehicle = np.array(ego_pose['rotation'])
-        translation_ego_vehicle = np.array(ego_pose['translation'])
+        rotation_ego_vehicle = np.array(ego_pose["rotation"])
+        translation_ego_vehicle = np.array(ego_pose["translation"])
         # Get transformation matrix of ego vehicle (WCS)
         Tv = transformation_matrix(rotation_ego_vehicle, translation_ego_vehicle)
 
         # Get lidar pose in ego vehicle CS
         calibrated_sensor_dict = self.nusc.get(
-            'calibrated_sensor', lidar_dict['calibrated_sensor_token'])
-        lidar_rotation_CS_ego_vehicle = np.array(calibrated_sensor_dict['rotation'])
-        lidar_translation_CS_ego_vehicle = np.array(calibrated_sensor_dict['translation'])
+            "calibrated_sensor", lidar_dict["calibrated_sensor_token"]
+        )
+        lidar_rotation_CS_ego_vehicle = np.array(calibrated_sensor_dict["rotation"])
+        lidar_translation_CS_ego_vehicle = np.array(
+            calibrated_sensor_dict["translation"]
+        )
         # Get transforomation matrix of lidar sensor (ego vechicle CS)
         Ts_ego_vehicle = transformation_matrix(
-            lidar_rotation_CS_ego_vehicle, lidar_translation_CS_ego_vehicle)
+            lidar_rotation_CS_ego_vehicle, lidar_translation_CS_ego_vehicle
+        )
 
         # Get transformation matrix of lidar in WCS
-        Ts = Tv@Ts_ego_vehicle
+        Ts = Tv @ Ts_ego_vehicle
         Ts_out = torch.from_numpy(Ts).to(DTYPE)
         return Ts_out
 
     def get_next_lidar_token(self, lidar_token):
         lidar_dict = self.get_lidar_dict(lidar_token)
-        return lidar_dict['next']
+        return lidar_dict["next"]
 
     def check_end_of_scene(self, lidar_token):
-        return (lidar_token == '')
+        return lidar_token == ""
 
     def check_end_of_dataset(self):
-        return (self.scene_counter >= self.number_of_scenes_in_dataset)
+        return self.scene_counter >= self.number_of_scenes_in_dataset
 
     def count_scene(self):
         self.scene_read = True
@@ -163,8 +171,12 @@ class NuscenesHandling:
         we have collected all the data we need/want.
         """
         # Move to next point cloud pair in the scene
-        assert n_samples_jump >= 0, "ERROR: n_samples_jump>=0. Can't skip a negative amount of samples"
-        assert isinstance(n_samples_jump, int), "ERROR: n_samples_jump must be an integer"
+        assert (
+            n_samples_jump >= 0
+        ), "ERROR: n_samples_jump>=0. Can't skip a negative amount of samples"
+        assert isinstance(
+            n_samples_jump, int
+        ), "ERROR: n_samples_jump must be an integer"
 
         if n_samples_jump <= 1:
             self.lidar_token0 = self.lidar_token1
@@ -190,7 +202,7 @@ class NuscenesHandling:
             self.point_distances1 = self.get_point_distances_to_origin(self.pc1_CS1)
 
         if n_samples_jump > 0:
-            self.set_next_point_cloud_pair(n_samples_jump=n_samples_jump-1)
+            self.set_next_point_cloud_pair(n_samples_jump=n_samples_jump - 1)
 
     def get_number_of_samples_in_scenes(self, PC_scenes):
         n_samples = 0
@@ -201,16 +213,20 @@ class NuscenesHandling:
     def get_number_lidar_samples_in_scene(self):
         scene = self.nusc.scene[self.scene_counter]
         # Get the first and last sample in the scene
-        first_sample = self.nusc.get('sample', scene['first_sample_token'])
-        last_sample = self.nusc.get('sample', scene['last_sample_token'])
+        first_sample = self.nusc.get("sample", scene["first_sample_token"])
+        last_sample = self.nusc.get("sample", scene["last_sample_token"])
 
         # Get the timestamps of the first and last sample
-        first_timestamp = first_sample['timestamp']
-        last_timestamp = last_sample['timestamp']
+        first_timestamp = first_sample["timestamp"]
+        last_timestamp = last_sample["timestamp"]
 
         # Get the Lidar data from the scene
-        lidar_data = [d for d in self.nusc.sample_data if d['sensor_modality'] == 'lidar' and
-                      first_timestamp <= d['timestamp'] <= last_timestamp]
+        lidar_data = [
+            d
+            for d in self.nusc.sample_data
+            if d["sensor_modality"] == "lidar"
+            and first_timestamp <= d["timestamp"] <= last_timestamp
+        ]
 
         # Get the number of Lidar sweeps in the scene
         num_lidar_sweeps = len(lidar_data)
@@ -230,7 +246,6 @@ class NuscenesHandling:
         PC_scenes = []
         PC_scene = []
         count = 0
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         cov_params = params.args.covisibility
 
         # HACK: Avoid circular imports
@@ -241,35 +256,54 @@ class NuscenesHandling:
         skip_sample_index = 0
         skip_samples_list = calculate_sample_gaps(
             self.get_number_lidar_samples_in_scene(),
-            samples_per_scene[self.scene_counter-self.scene_counter_init])
+            samples_per_scene[self.scene_counter - self.scene_counter_init],
+        )
         n_skip_samples = len(skip_samples_list)
         while True:
             if count % 200 == 0 and count != 0:
                 print(f"We have collected {count} number of samples")
 
             # Load in first point cloud
-            PC0 = PC(self.pc0_CS0, self.point_distances0, label=0, device=device)
+            PC0 = PC(self.pc0_CS0, self.point_distances0, label=0, device=params.device)
             # Load in second point cloud
-            PC1 = PC(self.pc1_CS1, self.point_distances1, label=1, device=device)
+            PC1 = PC(self.pc1_CS1, self.point_distances1, label=1, device=params.device)
             # Set point cloud pair and their union, and perform possible perturbation
-            currentPCPair = PCPair(PC0, PC1, device=device, PCHandler=self,
-                                   perturb_settings=self.perturb_settings)
+            currentPCPair = PCPair(
+                PC0,
+                PC1,
+                device=params.device,
+                PCHandler=self,
+                perturb_settings=self.perturb_settings,
+            )
 
-            if self.preprocess:
+            if self.apply_hpr_operator:
                 # Calculate the co-visible points
                 PC0_cov, PC1_cov, PCUnion_cov = keep_covisible_points(
-                    PC0, PC1, currentPCPair.PCUnion, currentPCPair.pose0, currentPCPair.pose1,
-                    compute_weights=params.use_c, hpr_radius=cov_params.hpr_radius,
-                    gamma=cov_params.gamma, inversion_kernel=cov_params.inversion_kernel,
-                    batch_size=params.batch_size_feature_extraction)
-                currentPCPair.set_new_PC(PC0_cov, PC1_cov, PCUnion_cov)
+                    PC0,
+                    PC1,
+                    currentPCPair.PCUnion,
+                    currentPCPair.pose0,
+                    currentPCPair.pose1,
+                    compute_weights=params.use_c,
+                    hpr_radius=cov_params.hpr_radius,
+                    gamma=cov_params.gamma,
+                    inversion_kernel=cov_params.inversion_kernel,
+                    batch_size=params.batch_size_feature_extraction,
+                )
+                currentPCPair.set_new_PC(PC0_cov, PC1_cov, PCUnion_cov,
+                                         params.args.neighborhood.with_cheaty_bug)
             # Append pair to list
             PC_scene.append(currentPCPair)
             del PC0, PC1, currentPCPair
             # Iterate to next pair in scene
-            self.set_next_point_cloud_pair(n_samples_jump=skip_samples_list[skip_sample_index])
+            self.set_next_point_cloud_pair(
+                n_samples_jump=skip_samples_list[skip_sample_index]
+            )
             skip_sample_index += 1
-            if skip_sample_index == n_skip_samples and skip_samples_list[skip_sample_index-1] == 0:
+            if (
+                skip_sample_index == n_skip_samples
+                and skip_samples_list[skip_sample_index - 1] == 0
+            ):
                 self.update_dataset_status()
 
             if self.scene_read:
@@ -278,16 +312,19 @@ class NuscenesHandling:
                 PC_scene = []
                 self.scene_read = False
                 if self.verbose:
-                    print(f"We have collected {self.scene_counter-self.scene_counter_init} scenes")
+                    print(
+                        f"We have collected {self.scene_counter-self.scene_counter_init} scenes"
+                    )
                 # We might just want to read a few scenes
-                if n_scenes != 'all':
-                    if self.scene_counter-self.scene_counter_init >= n_scenes:
+                if n_scenes != "all":
+                    if self.scene_counter - self.scene_counter_init >= n_scenes:
                         break
                 if self.dataset_read is False:
                     skip_sample_index = 0
                     skip_samples_list = calculate_sample_gaps(
                         self.get_number_lidar_samples_in_scene(),
-                        samples_per_scene[self.scene_counter-self.scene_counter_init])
+                        samples_per_scene[self.scene_counter - self.scene_counter_init],
+                    )
                     n_skip_samples = len(skip_samples_list)
 
             if self.dataset_read:
@@ -298,14 +335,20 @@ class NuscenesHandling:
 
         PC_scenes = np.array(PC_scenes)
         if self.verbose:
-            print(f"Total number of samples: {self.get_number_of_samples_in_scenes(PC_scenes)}")
+            print(
+                f"Total number of samples: {self.get_number_of_samples_in_scenes(PC_scenes)}"
+            )
             print(f"Total number of scenes:  {len(PC_scenes)}")
         return PC_scenes
 
 
-def read_nuscenes_data(params, n_samples, n_scenes='all', lidar_token=None, scene_counter=0):
+def read_nuscenes_data(
+    params, n_samples, n_scenes="all", lidar_token=None, scene_counter=0
+):
     # Read data
-    PCHandler = NuscenesHandling(params, lidar_token=lidar_token, scene_counter=scene_counter)
+    PCHandler = NuscenesHandling(
+        params, lidar_token=lidar_token, scene_counter=scene_counter
+    )
     PC_scenes = PCHandler.sample_from_scenes(params, n_samples, n_scenes)
     del PCHandler
     return PC_scenes

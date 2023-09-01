@@ -2,11 +2,10 @@ import torch
 import numpy as np
 import time
 
-from classifiers.regression import perform_logistic_regression
+#from classifiers.regression import perform_logistic_regression
 from features.feature_utils import get_dynamic_radii
 
 
-@torch.no_grad()
 def differential_entropy(PC, params: dict) -> float:
     """
     Calculate the differential_entropy of the point cloud using the method described in the
@@ -23,13 +22,11 @@ def differential_entropy(PC, params: dict) -> float:
     device = PC.device
     assert PC.N_dim == 3, "Expected 3-dim distribution"
     # Get dynamic radii
-    # TODO: Here we call dynamic radii with the wrong input parameters. Need to be changed.
-    # These are the differential entropy params and not the parameters class ...
     radii = get_dynamic_radii(PC.distances_to_origin, params)
 
     # Some offset to make sure not taking log of zero
     epsilon = torch.exp(torch.tensor(params.args.diff_entropy.log_epsilon))
-    scaler = (2*np.pi*np.exp(1))**PC.N_dim  # (2pi*e)^dim_distribution
+    scaler = (2 * np.pi * np.exp(1)) ** PC.N_dim  # (2pi*e)^dim_distribution
 
     # Setup batches for the points of interest
     batch_size = params.args.batch_size_feature_extraction
@@ -37,94 +34,141 @@ def differential_entropy(PC, params: dict) -> float:
     radii_batches = torch.split(radii[PC.fps_inds], batch_size, dim=0)
 
     # We will remove the lowest entropies later, so we want something low initially
-    entropies = 1/2*torch.log(epsilon)*torch.ones(PC.N_fps_points, device=device, dtype=PC.dtype)
+    entropies = (
+        1
+        / 2
+        * torch.log(epsilon)
+        * torch.ones(PC.N_fps_points, device=device, dtype=PC.dtype)
+    )
     from_ind = 0
     for pc_batch, radii_batch in zip(pc_batches, radii_batches):
         # Compute the distance matrix between pc_batch and pc
         dists = torch.cdist(pc_batch, PC.pc)
 
         # Create a mask with True values where the distance is less than the radius
-        neighbor_mask = (dists < radii_batch[:, None])
+        neighbor_mask = dists < radii_batch[:, None]
         del dists
 
         # Count the number of neighbors for each point in the batch
         n_neighbors_per_point_in_batch = torch.sum(neighbor_mask, dim=1)
         # Filter out neighborhoods with only one point
-        bool_mask_valid_neighborhood = (n_neighbors_per_point_in_batch > 1)
-        inds_to_valid_neighborhood = torch.nonzero(bool_mask_valid_neighborhood).squeeze()
+        bool_mask_valid_neighborhood = n_neighbors_per_point_in_batch > 1
+        inds_to_valid_neighborhood = torch.nonzero(
+            bool_mask_valid_neighborhood
+        ).squeeze(dim=1)
+        if inds_to_valid_neighborhood.numel() == 0:
+            print(
+                "Found no valid neighborhoods when calculating differential entropy for any of the"
+                + " batches (must be > 1 points to calculate covariance in a neighborhood)"
+            )
+            current_batch_size = radii_batch.shape[0]
+            from_ind += current_batch_size
+            continue
+
         filtered_neighbor_mask = neighbor_mask[inds_to_valid_neighborhood]
         del neighbor_mask
 
         # Update neighbor count for valid neighborhoods
-        filtered_n_neighbors = n_neighbors_per_point_in_batch[inds_to_valid_neighborhood].unsqueeze(dim=1)
+        filtered_n_neighbors = n_neighbors_per_point_in_batch[
+            inds_to_valid_neighborhood
+        ].unsqueeze(dim=1)
 
         # Apply the filtered neighbor mask to the point cloud batch
-        masked_pc_batch = (PC.pc.unsqueeze(dim=0))*(filtered_neighbor_mask.unsqueeze(dim=2))
+        masked_pc_batch = (PC.pc.unsqueeze(dim=0)) * (
+            filtered_neighbor_mask.unsqueeze(dim=2)
+        )
 
         # Compute the mean of the masked point cloud batch
         mu = torch.sum(masked_pc_batch, dim=1) / filtered_n_neighbors
 
         # Center the data by subtracting the mean
-        centered_data = (masked_pc_batch - mu.unsqueeze(dim=1))*(filtered_neighbor_mask.unsqueeze(dim=2))
+        centered_data = (masked_pc_batch - mu.unsqueeze(dim=1)) * (
+            filtered_neighbor_mask.unsqueeze(dim=2)
+        )
 
         del filtered_neighbor_mask, masked_pc_batch
 
         # Calculate covariance matrices
-        covariances = (centered_data[..., None] * centered_data[..., None, :]
-                       ).sum(dim=1) / (filtered_n_neighbors.unsqueeze(dim=2) - 1)
+        covariances = (centered_data[..., None] * centered_data[..., None, :]).sum(
+            dim=1
+        ) / (filtered_n_neighbors.unsqueeze(dim=2) - 1)
         del centered_data
 
         # Compute determinants of covariance matrices
         determinants = torch.linalg.det(covariances)
-        entropies[inds_to_valid_neighborhood + from_ind] = 1/2*torch.log(scaler*determinants + epsilon)
+        entropies[inds_to_valid_neighborhood + from_ind] = (
+            1 / 2 * torch.log(scaler * determinants + epsilon)
+        )
         current_batch_size = radii_batch.shape[0]
         from_ind += current_batch_size
 
     return entropies
 
 
-def extract_differential_entropy(PC, n_neighbors_per_point_in_batch, neighbor_mask,
-                                 inds_to_valid_neighborhood, params):
+def extract_differential_entropy(
+    PC,
+    n_neighbors_per_point_in_batch,
+    neighbor_mask,
+    inds_to_valid_neighborhood,
+    params,
+):
     # init batch entropies
     epsilon = torch.exp(torch.tensor(params.args.diff_entropy.log_epsilon))
-    batch_entropies = 1/2*torch.log(epsilon)*torch.ones(neighbor_mask.shape[0], device=PC.device,
-                                                        dtype=PC.pc.dtype)
+    batch_entropies = (
+        1
+        / 2
+        * torch.log(epsilon)
+        * torch.ones(neighbor_mask.shape[0], device=PC.device, dtype=PC.pc.dtype)
+    )
 
     if inds_to_valid_neighborhood.numel() == 0:
-        print("Found no valid neighborhoods when calculating differential entropy for any of the" +
-              " batches (must be > 1 points to calculate covariance in a neighborhood)")
+        print(
+            "Found no valid neighborhoods when calculating differential entropy for any of the"
+            + " batches (must be > 1 points to calculate covariance in a neighborhood)"
+        )
         return batch_entropies
 
     filtered_neighbor_mask = neighbor_mask[inds_to_valid_neighborhood]
     del neighbor_mask
     # Update neighbor count for valid neighborhoods
-    filtered_n_neighbors = n_neighbors_per_point_in_batch[inds_to_valid_neighborhood].unsqueeze(dim=1)
+    filtered_n_neighbors = n_neighbors_per_point_in_batch[
+        inds_to_valid_neighborhood
+    ].unsqueeze(dim=1)
 
     # Apply the filtered neighbor mask to the point cloud batch
-    masked_pc_batch = (PC.pc.unsqueeze(dim=0))*(filtered_neighbor_mask.unsqueeze(dim=2))
+    masked_pc_batch = (PC.pc.unsqueeze(dim=0)) * (
+        filtered_neighbor_mask.unsqueeze(dim=2)
+    )
 
     # Compute the mean of the masked point cloud batch
     mu = torch.sum(masked_pc_batch, dim=1) / filtered_n_neighbors
 
     # Center the data by subtracting the mean
-    centered_data = (masked_pc_batch - mu.unsqueeze(dim=1))*(filtered_neighbor_mask.unsqueeze(dim=2))
-    covariances = ((centered_data[..., None] * centered_data[..., None, :]).sum(dim=1) /
-                   (filtered_n_neighbors.unsqueeze(dim=2) - 1))
+    centered_data = (masked_pc_batch - mu.unsqueeze(dim=1)) * (
+        filtered_neighbor_mask.unsqueeze(dim=2)
+    )
+    covariances = (centered_data[..., None] * centered_data[..., None, :]).sum(
+        dim=1
+    ) / (filtered_n_neighbors.unsqueeze(dim=2) - 1)
     del centered_data
 
     # Compute determinants of covariance matrices
     determinants = torch.linalg.det(covariances)
 
-    scaler = (2*np.pi*np.exp(1))**PC.N_dim
-    batch_entropies[inds_to_valid_neighborhood] = 1/2*torch.log(scaler*determinants + epsilon)
+    scaler = (2 * np.pi * np.exp(1)) ** PC.N_dim
+    batch_entropies[inds_to_valid_neighborhood] = (
+        1 / 2 * torch.log(scaler * determinants + epsilon)
+    )
     return batch_entropies
 
 
 def filter_and_sum_entropies(entropies, params):
     n_points = entropies.shape[0]
     sorted_entropies = torch.sort(entropies)[0]
-    keep_inds = round(params.args.diff_entropy.E_reject*n_points)
-    H = torch.sum(sorted_entropies[keep_inds:])  # only keep (1-E_reject) of the entropies
+    keep_inds = round(params.args.diff_entropy.E_reject * n_points)
+    H = torch.sum(
+        sorted_entropies[keep_inds:]
+    )  # only keep (1-E_reject) of the entropies
     return H.cpu().numpy()
 
 
@@ -137,7 +181,9 @@ def get_overlap_share(PC0, PC1, params):
     device = PC0.device
     pc0 = PC0.pc
     pc1 = PC1.pc
-    radii0 = get_dynamic_radii(PC0.distances_to_origin, params).to(device).unsqueeze(dim=1)
+    radii0 = (
+        get_dynamic_radii(PC0.distances_to_origin, params).to(device).unsqueeze(dim=1)
+    )
     n_points = PC0.N_points
     del PC0, PC1
 
@@ -190,18 +236,20 @@ def differential_entropy_metric(PC0, PC1, PCUnion, misaligned, params) -> float:
 
     H_PC0 = filter_and_sum_entropies(entropies_PC0, params)
     H_PC1 = filter_and_sum_entropies(entropies_PC1, params)
-    N_pts_used = PCUnion.N_points*(1-params.args.diff_entropy.E_reject)
-    H_separate = (H_PC0 + H_PC1)/(N_pts_used)
-    H_joint = filter_and_sum_entropies(entropies_joint, params)/N_pts_used
+    N_pts_used = PCUnion.N_points * (1 - params.args.diff_entropy.E_reject)
+    H_separate = (H_PC0 + H_PC1) / (N_pts_used)
+    H_joint = filter_and_sum_entropies(entropies_joint, params) / N_pts_used
 
     # this is our alignment quality measure for the entire point cloud
     metric = H_joint - H_separate
 
     # display result
     if params.verbose:
-        print("[joint|sep|metric|misaligned]:",
-              f"[{H_joint:.3f}|{H_separate:.3f}|{metric:.3f}|{misaligned}]",
-              flush=True)
+        print(
+            "[joint|sep|metric|misaligned]:",
+            f"[{H_joint:.3f}|{H_separate:.3f}|{metric:.3f}|{misaligned}]",
+            flush=True,
+        )
     return metric, H_joint, H_separate
 
 
@@ -216,21 +264,30 @@ def differential_entropy_dataset(PC_scenes, params):
         for PC_pair in PC_scene:
             t1 = time.time()
             result, H_joint, H_separate = differential_entropy_metric(
-                PC_pair.PC0, PC_pair.PC1, PC_pair.PCUnion, PC_pair.misaligned, params)
+                PC_pair.PC0,
+                PC_pair.PC1,
+                PC_pair.PCUnion,
+                PC_pair.class_category,
+                params,
+            )
             input_data.append([H_joint, H_separate])
-            labels.append(PC_pair.misaligned)
+            labels.append(PC_pair.class_category)
 
-            if PC_pair.misaligned:
+            if PC_pair.class_category:
                 metrics_misaligned.append(result)
             else:
                 metrics_aligned.append(result)
             if params.verbose:
                 if len(metrics_aligned) > 0:
-                    print(f"Mean abs metric aligned    {np.mean(np.abs(metrics_aligned)):.4f}",
-                          f"(N = {len(metrics_aligned)})")
+                    print(
+                        f"Mean abs metric aligned    {np.mean(np.abs(metrics_aligned)):.4f}",
+                        f"(N = {len(metrics_aligned)})",
+                    )
                 if len(metrics_misaligned) > 0:
-                    print(f"Mean abs metric misaligned {np.mean(np.abs(metrics_misaligned)):.4f}",
-                          f"(N = {len(metrics_misaligned)})")
+                    print(
+                        f"Mean abs metric misaligned {np.mean(np.abs(metrics_misaligned)):.4f}",
+                        f"(N = {len(metrics_misaligned)})",
+                    )
                 print(f"Execution time: {time.time() - t1:.3f} sec", flush=True)
 
     input_data = np.array(input_data)
@@ -238,12 +295,16 @@ def differential_entropy_dataset(PC_scenes, params):
     return input_data, labels
 
 
-def differential_entropy_test_accuracy(params, PC_scenes_training, PC_scenes_test, verbose=False):
-    print("\nGetting training data\n")
-    X_train, y_train = differential_entropy_dataset(PC_scenes_training, params)
-    print("\nGetting test data\n")
-    X_test, y_test = differential_entropy_dataset(PC_scenes_test, params)
-    print("\nPerform logistic regression\n")
-    model, accuracy_test = perform_logistic_regression(X_train, X_test, y_train, y_test, verbose=verbose)
-    print(f"Accuracy: {accuracy_test} with parameters\n {params}", flush=True)
-    return accuracy_test
+# def differential_entropy_test_accuracy(
+#     params, PC_scenes_training, PC_scenes_test, verbose=False
+# ):
+#     print("\nGetting training data\n")
+#     X_train, y_train = differential_entropy_dataset(PC_scenes_training, params)
+#     print("\nGetting test data\n")
+#     X_test, y_test = differential_entropy_dataset(PC_scenes_test, params)
+#     print("\nPerform logistic regression\n")
+#     model, accuracy_test = perform_logistic_regression(
+#         X_train, X_test, y_train, y_test, verbose=verbose
+#     )
+#     print(f"Accuracy: {accuracy_test} with parameters\n {params}", flush=True)
+#     return accuracy_test
