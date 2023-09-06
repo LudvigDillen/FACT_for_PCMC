@@ -349,5 +349,4 @@ def read_nuscenes_data(
         params, lidar_token=lidar_token, scene_counter=scene_counter
     )
     PC_scenes = PCHandler.sample_from_scenes(params, n_samples, n_scenes)
-    del PCHandler
     return PC_scenes

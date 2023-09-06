@@ -22,7 +22,7 @@ def get_neighborhoods(PC_pair, pc_batch, radii_batch):
     neighbor_mask_0 = dists_pc0 < radii_batch[:, None]  # BxN
     del dists_pc0
 
-    # TODO: I solved a bug so that PC_pair.pc1_CS0 is actually correct ...
+    # I solved a bug so that PC_pair.pc1_CS0 is actually correct ...
     dists_pc1 = torch.cdist(pc_batch, PC_pair.pc1_CS0)  # BxM
     neighbor_mask_1 = dists_pc1 < radii_batch[:, None]  # BxM
     return neighbor_mask_0, neighbor_mask_1
