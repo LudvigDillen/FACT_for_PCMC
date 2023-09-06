@@ -14,7 +14,11 @@ import omegaconf
 
 import nuscenes as ns
 from features.feature_extractor import extract_features_to_txt_files
-from utils.experiment_utils import run_ablation_features, setup_coral_args
+from utils.experiment_utils import (
+    run_ablation_features,
+    setup_coral_args,
+    setup_fact_args,
+)
 from features.feature_utils import (
     process_features,
     number_of_features,
@@ -123,30 +127,46 @@ def test_results(args, model, loader):
 
 def load_best_model(args, logger, pretrained=True):
     args.num_class = args.perturb_settings.n_classes
-    args.input_dim, args = number_of_features(args)
-    print(f"Input dim: {args.input_dim}")
-
-    shutil.copy(
-        hydra.utils.to_absolute_path(
-            "classifiers/PointTransformers/models/{}/model.py".format(args.model.name)
-        ),
-        ".",
-    )
-
-    if torch.cuda.is_available():
-        classifier = getattr(
-            importlib.import_module(
-                "classifiers.PointTransformers.models.{}.model".format(args.model.name)
+    if args.classifier == "FACT":
+        args.input_dim, args = number_of_features(args)
+        print(f"Input dim: {args.input_dim}")
+        shutil.copy(
+            hydra.utils.to_absolute_path(
+                "classifiers/PointTransformers/models/{}/model.py".format(
+                    args.model.name
+                )
             ),
-            "PointTransformerCls",
-        )(args).cuda()
-    else:
+            ".",
+        )
+
+        if torch.cuda.is_available():
+            classifier = getattr(
+                importlib.import_module(
+                    "classifiers.PointTransformers.models.{}.model".format(
+                        args.model.name
+                    )
+                ),
+                "PointTransformerCls",
+            )(args).cuda()
+        else:
+            classifier = getattr(
+                importlib.import_module(
+                    "classifiers.PointTransformers.models.{}.model".format(
+                        args.model.name
+                    )
+                ),
+                "PointTransformerCls",
+            )(args)
+    elif args.classifier == "CorAl":
+        shutil.copy(
+            hydra.utils.to_absolute_path("classifiers/regression.py"),
+            ".",
+        )
         classifier = getattr(
-            importlib.import_module(
-                "classifiers.PointTransformers.models.{}.model".format(args.model.name)
-            ),
-            "PointTransformerCls",
-        )(args)
+            importlib.import_module("classifiers.regression"),
+            "LogisticRegression",
+        )(input_dim=2, output_dim=1)
+
     start_epoch = 0
     if pretrained and args.load_model_path:
         checkpoint = torch.load(args.load_model_path)
@@ -306,35 +326,67 @@ def main(args):
     # HYPER PARAMETER
     logger = logging.getLogger(__name__)
 
-    # DATA LOADING
-    logger.info("Load dataset ...")
-
     # Ludvig's code
     # Init Nusc object
 
     for i in range(args.running_iterations):
         # # # Setup data for new run
-        # sys.exit(f"Not supposed to be more than {args.running_iterations} runs")
+        if i == 0:
+            args.classifier = "CorAl"
+            args.feature_folder = "/home/luddi824/thesis/PCAC/data/PCAC_data/coral0_3"
+            args.perturb_settings.r_bin = 0.03
+            args.perturb_settings.t_bin = 0.3
+            args.model_identifier = "coral0_3"
+        elif i == 1:
+            args.classifier = "FACT"
+            args.feature_folder = (
+                "/home/luddi824/thesis/PCAC/data/PCAC_data/FACT_binary0_3"
+            )
+            args.perturb_settings.r_bin = 0.03
+            args.perturb_settings.t_bin = 0.3
+            args.model_identifier = "FACT_binary0_3"
+        elif i == 2:
+            args.classifier = "CorAl"
+            args.feature_folder = "/home/luddi824/thesis/PCAC/data/PCAC_data/coral0_1"
+            args.perturb_settings.r_bin = 0.01
+            args.perturb_settings.t_bin = 0.1
+            args.model_identifier = "coral0_1"
+        elif i == 3:
+            args.classifier = "FACT"
+            args.feature_folder = (
+                "/home/luddi824/thesis/PCAC/data/PCAC_data/FACT_binary0_1"
+            )
+            args.perturb_settings.r_bin = 0.01
+            args.perturb_settings.t_bin = 0.1
+            args.model_identifier = "FACT_binary0_1"
+        else:
+            sys.exit(f"Not supposed to be more than {args.running_iterations} runs")
 
         logger.info(f"STARTING RUN {i + 1}. Settings:")
-        logger.info(
-            f"args.features_to_create.use_csj {args.features_to_create.use_csj}"
-        )
-        logger.info(f"args.features_to_use.use_csj {args.features_to_use.use_csj}")
+        logger.info(f"args.classifier {args.classifier}")
+        logger.info(f"args.feature_folder {args.feature_folder}")
+        logger.info(f"args.perturb_settings.r_bin {args.perturb_settings.r_bin}")
+        logger.info(f"args.perturb_settings.t_bin {args.perturb_settings.t_bin}")
         logger.info(f"args.re_use_data {args.re_use_data}")
         logger.info(f"args.model_identifier: {args.model_identifier}")
         assert args.classifier in [
             "CorAl",
             "FACT",
         ], "ERROR: Did not get a valid classifier!"
+
+        # NOTICE THAT THE BELOW OVERWRITES SOME SETTINGS
         if args.classifier == "CorAl":
             args = setup_coral_args(args, logger)
+        elif args.classifier == "FACT":
+            args = setup_fact_args(args, logger)
+
         # EXTRACT FEATURES
         if not args.re_use_data:
-            print("Start feature extraction", flush=True)
+            logger.info("Load dataset ...")
             nusc = ns.nuscenes.NuScenes(
                 version=args.dataset, dataroot=args.data_folder, verbose=False
             )
+            logger.info("Start feature extraction")
             with torch.inference_mode():
                 if args.classifier == "CorAl":
                     X_train, y_train, X_val, y_val, X_test, y_test = get_coral_features(
@@ -347,27 +399,32 @@ def main(args):
 
         # PERFORM MODEL TRAINING
         if args.classifier == "CorAl":
-            classifier = perform_coral_training(
-                X_train,
-                y_train,
-                X_val,
-                y_val,
-                logger,
-                epochs=args.coral_settings.epochs,
-                learning_rate=args.coral_settings.learning_rate,
-            )
+            if args.rerun_only_test:
+                classifier, _, args = load_best_model(args, logger)
+                X_test = np.loadtxt(args.feature_folder + "/X_test.txt", delimiter=" ")
+                y_test = np.loadtxt(args.feature_folder + "/y_test.txt", delimiter=" ")
+            else:
+                classifier = perform_coral_training(
+                    X_train,
+                    y_train,
+                    X_val,
+                    y_val,
+                    logger,
+                    epochs=args.coral_settings.epochs,
+                    learning_rate=args.coral_settings.learning_rate,
+                )
         elif args.classifier == "FACT":
             # Get dataset (features in a data loader)
             args = process_features(args)
             # Run all
-            if args.ablation:
+            if args.ablation.run_ablation:
                 run_ablation_features(args, logger)
                 sys.exit("Ablation finished!")
             else:
-                if args.rerun_only_test is False:
-                    train_accuracies, val_accuracies, classifier = run_cls(args, logger)
-                else:
+                if args.rerun_only_test:
                     classifier, _, args = load_best_model(args, logger)
+                else:
+                    train_accuracies, val_accuracies, classifier = run_cls(args, logger)
 
         # PERFORM MODEL INFERENCE
         if args.classifier == "CorAl":
@@ -396,13 +453,12 @@ def main(args):
 
         # LOGGING
         logger.info(f"FINISHED RUN {i + 1}. Settings:")
-        logger.info(
-            f"args.features_to_create.use_csj {args.features_to_create.use_csj}"
-        )
-        logger.info(f"args.features_to_use.use_csj {args.features_to_use.use_csj}")
+        logger.info(f"args.classifier {args.classifier}")
+        logger.info(f"args.feature_folder {args.feature_folder}")
+        logger.info(f"args.perturb_settings.r_bin {args.perturb_settings.r_bin}")
+        logger.info(f"args.perturb_settings.t_bin {args.perturb_settings.t_bin}")
         logger.info(f"args.re_use_data {args.re_use_data}")
         logger.info(f"args.model_identifier: {args.model_identifier}")
-        logger.info(f"Classifier: {args.classifier}")
 
 
 if __name__ == "__main__":

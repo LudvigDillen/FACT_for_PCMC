@@ -45,7 +45,7 @@ class PCAC_dataset(torch.utils.data.Dataset):
         self.cache_size = cache_size  # how many data points to cache in memory
         self.cache = {}  # from index to (point_set, cls) tuple
 
-        if args.ablation:
+        if args.ablation.run_ablation:
             feature_filter_with_xyz = np.concatenate(
                 (np.ones(3, dtype=int), np.array(args.ablation_feature_filter))
             )

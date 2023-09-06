@@ -48,7 +48,7 @@ def model_plot(model, X, y, title, args):
     plt.ylim(V.min(), V.max())
     plt.xlabel(r"$H_{joint}$", fontsize=16, fontweight="bold")
     plt.ylabel(r"$H_{sep}$", fontsize=16, fontweight="bold")
-    plt.legend(fontsize=12)
+    plt.legend(fontsize=12, loc="upper left")
     plt.title(title, fontsize=18)
     # Define the directory and filename
     directory = args.visualization_folder
@@ -128,7 +128,7 @@ def plot_accuracies_ablation(
 ):
     plt.figure(figsize=(10, 5))
 
-    n_features = len(feature_keys)
+    n_features = sum(args.feature_filter) - len(args.ablation.remove_keys)
     legend_names = get_legend_names(feature_keys)
     linestyles = ["-", "--", "-.", ":"]
     markers = ["o", "s", "^", "D", "x", "p", "*", "+"]
@@ -145,7 +145,7 @@ def plot_accuracies_ablation(
                 label=f"Train {legend_names[idx]}",
                 linestyle=linestyle,
                 marker=marker,
-                markevery=1,
+                markevery=20,
             )
             val_str = f"Val {legend_names[idx]}"
         else:
@@ -157,7 +157,7 @@ def plot_accuracies_ablation(
             label=val_str,
             linestyle=linestyle,
             marker=marker,
-            markevery=1,
+            markevery=20,
             alpha=0.7,
         )  # reduced opacity for validation
     if all_train_accuracies is not None:

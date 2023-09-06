@@ -149,7 +149,7 @@ def process_features(args):
 
 
 def number_of_features(args):
-    if args.ablation:
+    if args.ablation.run_ablation:
         n_features = int(sum(args.ablation_feature_filter))
     else:
         n_features = int(sum(args.feature_filter))

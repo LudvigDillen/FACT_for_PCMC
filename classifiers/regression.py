@@ -55,7 +55,7 @@ def perform_logistic_regression_training(
     accuracy = []
     best_accuracy_val = 0
     best_epoch = 0
-    for epoch in tqdm(range(int(epochs)), desc='Training Epochs'):
+    for epoch in tqdm(range(int(epochs)), desc="Training Epochs"):
         optimizer.zero_grad()  # Setting our stored gradients equal to zero
         outputs = model(X_train)
         loss = criterion(torch.squeeze(outputs), y_train)
@@ -63,7 +63,7 @@ def perform_logistic_regression_training(
         loss.backward()  # Computes the gradient of the given tensor w.r.t. the weights/bias
 
         optimizer.step()  # Updates weights and biases with the optimizer (SGD)
-        with torch.no_grad():
+        with torch.inference_mode():
             # Calculating the loss and accuracy for the test dataset
             # Get z for test data
             outputs_val = torch.squeeze(model(X_val))
@@ -101,10 +101,12 @@ def perform_logistic_regression_training(
                     "optimizer_state_dict": optimizer.state_dict(),
                 }
                 torch.save(state, savepath)
-            last_epoch = (epoch+1) == int(epochs)
-            if not (epoch+1) % 2500 or last_epoch:
+            last_epoch = (epoch + 1) == int(epochs)
+            if not (epoch + 1) % 2500 or last_epoch:
                 logger.info(f"Iteration: {epoch+1}")
-                logger.info(f"Loss [Train|Val]: [{loss.item():.4f}|{loss_val.item():.4f}]")
+                logger.info(
+                    f"Loss [Train|Val]: [{loss.item():.4f}|{loss_val.item():.4f}]"
+                )
                 logger.info(f"Acc. [Train|Val]: [{accuracy:.2f}|{accuracy_val:.2f}]")
     # Load the best validation model
     best_model_path = "best_model.pth"

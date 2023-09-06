@@ -1,5 +1,4 @@
 import os
-import torch
 import numpy as np
 
 from classifiers.regression import perform_logistic_regression_training
@@ -12,15 +11,14 @@ def get_coral_features(nusc, args, logger):
     params = Params(nusc=nusc, args=args, pointwise=True)
 
     logger.info("Staring feature extraction CorAl...")
-    with torch.inference_mode():
-        (
-            X_train,
-            y_train,
-            X_val,
-            y_val,
-            X_test,
-            y_test,
-        ) = run_differential_entropy_on_dataset(params, logger)
+    (
+        X_train,
+        y_train,
+        X_val,
+        y_val,
+        X_test,
+        y_test,
+    ) = run_differential_entropy_on_dataset(params, logger)
     logger.info("Feature extraction finished")
     if not os.path.exists(args.feature_folder):
         os.makedirs(args.feature_folder)
