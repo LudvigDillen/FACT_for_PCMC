@@ -41,15 +41,24 @@ from classifiers.coral import (
 
 
 def get_mean_acc(class_acc):
-    if class_acc[:, 1].any() == 0:
-        print("No valid class accuracy! All samples not encountered")
-        return 0
-    class_acc[:, 2] = class_acc[:, 0] / class_acc[:, 1]
-    mean_acc = np.mean(class_acc[:, 2])
+    n_classes = class_acc.shape[0]
+    all_accuracies = []
+    for i in range(n_classes):
+        if class_acc[i, 1] != 0:
+            accuracy_class_i = class_acc[i, 0] / class_acc[i, 1]
+            all_accuracies.append(accuracy_class_i)
+        mean_acc = np.mean(all_accuracies)
     return mean_acc
 
 
-def inference_loop(data, args, model, class_acc, mean_correct):
+def get_overall_acc(class_acc):
+    correct_predictions = class_acc[:, 0].sum()
+    total_predictions = class_acc[:, 1].sum()
+    overall_acc = correct_predictions / total_predictions
+    return overall_acc
+
+
+def inference_loop(data, args, model, class_acc):
     points, target, scene_numbers = data
     # same_scene = (scene_numbers == scene_numbers[0]).sum() == len(scene_numbers)
     # assert same_scene, "All samples does not come from the same scene"
@@ -59,7 +68,6 @@ def inference_loop(data, args, model, class_acc, mean_correct):
     else:
         target = target[:, 0]
 
-    # points = append_spatial_features(args, points)
     points = normalize_data_on_condition(args, points)
 
     classifier = model.eval()
@@ -69,32 +77,35 @@ def inference_loop(data, args, model, class_acc, mean_correct):
     pred_choice = pred.data.max(1)[1]  # highest score wins
 
     for cat in np.unique(target.cpu()):
-        classacc = (
-            pred_choice[target == cat].eq(target[target == cat].long().data).cpu().sum()
+        ind_for_cat_target = target == cat
+        number_of_correct_prediction_for_cat = (
+            pred_choice[ind_for_cat_target]
+            .eq(target[ind_for_cat_target].long().data)
+            .cpu()
+            .sum()
         )
-        class_acc[cat, 0] += classacc.item() / float(points[target == cat].size()[0])
-        class_acc[cat, 1] += 1
-    correct = pred_choice.eq(target.long().data).cpu().sum()
-    mean_correct.append(correct.item() / float(points.size()[0]))
-    return class_acc, mean_correct, target, pred_choice
+        class_acc[cat, 0] += number_of_correct_prediction_for_cat
+        number_of_target_cat = float(ind_for_cat_target.sum().cpu())
+        class_acc[cat, 1] += number_of_target_cat
+
+    return class_acc, target, pred_choice
 
 
 def track_accuracy(args, model, loader):
-    mean_correct = []
-    class_acc = np.zeros((args.num_class, 3))
+    class_acc = np.zeros(
+        (args.num_class, 2)
+    )  # num_class x (correct_preds [col. 0], total_preds [col. 1])
     for data in tqdm(loader, total=len(loader)):
-        class_acc, mean_correct, _, _ = inference_loop(
-            data, args, model, class_acc, mean_correct
-        )
+        class_acc, _, _ = inference_loop(data, args, model, class_acc)
     mean_acc = get_mean_acc(class_acc)
-    instance_acc = np.mean(mean_correct)
+    instance_acc = get_overall_acc(class_acc)
     return instance_acc, mean_acc
 
 
 def run_val(args, logger, classifier):
     PCAC_VAL_DATASET = PCAC_dataset(args=args, split="validation")
     valDataLoader = torch.utils.data.DataLoader(
-        PCAC_VAL_DATASET, batch_size=args.batch_size, shuffle=False, num_workers=8
+        PCAC_VAL_DATASET, batch_size=args.batch_size, shuffle=False, num_workers=2
     )
     val_instance_acc, val_class_acc = track_accuracy(args, classifier, valDataLoader)
     logger.info(f"Val Overall Accuracy: {val_instance_acc:.4f}")
@@ -104,16 +115,17 @@ def run_val(args, logger, classifier):
 
 
 def test_results(args, model, loader):
-    mean_correct = []
-    class_acc = np.zeros((args.num_class, 3))
+    class_acc = np.zeros(
+        (args.num_class, 2)
+    )  # num_class x (correct_preds [col. 0], total_preds [col. 1])
     N_samples = len(loader.dataset)
     y_true = np.zeros(N_samples)
     y_pred = np.zeros(N_samples)
     ind = 0
     with torch.inference_mode():
         for data in tqdm(loader, total=len(loader)):
-            class_acc, mean_correct, target, pred_choice = inference_loop(
-                data, args, model, class_acc, mean_correct
+            class_acc, target, pred_choice = inference_loop(
+                data, args, model, class_acc
             )
 
             current_batch_size = len(target)
@@ -121,7 +133,7 @@ def test_results(args, model, loader):
             y_pred[ind : ind + current_batch_size] = pred_choice.cpu().numpy()
             ind = ind + current_batch_size
     mean_acc = get_mean_acc(class_acc)
-    instance_acc = np.mean(mean_correct)
+    instance_acc = get_overall_acc(class_acc)
     return instance_acc, mean_acc, y_true, y_pred
 
 
@@ -181,10 +193,10 @@ def run_cls(args, logger, pretrained=True):
     PCAC_TRAIN_DATASET = PCAC_dataset(args=args, split="train")
     PCAC_VAL_DATASET = PCAC_dataset(args=args, split="validation")
     trainDataLoader = torch.utils.data.DataLoader(
-        PCAC_TRAIN_DATASET, batch_size=args.batch_size, shuffle=True, num_workers=8
+        PCAC_TRAIN_DATASET, batch_size=args.batch_size, shuffle=True, num_workers=2
     )
     valDataLoader = torch.utils.data.DataLoader(
-        PCAC_VAL_DATASET, batch_size=args.batch_size, shuffle=False, num_workers=8
+        PCAC_VAL_DATASET, batch_size=args.batch_size, shuffle=False, num_workers=2
     )
     del PCAC_TRAIN_DATASET, PCAC_VAL_DATASET
 
@@ -230,7 +242,6 @@ def run_cls(args, logger, pretrained=True):
             else:
                 target = target[:, 0]
 
-            # points = append_spatial_features(args, points)
             points = normalize_data_on_condition(args, points)
             points = augment_data(args, points)
 
@@ -303,7 +314,7 @@ def run_cls(args, logger, pretrained=True):
 def run_test(args, logger, classifier):
     PCAC_TEST_DATASET = PCAC_dataset(args=args, split="test")
     testDataLoader = torch.utils.data.DataLoader(
-        PCAC_TEST_DATASET, batch_size=args.batch_size, shuffle=False, num_workers=8
+        PCAC_TEST_DATASET, batch_size=args.batch_size, shuffle=False, num_workers=2
     )
     del PCAC_TEST_DATASET
 
@@ -331,43 +342,42 @@ def main(args):
 
     for i in range(args.running_iterations):
         # # # Setup data for new run
+        # High Performance
         if i == 0:
-            args.classifier = "CorAl"
-            args.feature_folder = "/home/luddi824/thesis/PCAC/data/PCAC_data/coral0_3"
-            args.perturb_settings.r_bin = 0.03
-            args.perturb_settings.t_bin = 0.3
-            args.model_identifier = "coral0_3"
-        elif i == 1:
-            args.classifier = "FACT"
             args.feature_folder = (
-                "/home/luddi824/thesis/PCAC/data/PCAC_data/FACT_binary0_3"
+                "/home/luddi824/thesis/PCAC/data/PCAC_data/FACT_best_network_optimal"
             )
-            args.perturb_settings.r_bin = 0.03
-            args.perturb_settings.t_bin = 0.3
-            args.model_identifier = "FACT_binary0_3"
-        elif i == 2:
-            args.classifier = "CorAl"
-            args.feature_folder = "/home/luddi824/thesis/PCAC/data/PCAC_data/coral0_1"
-            args.perturb_settings.r_bin = 0.01
-            args.perturb_settings.t_bin = 0.1
-            args.model_identifier = "coral0_1"
-        elif i == 3:
-            args.classifier = "FACT"
+            args.model_identifier = "FACT_best_network_optimal"
+            args.re_use_data = True
+        elif i == 1:  # Fast
             args.feature_folder = (
-                "/home/luddi824/thesis/PCAC/data/PCAC_data/FACT_binary0_1"
+                "/home/luddi824/thesis/PCAC/data/PCAC_data/FACT_best_network_fast"
             )
-            args.perturb_settings.r_bin = 0.01
-            args.perturb_settings.t_bin = 0.1
-            args.model_identifier = "FACT_binary0_1"
+            args.model_identifier = "FACT_best_network_fast"
+            args.preprocessing.T_close = 2.5
+            args.features_to_create.use_c = False
+            args.features_to_use.use_c = False
+            args.fps.num_point = 1024
+            args.batch_size = 32
+            args.epoch = 200
+            args.lr_gamma = 0.80
+            args.re_use_data = False
         else:
             sys.exit(f"Not supposed to be more than {args.running_iterations} runs")
 
         logger.info(f"STARTING RUN {i + 1}. Settings:")
         logger.info(f"args.classifier {args.classifier}")
         logger.info(f"args.feature_folder {args.feature_folder}")
-        logger.info(f"args.perturb_settings.r_bin {args.perturb_settings.r_bin}")
-        logger.info(f"args.perturb_settings.t_bin {args.perturb_settings.t_bin}")
+        logger.info(f"scenes {args.n_scenes}")
+        logger.info(f"samples per scene {args.n_samples_per_scene}")
         logger.info(f"args.re_use_data {args.re_use_data}")
+        logger.info(f"args.preprocessing.T_close: {args.preprocessing.T_close}")
+        logger.info(f"args.features_to_create.use_c: {args.features_to_create.use_c}")
+        logger.info(f"args.features_to_use.use_c: {args.features_to_use.use_c}")
+        logger.info(f"args.fps.num_point: {args.fps.num_point}")
+        logger.info(f"args.batch_size: {args.batch_size}")
+        logger.info(f"args.epoch: {args.epoch}")
+        logger.info(f"args.lr_gamma: {args.lr_gamma}")
         logger.info(f"args.model_identifier: {args.model_identifier}")
         assert args.classifier in [
             "CorAl",
@@ -442,22 +452,31 @@ def main(args):
                 args=args,
                 title=f"CorAl: {100*accuracy_test:.1f}% accuracy",
             )
-            n_classes = 2
-        elif args.classifier == "FACT":
+        elif args.classifier == "FACT" and not args.rerun_only_test:
             plot_accuracies(train_accuracies, val_accuracies, args=args)
-            n_classes = args.perturb_settings.n_classes
 
         store_confusion_matrix(
-            y_pred, y_test, N_classes=n_classes, logger=logger, args=args
+            y_pred,
+            y_test,
+            N_classes=args.perturb_settings.n_classes,
+            logger=logger,
+            args=args,
         )
 
         # LOGGING
         logger.info(f"FINISHED RUN {i + 1}. Settings:")
         logger.info(f"args.classifier {args.classifier}")
         logger.info(f"args.feature_folder {args.feature_folder}")
-        logger.info(f"args.perturb_settings.r_bin {args.perturb_settings.r_bin}")
-        logger.info(f"args.perturb_settings.t_bin {args.perturb_settings.t_bin}")
+        logger.info(f"scenes {args.n_scenes}")
+        logger.info(f"samples per scene {args.n_samples_per_scene}")
         logger.info(f"args.re_use_data {args.re_use_data}")
+        logger.info(f"args.preprocessing.T_close: {args.preprocessing.T_close}")
+        logger.info(f"args.features_to_create.use_c: {args.features_to_create.use_c}")
+        logger.info(f"args.features_to_use.use_c: {args.features_to_use.use_c}")
+        logger.info(f"args.fps.num_point: {args.fps.num_point}")
+        logger.info(f"args.batch_size: {args.batch_size}")
+        logger.info(f"args.epoch: {args.epoch}")
+        logger.info(f"args.lr_gamma: {args.lr_gamma}")
         logger.info(f"args.model_identifier: {args.model_identifier}")
 
 
