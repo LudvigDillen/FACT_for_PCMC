@@ -7,6 +7,15 @@ readme = "README.md"
 
 [tool.poetry.dependencies]
 python = "^3.10"
+debugpy = "^1.8.0"
+numpy = "^1.26.2"
+torch = "^2.1.1"
+torchvision = "^0.16.1"
+torchaudio = "^2.1.1"
+tqdm = "^4.66.1"
+hydra-core = "1.2"
+nuscenes-devkit = "^1.1.11"
+geomloss = "^0.2.6"
 
 
 [build-system]
