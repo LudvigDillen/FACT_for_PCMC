@@ -39,6 +39,18 @@ def from_tensor_to_pcd(a):
     return pcd
 
 
+def calc_rotation_distance(R1, R2):
+    # This is the geodesic rotation distance
+    distance_arg = torch.linalg.norm((R1 - R2)/np.sqrt(8), ord='fro')
+    limited_angle_distance = torch.arcsin(distance_arg)  # only -pi/2 to pi/2
+    return 2*limited_angle_distance  # -pi to pi
+
+
+def calc_translation_distance(t1, t2):
+    dt = t1 - t2
+    return torch.linalg.norm(dt, ord=2)
+
+
 def get_transformation_error(T_est, T_gt):
     # Assumes input is torch, cuda
     # Normalize if this is not already done
@@ -52,8 +64,8 @@ def get_transformation_error(T_est, T_gt):
     t_gt = T_gt_n[:3, 3]
 
     # Translation error
-    R_error = 2*torch.arcsin(torch.linalg.norm(R_est - R_gt) / torch.sqrt(8))  # TODO: double check this formula
-    t_error = torch.linalg.norm(t_est - t_gt)
+    R_error = calc_rotation_distance(R_est, R_gt)
+    t_error = calc_translation_distance(t_est, t_gt)
     return R_error, t_error
 
 
@@ -62,7 +74,7 @@ def reg(args):
     ### SETUP
     # Extra settings:
     SEED = True
-    threshold = 0.2
+    threshold = 0.02
 
     # Init Nusc object
     nusc = ns.nuscenes.NuScenes(
@@ -77,10 +89,10 @@ def reg(args):
         torch.cuda.manual_seed(1)
 
     params = Params(nusc=nusc, args=args, pointwise=True)
-    for i in np.arange(0, 1):
+    for i in np.arange(0, 10):
         PC_scenes = read_nuscenes_data(
             params,
-            n_samples=1,
+            n_samples=2,
             n_scenes=1,
             scene_counter=i,
         )
@@ -89,7 +101,7 @@ def reg(args):
             for pair in PC_scene:
 
 
-                print(f"Class category {pair.class_category}")
+                print(f"\nClass category {pair.class_category}")
                 trans_init = np.asarray([[1.0, 0.0, 0.0, 0.0],
                                         [0.0, 1.0, 0.0, 0.0],
                                         [0.0, 0.0, 1.0, 0.0],
@@ -100,35 +112,42 @@ def reg(args):
                 T_gt_np = T_gt.cpu().numpy()
                 ### PLOT
                 
-                draw_registration_result(source, target, trans_init, title="Unregistered")
-                draw_registration_result(source, target, T_gt_np, title="GT registered")
+                # draw_registration_result(source, target, trans_init, title="Unregistered")
+                # draw_registration_result(source, target, T_gt_np, title="GT registered")
 
                 # ### ICP
-                print("Apply point-to-point ICP")
+                # print("Apply point-to-point ICP")
+                threshold = 0.1
                 reg_p2p = o3d.pipelines.registration.registration_icp(
                     source, target, threshold, trans_init,
                     o3d.pipelines.registration.TransformationEstimationPointToPoint(),
                     o3d.pipelines.registration.ICPConvergenceCriteria(max_iteration=2000))
 
-                print(reg_p2p)
-                print("Transformation is:")
-                print(reg_p2p.transformation)
-                draw_registration_result(source, target, reg_p2p.transformation, title="ICP-p2p registered")
-
+                # print(reg_p2p)
+                # print("Transformation is:")
+                # print(reg_p2p.transformation)
+                # draw_registration_result(source, target, reg_p2p.transformation, title="ICP-p2p registered")
 
                 # print("Apply point-to-plane ICP")
-                # # Compute normals for the target point cloud
-                # target.estimate_normals(
-                #     search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=0.1, max_nn=30)
-                # )
-
-                # reg_p2l = o3d.pipelines.registration.registration_icp(
-                #     source, target, threshold, trans_init,
-                #     o3d.pipelines.registration.TransformationEstimationPointToPlane())
+                # Compute normals for the target point cloud
+                target.estimate_normals(
+                    search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=0.5, max_nn=300)
+                )
+                threshold = 0.01
+                reg_p2l = o3d.pipelines.registration.registration_icp(
+                    source, target, threshold, trans_init,
+                    o3d.pipelines.registration.TransformationEstimationPointToPlane(),
+                    o3d.pipelines.registration.ICPConvergenceCriteria(max_iteration=100))
                 # print(reg_p2l)
                 # print("Transformation is:")
                 # print(reg_p2l.transformation)
                 # draw_registration_result(source, target, reg_p2l.transformation, title="ICP-p2l registered")
 
+                R_error_init, t_error_init = get_transformation_error(torch.from_numpy(trans_init.copy()).to('cuda'), T_gt)
+                R_error_p2p, t_error_p2p = get_transformation_error(torch.from_numpy(reg_p2p.transformation.copy()).to('cuda'), T_gt)
+                R_error_p2l, t_error_p2l = get_transformation_error(torch.from_numpy(reg_p2l.transformation.copy()).to('cuda'), T_gt)
+                print(f"Init: R_error {R_error_init:.4f}, t_error {t_error_init:.2f}")
+                print(f"p2p:  R_error {R_error_p2p:.4f}, t_error {t_error_p2p:.2f}")
+                print(f"p2l:  R_error {R_error_p2l:.4f}, t_error {t_error_p2l:.2f}")
 
     return None
