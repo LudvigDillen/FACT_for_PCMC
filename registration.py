@@ -5,6 +5,8 @@ import nuscenes as ns
 import numpy as np
 import copy
 import open3d as o3d
+import open3d.pipelines.registration as treg
+
 
 from utils.parameters import Params
 from utils.nuscenes_handling import read_nuscenes_data
@@ -74,12 +76,20 @@ def reg(args):
     ### SETUP
     # Extra settings:
     SEED = True
-    threshold = 0.02
+    n_samples_per_scene = 5
+    n_scenes = 10
+    n_samples = n_samples_per_scene*n_scenes
 
     # Init Nusc object
     nusc = ns.nuscenes.NuScenes(
         version=args.dataset, dataroot=args.data_folder, verbose=False
     )
+    t_avr_init_error = 0
+    t_avr_p2p_error = 0
+    t_avr_p2l_error = 0
+    R_avr_init_error = 0
+    R_avr_p2p_error = 0
+    R_avr_p2l_error = 0
 
     if SEED:
         np.random.seed(1)
@@ -89,10 +99,11 @@ def reg(args):
         torch.cuda.manual_seed(1)
 
     params = Params(nusc=nusc, args=args, pointwise=True)
-    for i in np.arange(0, 10):
+
+    for i in np.arange(0, n_scenes):
         PC_scenes = read_nuscenes_data(
             params,
-            n_samples=2,
+            n_samples=n_samples_per_scene,
             n_scenes=1,
             scene_counter=i,
         )
@@ -117,11 +128,11 @@ def reg(args):
 
                 # ### ICP
                 # print("Apply point-to-point ICP")
-                threshold = 0.1
-                reg_p2p = o3d.pipelines.registration.registration_icp(
+                threshold = 1
+                reg_p2p = treg.registration_icp(
                     source, target, threshold, trans_init,
-                    o3d.pipelines.registration.TransformationEstimationPointToPoint(),
-                    o3d.pipelines.registration.ICPConvergenceCriteria(max_iteration=2000))
+                    treg.TransformationEstimationPointToPoint(),
+                    treg.ICPConvergenceCriteria(max_iteration=1000))
 
                 # print(reg_p2p)
                 # print("Transformation is:")
@@ -131,23 +142,52 @@ def reg(args):
                 # print("Apply point-to-plane ICP")
                 # Compute normals for the target point cloud
                 target.estimate_normals(
-                    search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=0.5, max_nn=300)
+                    search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=2, max_nn=175)
                 )
-                threshold = 0.01
-                reg_p2l = o3d.pipelines.registration.registration_icp(
+                threshold = 0.1
+                reg_p2l = treg.registration_icp(
                     source, target, threshold, trans_init,
-                    o3d.pipelines.registration.TransformationEstimationPointToPlane(),
-                    o3d.pipelines.registration.ICPConvergenceCriteria(max_iteration=100))
+                    treg.TransformationEstimationPointToPlane(),
+                    treg.ICPConvergenceCriteria(max_iteration=1000))
                 # print(reg_p2l)
                 # print("Transformation is:")
                 # print(reg_p2l.transformation)
                 # draw_registration_result(source, target, reg_p2l.transformation, title="ICP-p2l registered")
 
+
+                # Generalized ICP
+                # threshold = 0.1
+                # reg_ICP_gen = treg.registration_icp(
+                #     source, target, threshold, trans_init,
+                #     treg.TransformationEstimationForGeneralizedICP(),
+                #     treg.ICPConvergenceCriteria(max_iteration=300))
+
                 R_error_init, t_error_init = get_transformation_error(torch.from_numpy(trans_init.copy()).to('cuda'), T_gt)
                 R_error_p2p, t_error_p2p = get_transformation_error(torch.from_numpy(reg_p2p.transformation.copy()).to('cuda'), T_gt)
                 R_error_p2l, t_error_p2l = get_transformation_error(torch.from_numpy(reg_p2l.transformation.copy()).to('cuda'), T_gt)
+                #R_error_gen, t_error_gen = get_transformation_error(torch.from_numpy(reg_ICP_gen.transformation.copy()).to('cuda'), T_gt)
                 print(f"Init: R_error {R_error_init:.4f}, t_error {t_error_init:.2f}")
                 print(f"p2p:  R_error {R_error_p2p:.4f}, t_error {t_error_p2p:.2f}")
                 print(f"p2l:  R_error {R_error_p2l:.4f}, t_error {t_error_p2l:.2f}")
 
+                R_avr_init_error += R_error_init/n_samples
+                R_avr_p2p_error += R_error_p2p/n_samples
+                R_avr_p2l_error += R_error_p2l/n_samples
+                t_avr_init_error += t_error_init/n_samples
+                t_avr_p2p_error += t_error_p2p/n_samples
+                t_avr_p2l_error += t_error_p2l/n_samples
+    print(f"\navr. Init: R_error {R_avr_init_error:.4f}, t_error {t_avr_init_error:.2f}")
+    print(f"avr. p2p:  R_error {R_avr_p2p_error:.4f}, t_error {t_avr_p2p_error:.2f}")
+    print(f"avr. p2l:  R_error {R_avr_p2l_error:.4f}, t_error {t_avr_p2l_error:.2f}")
+                #print(f"p2l:  R_error {R_error_gen:.4f}, t_error {t_error_gen:.2f}")
+
     return None
+# TODO: Voxelize data before ICP (based on https://ispc-group.github.io/pages/files/HRegNet/HRegNet.pdf)
+# 1. Voxels of width 0.3m
+# 2. Select 8192 pts randomly. I think they mean that we should take it randomly over the voxels?
+
+# TODO: Determine what is an threshold for aligned and misaligned point clouds
+
+# max_correspondence_distance = 0.07
+
+# max_correspondence_distances = o3d.utility.DoubleVector([0.3, 0.14, 0.07])
