@@ -273,7 +273,6 @@ def features_to_txt_files(
             )
 
             if params.args.fps.do_fps:
-                # Compute the differential entropy features for the scenes
                 farthest_point_sample_PC_scenes(PC_scenes, params.N_fps_points)
 
             # Feature extraction.

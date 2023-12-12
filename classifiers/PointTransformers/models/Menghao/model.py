@@ -108,7 +108,7 @@ class StackedAttention(nn.Module):
 class PointTransformerCls(nn.Module):
     def __init__(self, cfg):
         super().__init__()
-        output_channels = cfg.num_class
+        output_channels = cfg.perturb_settings.n_classes
         d_points = cfg.input_dim
         self.conv1 = nn.Conv1d(d_points, 64, kernel_size=1, bias=False)
         self.conv2 = nn.Conv1d(64, 64, kernel_size=1, bias=False)

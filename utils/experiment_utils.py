@@ -1,10 +1,11 @@
 import numpy as np
+import omegaconf
+import logging
+import sys
 
-from visualization.classifications import (
-    plot_accuracies_ablation,
-    store_confusion_matrix,
-    plot_accuracies,
-)
+from utils.other import start_debug
+import visualization.classifications as vis_cls
+from features.feature_utils import process_features
 
 
 def run_ablation_features(args, logger):
@@ -37,12 +38,12 @@ def run_ablation_features(args, logger):
         train_accuracies, val_accuracies, classifier = run_cls(args, logger)
 
         _, _, y_true, y_pred = run_test(args, logger, classifier)
-        plot_accuracies(
+        vis_cls.plot_accuracies(
             train_accuracies,
             val_accuracies,
             args=args,
         )
-        store_confusion_matrix(
+        vis_cls.store_confusion_matrix(
             y_pred,
             y_true,
             N_classes=args.perturb_settings.n_classes,
@@ -53,7 +54,7 @@ def run_ablation_features(args, logger):
         if args.plot_train_acc:
             all_train_accuracies[i] = train_accuracies
     if args.plot_train_acc:
-        plot_accuracies_ablation(
+        vis_cls.plot_accuracies_ablation(
             all_val_accuracies,
             ablation_use_feature_keys,
             args=args,
@@ -61,7 +62,7 @@ def run_ablation_features(args, logger):
             model_identifier="ablation_all",
         )
     else:
-        plot_accuracies_ablation(
+        vis_cls.plot_accuracies_ablation(
             all_val_accuracies,
             ablation_use_feature_keys,
             args=args,
@@ -89,4 +90,50 @@ def setup_fact_args(args, logger):
     args.neighborhood.rmax = 7.5
     args.neighborhood.k = "adaptive"
     args.preprocessing.apply_hpr_operator = True
+    args = process_features(args)
+    return args
+
+
+def setup_experiment(args):
+    if args.debug:
+        start_debug()
+    omegaconf.OmegaConf.set_struct(args, False)
+    logger = logging.getLogger(__name__)
+    assert args.classifier in [
+        "CorAl",
+        "FACT",
+    ], "ERROR: Did not get a valid classifier!"
+
+    # NOTICE THAT THE BELOW OVERWRITES SOME SETTINGS
+    if args.classifier == "CorAl":
+        args = setup_coral_args(args, logger)
+    elif args.classifier == "FACT":
+        args = setup_fact_args(args, logger)
+    return args, logger
+
+
+def setup_args_for_iteration(i, args):
+    # High Performance
+    if i == 0:
+        args.feature_folder = (
+            "/home/luddi824/thesis/PCAC/data/PCAC_data/FACT_best_network_optimal"
+        )
+        args.model_identifier = "FACT_best_network_optimal"
+        args.re_use_data = True
+    elif i == 1:  # Fast
+        args.feature_folder = (
+            "/home/luddi824/thesis/PCAC/data/PCAC_data/FACT_best_network_fast"
+        )
+        args.model_identifier = "FACT_best_network_fast"
+        args.preprocessing.T_close = 2.5
+        args.features_to_create.use_c = False
+        args.features_to_use.use_c = False
+        args.fps.num_point = 1024
+        args.batch_size = 32
+        args.epoch = 200
+        args.lr_gamma = 0.80
+        args.re_use_data = False
+    else:
+        sys.exit(f"Not supposed to be more than {args.running_iterations} runs")
+    args = process_features(args)
     return args

@@ -5,39 +5,25 @@ Date: Nov 2019
 import sys
 import numpy as np
 import torch
-import logging
 from tqdm import tqdm
 import importlib
 import shutil
 import hydra
-import omegaconf
 
 import nuscenes as ns
 from features.feature_extractor import extract_features_to_txt_files
-from utils.experiment_utils import (
-    run_ablation_features,
-    setup_coral_args,
-    setup_fact_args,
-)
-from features.feature_utils import (
-    process_features,
-    number_of_features,
-    augment_data,
-    normalize_data_on_condition,
-)
-from utils.other import start_debug
+import utils.experiment_utils as eu
+import features.feature_utils as fu
 from utils.pointclouds import PCAC_dataset
-from visualization.classifications import (
-    plot_accuracies,
-    store_confusion_matrix,
-    model_plot,
-)
+import visualization.classifications as vis_cls
 from classifiers.loss_functions import get_loss
 from classifiers.coral import (
     get_coral_features,
     perform_coral_training,
     perform_coral_inference,
 )
+from classifiers.PointTransformers.classify import classify_pairs
+from utils.other import display_to_logger_before, display_to_logger_after
 
 
 def get_mean_acc(class_acc):
@@ -68,13 +54,8 @@ def inference_loop(data, args, model, class_acc):
     else:
         target = target[:, 0]
 
-    points = normalize_data_on_condition(args, points)
-
-    classifier = model.eval()
-    pred = classifier(
-        points, inference=True
-    )  # [B, n_classes], here we have a score for each class
-    pred_choice = pred.data.max(1)[1]  # highest score wins
+    points = fu.normalize_data_on_condition(args, points)
+    pred_choice = classify_pairs(model, points)
 
     for cat in np.unique(target.cpu()):
         ind_for_cat_target = target == cat
@@ -93,7 +74,7 @@ def inference_loop(data, args, model, class_acc):
 
 def track_accuracy(args, model, loader):
     class_acc = np.zeros(
-        (args.num_class, 2)
+        (args.perturb_settings.n_classes, 2)
     )  # num_class x (correct_preds [col. 0], total_preds [col. 1])
     for data in tqdm(loader, total=len(loader)):
         class_acc, _, _ = inference_loop(data, args, model, class_acc)
@@ -116,7 +97,7 @@ def run_val(args, logger, classifier):
 
 def test_results(args, model, loader):
     class_acc = np.zeros(
-        (args.num_class, 2)
+        (args.perturb_settings.n_classes, 2)
     )  # num_class x (correct_preds [col. 0], total_preds [col. 1])
     N_samples = len(loader.dataset)
     y_true = np.zeros(N_samples)
@@ -137,10 +118,16 @@ def test_results(args, model, loader):
     return instance_acc, mean_acc, y_true, y_pred
 
 
+def load_model(model_path, classifier):
+    checkpoint = torch.load(model_path)
+    start_epoch = checkpoint["epoch"]
+    classifier.load_state_dict(checkpoint["model_state_dict"])
+    return classifier, start_epoch
+
+
 def load_best_model(args, logger, pretrained=True):
-    args.num_class = args.perturb_settings.n_classes
     if args.classifier == "FACT":
-        args.input_dim, args = number_of_features(args)
+        args.input_dim, args = fu.number_of_features(args)
         print(f"Input dim: {args.input_dim}")
         shutil.copy(
             hydra.utils.to_absolute_path(
@@ -181,9 +168,7 @@ def load_best_model(args, logger, pretrained=True):
 
     start_epoch = 0
     if pretrained and args.load_model_path:
-        checkpoint = torch.load(args.load_model_path)
-        start_epoch = checkpoint["epoch"]
-        classifier.load_state_dict(checkpoint["model_state_dict"])
+        classifier, start_epoch = load_model(args.load_model_path, classifier)
         logger.info("Use pretrain model")
 
     return classifier, start_epoch, args
@@ -242,8 +227,8 @@ def run_cls(args, logger, pretrained=True):
             else:
                 target = target[:, 0]
 
-            points = normalize_data_on_condition(args, points)
-            points = augment_data(args, points)
+            points = fu.normalize_data_on_condition(args, points)
+            points = fu.augment_data(args, points)
 
             optimizer.zero_grad()
 
@@ -304,10 +289,11 @@ def run_cls(args, logger, pretrained=True):
             )
             global_epoch += 1
 
-    # Load the best validation model
+    # Load best validation model
     best_model_path = "best_model_" + args.model_identifier + ".pth"
-    checkpoint = torch.load(best_model_path)
-    classifier.load_state_dict(checkpoint["model_state_dict"])
+    #checkpoint = torch.load(best_model_path)
+    #classifier.load_state_dict(checkpoint["model_state_dict"])
+    classifier, start_epoch = load_model(best_model_path, classifier)
     return train_accuracies, val_accuracies, classifier
 
 
@@ -330,65 +316,12 @@ def run_test(args, logger, classifier):
 
 @hydra.main(config_path="config", config_name="cls")
 def main(args):
-    if args.debug:
-        start_debug()
-    omegaconf.OmegaConf.set_struct(args, False)
-
-    # HYPER PARAMETER
-    logger = logging.getLogger(__name__)
-
-    # Ludvig's code
-    # Init Nusc object
-
+    args, logger = eu.setup_experiment(args)
     for i in range(args.running_iterations):
-        # # # Setup data for new run
-        # High Performance
-        if i == 0:
-            args.feature_folder = (
-                "/home/luddi824/thesis/PCAC/data/PCAC_data/FACT_best_network_optimal"
-            )
-            args.model_identifier = "FACT_best_network_optimal"
-            args.re_use_data = True
-        elif i == 1:  # Fast
-            args.feature_folder = (
-                "/home/luddi824/thesis/PCAC/data/PCAC_data/FACT_best_network_fast"
-            )
-            args.model_identifier = "FACT_best_network_fast"
-            args.preprocessing.T_close = 2.5
-            args.features_to_create.use_c = False
-            args.features_to_use.use_c = False
-            args.fps.num_point = 1024
-            args.batch_size = 32
-            args.epoch = 200
-            args.lr_gamma = 0.80
-            args.re_use_data = False
-        else:
-            sys.exit(f"Not supposed to be more than {args.running_iterations} runs")
+        # Setup data for new run
+        # args = eu.setup_args_for_iteration(i, args)
 
-        logger.info(f"STARTING RUN {i + 1}. Settings:")
-        logger.info(f"args.classifier {args.classifier}")
-        logger.info(f"args.feature_folder {args.feature_folder}")
-        logger.info(f"scenes {args.n_scenes}")
-        logger.info(f"samples per scene {args.n_samples_per_scene}")
-        logger.info(f"args.re_use_data {args.re_use_data}")
-        logger.info(f"args.preprocessing.T_close: {args.preprocessing.T_close}")
-        logger.info(f"args.features_to_create.use_c: {args.features_to_create.use_c}")
-        logger.info(f"args.features_to_use.use_c: {args.features_to_use.use_c}")
-        logger.info(f"args.fps.num_point: {args.fps.num_point}")
-        logger.info(f"args.batch_size: {args.batch_size}")
-        logger.info(f"args.epoch: {args.epoch}")
-        logger.info(f"args.lr_gamma: {args.lr_gamma}")
-        logger.info(f"args.model_identifier: {args.model_identifier}")
-        assert args.classifier in [
-            "CorAl",
-            "FACT",
-        ], "ERROR: Did not get a valid classifier!"
-
-        # NOTICE THAT THE BELOW OVERWRITES SOME SETTINGS
-        if args.classifier == "CorAl":
-            args = setup_coral_args(args, logger)
-        elif args.classifier == "FACT":
-            args = setup_fact_args(args, logger)
+        display_to_logger_before(i, args, logger)
 
         # EXTRACT FEATURES
         if not args.re_use_data:
@@ -425,10 +358,10 @@ def main(args):
                 )
         elif args.classifier == "FACT":
             # Get dataset (features in a data loader)
-            args = process_features(args)
+            # args = fu.process_features(args)
             # Run all
             if args.ablation.run_ablation:
-                run_ablation_features(args, logger)
+                eu.run_ablation_features(args, logger)
                 sys.exit("Ablation finished!")
             else:
                 if args.rerun_only_test:
@@ -445,39 +378,14 @@ def main(args):
         # VISUALIZE RESULTS
         if args.classifier == "CorAl":
             logger.info(f"Accuracy CorAl {accuracy_test:.4f}")
-            model_plot(
-                classifier,
-                X_test,
-                y_test,
-                args=args,
-                title=f"CorAl: {100*accuracy_test:.1f}% accuracy",
-            )
+            fig_title = f"CorAl: {100*accuracy_test:.1f}% accuracy"
+            vis_cls.model_plot(classifier, X_test, y_test, fig_title, args)
         elif args.classifier == "FACT" and not args.rerun_only_test:
-            plot_accuracies(train_accuracies, val_accuracies, args=args)
-
-        store_confusion_matrix(
-            y_pred,
-            y_test,
-            N_classes=args.perturb_settings.n_classes,
-            logger=logger,
-            args=args,
-        )
+            vis_cls.plot_accuracies(train_accuracies, val_accuracies, args=args)
+        vis_cls.store_confusion_matrix(y_pred, y_test, args.perturb_settings.n_classes, logger, args)
 
         # LOGGING
-        logger.info(f"FINISHED RUN {i + 1}. Settings:")
-        logger.info(f"args.classifier {args.classifier}")
-        logger.info(f"args.feature_folder {args.feature_folder}")
-        logger.info(f"scenes {args.n_scenes}")
-        logger.info(f"samples per scene {args.n_samples_per_scene}")
-        logger.info(f"args.re_use_data {args.re_use_data}")
-        logger.info(f"args.preprocessing.T_close: {args.preprocessing.T_close}")
-        logger.info(f"args.features_to_create.use_c: {args.features_to_create.use_c}")
-        logger.info(f"args.features_to_use.use_c: {args.features_to_use.use_c}")
-        logger.info(f"args.fps.num_point: {args.fps.num_point}")
-        logger.info(f"args.batch_size: {args.batch_size}")
-        logger.info(f"args.epoch: {args.epoch}")
-        logger.info(f"args.lr_gamma: {args.lr_gamma}")
-        logger.info(f"args.model_identifier: {args.model_identifier}")
+        display_to_logger_after(i, args, logger)
 
 
 if __name__ == "__main__":

@@ -51,7 +51,7 @@ class Backbone(nn.Module):
     def __init__(self, cfg):
         super().__init__()
         npoints, nblocks, nneighbor, n_c, d_points = cfg.fps.num_point, cfg.model.nblocks, \
-            cfg.model.nneighbor, cfg.num_class, cfg.input_dim
+            cfg.model.nneighbor, cfg.perturb_settings.n_classes, cfg.input_dim
         self.fc1 = nn.Sequential(
             nn.Linear(d_points, 32),
             nn.ReLU(),
@@ -88,7 +88,7 @@ class PointTransformerCls(nn.Module):
         super().__init__()
         self.backbone = Backbone(cfg)
         npoints, nblocks, nneighbor, n_c, d_points = (cfg.fps.num_point, cfg.model.nblocks,
-            cfg.model.nneighbor, cfg.num_class, cfg.input_dim)
+            cfg.model.nneighbor, cfg.perturb_settings.n_classes, cfg.input_dim)
         self.fc2 = nn.Sequential(
             nn.Linear(32 * 2 ** nblocks, 256),
             nn.ReLU(),

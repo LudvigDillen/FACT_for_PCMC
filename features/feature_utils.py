@@ -156,17 +156,6 @@ def number_of_features(args):
     return n_features, args
 
 
-# def append_spatial_features(args, points):
-#     if args.xyz_features.use_xyz:
-#         points = torch.cat((points, points[..., :3].clone()), dim=-1)
-#     if args.xyz_features.use_z:
-#         points = torch.cat((points, points[..., 2, None].clone()), dim=-1)
-#     if args.xyz_features.use_norm_xyz:
-#         xyz_norm = torch.norm(points[..., :3], dim=-1, keepdim=True)
-#         points = torch.cat((points, xyz_norm), dim=-1)
-#     return points
-
-
 def normalize_data_on_condition(args, points):
     """
     Normalize point cloud data based on the given conditions.
