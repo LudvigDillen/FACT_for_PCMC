@@ -9,9 +9,10 @@ import open3d.pipelines.registration as treg
 
 from utils.parameters import Params
 from utils.nuscenes_handling import read_nuscenes_data
+from utils.pointclouds import farthest_point_sample_PC_scenes
+from utils.experiment_utils import setup_experiment
 from classifiers.PointTransformers.classify import classify_pairs
 from classifiers.PointTransformers.train_cls import load_best_model
-from utils.experiment_utils import setup_experiment
 import visualization.registration as vis_reg
 
 
@@ -191,9 +192,10 @@ def reg(args):
 
         # TODO: Extract feature data
         # FPS on scenes 
-        # if params.args.fps.do_fps:
-        #     farthest_point_sample_PC_scenes(PC_scenes, params.N_fps_points)
-
+        if params.args.fps.do_fps:
+            PC_scene_org =  copy.deepcopy(PC_scene)
+            farthest_point_sample_PC_scenes(PC_scene[None, ...], params.N_fps_points)
+        print("hej")
         # # Feature extraction.
         # PC_scenes_with_features = feature_extraction(PC_scenes, params)
         # TODO: Go from PC_scenes_with_features to points (see below)
