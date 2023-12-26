@@ -251,13 +251,35 @@ class PCPair:
                 target = ru.from_tensor_to_pcd(self.PC0.pc)
                 rel_pose, _ = ru.register_pair(source, target, method="p2l")
                 gt_pose = torch.matmul(torch.linalg.inv(self.pose0), self.pose1)
-                self.R_offset, self.t_offset = ru.get_transformation_error(rel_pose, gt_pose)
                 self.pc1_CS0 = ru.align_pair(self, rel_pose)
 
-            if self.t_offset < 0.1 and self.R_offset < 0.002:
-                self.class_category = 0
-            else:
-                self.class_category = 1
+                version = "average distance est to gt pose"  # ["average distance est to gt pose", "binary"]
+                if version == "binary":
+                    self.R_offset, self.t_offset = ru.get_transformation_error(rel_pose, gt_pose)
+                    if self.t_offset < 0.1 and self.R_offset < 0.002:
+                        self.class_category = 0
+                    else:
+                        self.class_category = 1
+                elif version == "average distance est to gt pose":
+                    pc1_CS0_gt = ru.align_pair(self, gt_pose)
+                    error = torch.linalg.norm(self.pc1_CS0 - pc1_CS0_gt, dim=1).mean()
+                    if error < 0.05:
+                        self.class_category = 0
+                    elif error < 0.2:
+                        self.class_category = 1
+                    elif error < 0.5:
+                        self.class_category = 2
+                    elif error < 1:
+                        self.class_category = 3
+                    elif error < 2:
+                        self.class_category = 4
+                    elif error < 4:
+                        self.class_category = 5
+                    elif error < 8:
+                        self.class_category = 6
+                    else:
+                        self.class_category = 7
+
         else:
             sys.exit(f"Perturbation method ({self.perturbation_method}) not known!")
 

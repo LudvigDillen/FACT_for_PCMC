@@ -70,15 +70,15 @@ fps:
   do_fps: true  # (bool) : Whether or not to apply farthest point sampling
 re_use_data: false  # Set to true if only running training and no feature extraction
 n_scenes: 850  # 335, 850 max
-n_samples_per_scene: 1 # 10  
+n_samples_per_scene: 5 # 10  
 dataset: 'v1.0-trainval'  # ['v1.0-trainval', 'v1.0-mini']
 data_folder: '/home/lu2277di/Projects/FACT/data/nuscenes'
-feature_folder: '/home/lu2277di/Projects/FACT/data/PCAC_data/test_reg_as_data_generator_850'  # TODO: Set by new user ...
+feature_folder: '/home/lu2277di/Projects/FACT/data/PCAC_data/average_dist_bins_4250'  # TODO: Set by new user ...
 visualization_folder: '/home/lu2277di/Projects/FACT/images/classification/PointTransformer'
 downsample_factor: 1 # Make sure that the point cloud is not so downsampled that num_point does not exist
 train_ratio: 0.60  # The test ratio automatically becomes 1 - train_ratio - val_ratio
 val_ratio: 0.15  # Simply set to 0 if validation set in not needed
-model_identifier: test_reg_as_data_generator_850
+model_identifier: average_dist_bins_4250
 
 # Rerun settings, enables us to rerun after a crash, without rerunning everything
 rerun_crash: false
@@ -87,7 +87,7 @@ time_gone: 19.10  # Time spent, so we can keep track of time left
 # If error is displayed, reduce scenes_finished, so that we do not look at test data ...
 # Perturbation settings
 perturb_settings:
-  n_classes: 2
+  n_classes: 8
   r_bin: 0.01  # 0.03
   t_bin: 0.1  # 0.3
   class_distribution: uniform
