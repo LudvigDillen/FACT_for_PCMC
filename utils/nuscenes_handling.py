@@ -274,6 +274,8 @@ class NuscenesHandling:
                 device=params.device,
                 PCHandler=self,
                 perturb_settings=self.perturb_settings,
+                do_reg=params.args.do_reg,
+                perturbation_method=params.args.perturb_settings.perturbation_method
             )
 
             if self.apply_hpr_operator:

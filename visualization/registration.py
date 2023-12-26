@@ -1,5 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import copy
+import open3d as o3d
 
 
 def plot_reg_error_hists(R_errors_init, R_errors_p2p, R_errors_p2l, n_samples,
@@ -35,7 +37,7 @@ def plot_reg_error_hists(R_errors_init, R_errors_p2p, R_errors_p2l, n_samples,
         rect.set_x(rect.get_x() + i // 10 * t_bar_width)
 
     ax1.set_title('Histogram of rotation errors')
-    ax1.set_xlabel('Geodesic distance [m]')
+    ax1.set_xlabel('Geodesic distance [rad]')
     ax1.set_ylabel('Frequency')
     ax1.legend()
 
@@ -116,7 +118,7 @@ def plot_reg_error_hist(R_errors, t_errors):
     ax2.set_xticklabels(t_labels, fontsize=8)
 
     ax1.set_title('Histogram of rotation errors')
-    ax1.set_xlabel('Geodesic distance [radians?]')
+    ax1.set_xlabel('Geodesic distance [rad]')
     ax1.set_ylabel('Frequency')
     ax1.legend()
 
@@ -130,3 +132,19 @@ def plot_reg_error_hist(R_errors, t_errors):
 
     # Show the plot
     plt.show()
+
+
+# From open3d: http://www.open3d.org/docs/release/tutorial/pipelines/icp_registration.html#Point-to-point-ICP
+def draw_registration_result(source, target, transformation, title):
+    source_temp = copy.deepcopy(source)
+    target_temp = copy.deepcopy(target)
+    source_temp.paint_uniform_color([1, 0.706, 0])
+    target_temp.paint_uniform_color([0, 0.651, 0.929])
+    source_temp.transform(transformation)
+    o3d.visualization.draw_geometries([source_temp, target_temp],
+                                      zoom=0.4459,
+                                      front=[0.9288, -0.2951, -0.2242],
+                                      lookat=[1.6784, 2.0612, 1.4451],
+                                      up=[-0.3402, -0.9189, -0.1996],
+                                      window_name=title)
+    return None

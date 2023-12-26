@@ -134,17 +134,6 @@ def calculate_sample_gaps(N, M):
     return distances
 
 
-def count_decimal_digits(f):
-    # Convert float to string
-    s = str(f)
-
-    # If there's a decimal point, count the number of digits after it
-    if "." in s:
-        return len(s.split(".")[1])
-    else:
-        return 0
-
-
 def generate_class_names_file(folder, filename, n_classes, class_names):
     # Check if folder exists, if not, create it
     if not os.path.exists(folder):
@@ -245,7 +234,6 @@ def features_to_txt_files(
     data_file = os.path.join(data_folder, file_name)
 
     with open(data_file, write_mode) as file:
-        data_folder = params.args.feature_folder
         for scene_counter in range(scenes_lower, scenes_upper, n_scenes_per_loop):
             # Display data loading progress
             display_progress(
@@ -288,7 +276,7 @@ def features_to_txt_files(
             )
             del PC_scenes_with_features
 
-            write_features_to_txt_files(PC_scenes_named, data_folder, params)
+            write_features_to_txt_files(PC_scenes_named, params, data_folder)
     return class_counts
 
 

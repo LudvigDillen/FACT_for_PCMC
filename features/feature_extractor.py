@@ -166,70 +166,76 @@ def feature_extraction(PC_scenes, params):
     return PC_scenes
 
 
-def write_features_to_txt_files(PC_scenes, data_folder, params):
+def create_feature_map(PC_pair, params):
+    PC0 = PC_pair.PC0
+    PC1 = PC_pair.PC1
+
+    # Set xyz feature channels
+    xyz_channels = np.vstack(
+        (PC0.pc[PC0.fps_inds].cpu().numpy(), PC1.pc[PC1.fps_inds].cpu().numpy())
+    )
+    feature_map = xyz_channels
+    if params.use_label:
+        # Set label feature (which point cloud the point belongs to)
+        label_channel = np.vstack(
+            (np.zeros((PC0.N_fps_points, 1)), np.ones((PC1.N_fps_points, 1)))
+        )
+        feature_map = np.concatenate((feature_map, label_channel), axis=1)
+    if params.use_jde:
+        # Set joint differential entropy channel
+        jde_channel = PC_pair.PCUnion.metric_jde.cpu().numpy()[:, np.newaxis]
+        feature_map = np.concatenate((feature_map, jde_channel), axis=1)
+    if params.use_sde:
+        # Set separate differential entropy channel
+        sde_channel = PC_pair.PCUnion.metric_sde.cpu().numpy()[:, np.newaxis]
+        feature_map = np.concatenate((feature_map, sde_channel), axis=1)
+    if params.use_sd:
+        wd_channel = PC_pair.PCUnion.metric_wd.cpu().numpy()[:, np.newaxis]
+        feature_map = np.concatenate((feature_map, wd_channel), axis=1)
+    if params.use_c:
+        c_channel = PC_pair.PCUnion.weight_c.cpu().numpy()[:, np.newaxis]
+        feature_map = np.concatenate((feature_map, c_channel), axis=1)
+    if params.use_s:
+        print("Static point weight feature not implemented yet")
+    if params.use_cj:
+        # Set joint number of neighbors ratio
+        cj_channel = PC_pair.PCUnion.weight_cj.cpu().numpy()[:, np.newaxis]
+        feature_map = np.concatenate((feature_map, cj_channel), axis=1)
+    if params.use_cs:
+        # Set separate number of neighbors ratio
+        cs_channel = PC_pair.PCUnion.weight_cs.cpu().numpy()[:, np.newaxis]
+        feature_map = np.concatenate((feature_map, cs_channel), axis=1)
+    if params.use_csj:
+        # Set cardinality ratio sep and joint neighborhood
+        csj_channel = PC_pair.PCUnion.weight_csj.cpu().numpy()[:, np.newaxis]
+        feature_map = np.concatenate((feature_map, csj_channel), axis=1)
+    if params.args.features_to_create.use_xyz:
+        feature_map = np.concatenate((feature_map, xyz_channels), axis=1)
+    if params.args.features_to_create.use_z:
+        if params.args.features_to_create.use_xyz:
+            print(
+                f">The xyz-channels were already created. We will not add the z-channel as well"
+            )
+            params.args.features_to_create.use_z = False
+        else:
+            z_channel = xyz_channels[:, 2][:, None]
+            feature_map = np.concatenate((feature_map, z_channel), axis=1)
+    if params.args.features_to_create.use_norm_xyz:
+        norm_channel = np.linalg.norm(xyz_channels, axis=1)[:, None]
+        feature_map = np.concatenate((feature_map, norm_channel), axis=1)
+    return feature_map
+
+
+def write_features_to_txt_files(PC_scenes, params, data_folder):
     for PC_scene in PC_scenes:
         for PC_pair in PC_scene:
+            # Get feature map
+            feature_map = create_feature_map(PC_pair, params)
+            # Output to txt file
             category_folder = os.path.join(
                 data_folder, params.class_names[PC_pair.class_category]
             )
             save_file = os.path.join(category_folder, PC_pair.name + ".txt")
-            PC0 = PC_pair.PC0
-            PC1 = PC_pair.PC1
-
-            # Set xyz feature channels
-            xyz_channels = np.vstack(
-                (PC0.pc[PC0.fps_inds].cpu().numpy(), PC1.pc[PC1.fps_inds].cpu().numpy())
-            )
-            feature_map = xyz_channels
-            if params.use_label:
-                # Set label feature (which point cloud the point belongs to)
-                label_channel = np.vstack(
-                    (np.zeros((PC0.N_fps_points, 1)), np.ones((PC1.N_fps_points, 1)))
-                )
-                feature_map = np.concatenate((feature_map, label_channel), axis=1)
-            if params.use_jde:
-                # Set joint differential entropy channel
-                jde_channel = PC_pair.PCUnion.metric_jde.cpu().numpy()[:, np.newaxis]
-                feature_map = np.concatenate((feature_map, jde_channel), axis=1)
-            if params.use_sde:
-                # Set separate differential entropy channel
-                sde_channel = PC_pair.PCUnion.metric_sde.cpu().numpy()[:, np.newaxis]
-                feature_map = np.concatenate((feature_map, sde_channel), axis=1)
-            if params.use_sd:
-                wd_channel = PC_pair.PCUnion.metric_wd.cpu().numpy()[:, np.newaxis]
-                feature_map = np.concatenate((feature_map, wd_channel), axis=1)
-            if params.use_c:
-                c_channel = PC_pair.PCUnion.weight_c.cpu().numpy()[:, np.newaxis]
-                feature_map = np.concatenate((feature_map, c_channel), axis=1)
-            if params.use_s:
-                print("Static point weight feature not implemented yet")
-            if params.use_cj:
-                # Set joint number of neighbors ratio
-                cj_channel = PC_pair.PCUnion.weight_cj.cpu().numpy()[:, np.newaxis]
-                feature_map = np.concatenate((feature_map, cj_channel), axis=1)
-            if params.use_cs:
-                # Set separate number of neighbors ratio
-                cs_channel = PC_pair.PCUnion.weight_cs.cpu().numpy()[:, np.newaxis]
-                feature_map = np.concatenate((feature_map, cs_channel), axis=1)
-            if params.use_csj:
-                # Set cardinality ratio sep and joint neighborhood
-                csj_channel = PC_pair.PCUnion.weight_csj.cpu().numpy()[:, np.newaxis]
-                feature_map = np.concatenate((feature_map, csj_channel), axis=1)
-            if params.args.features_to_create.use_xyz:
-                feature_map = np.concatenate((feature_map, xyz_channels), axis=1)
-            if params.args.features_to_create.use_z:
-                if params.args.features_to_create.use_xyz:
-                    print(
-                        f">The xyz-channels were already created. We will not add the z-channel as well"
-                    )
-                    params.args.features_to_create.use_z = False
-                else:
-                    z_channel = xyz_channels[:, 2][:, None]
-                    feature_map = np.concatenate((feature_map, z_channel), axis=1)
-            if params.args.features_to_create.use_norm_xyz:
-                norm_channel = np.linalg.norm(xyz_channels, axis=1)[:, None]
-                feature_map = np.concatenate((feature_map, norm_channel), axis=1)
-
             # Get the directory name from the save_file path
             dir_name = os.path.dirname(save_file)
             # Check if the directory exists

@@ -1,7 +1,5 @@
 import torch
 
-from utils.data_handling import count_decimal_digits
-
 
 class Params:
     def __init__(self, nusc, args, pointwise=True):
@@ -106,3 +104,14 @@ class Params:
             )
             class_name = class_name.replace(".", "_")
             self.class_names[i] = class_name
+
+
+def count_decimal_digits(f):
+    # Convert float to string
+    s = str(f)
+
+    # If there's a decimal point, count the number of digits after it
+    if "." in s:
+        return len(s.split(".")[1])
+    else:
+        return 0

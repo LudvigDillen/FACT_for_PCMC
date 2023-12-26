@@ -316,7 +316,7 @@ def run_test(args, logger, classifier):
 
 @hydra.main(config_path="config", config_name="cls")
 def main(args):
-    args, logger = eu.setup_experiment(args)
+    args, logger = eu.setup_experiment(args, do_reg=False)
     for i in range(args.running_iterations):
         # Setup data for new run
         # args = eu.setup_args_for_iteration(i, args)
@@ -342,7 +342,8 @@ def main(args):
 
         # PERFORM MODEL TRAINING
         if args.classifier == "CorAl":
-            if args.rerun_only_test:
+            # If not train
+            if args.load_model_path:
                 classifier, _, args = load_best_model(args, logger)
                 X_test = np.loadtxt(args.feature_folder + "/X_test.txt", delimiter=" ")
                 y_test = np.loadtxt(args.feature_folder + "/y_test.txt", delimiter=" ")
@@ -364,7 +365,7 @@ def main(args):
                 eu.run_ablation_features(args, logger)
                 sys.exit("Ablation finished!")
             else:
-                if args.rerun_only_test:
+                if args.load_model_path:
                     classifier, _, args = load_best_model(args, logger)
                 else:
                     train_accuracies, val_accuracies, classifier = run_cls(args, logger)
@@ -380,7 +381,7 @@ def main(args):
             logger.info(f"Accuracy CorAl {accuracy_test:.4f}")
             fig_title = f"CorAl: {100*accuracy_test:.1f}% accuracy"
             vis_cls.model_plot(classifier, X_test, y_test, fig_title, args)
-        elif args.classifier == "FACT" and not args.rerun_only_test:
+        elif args.classifier == "FACT" and not args.load_model_path:
             vis_cls.plot_accuracies(train_accuracies, val_accuracies, args=args)
         vis_cls.store_confusion_matrix(y_pred, y_test, args.perturb_settings.n_classes, logger, args)
 

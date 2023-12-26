@@ -94,7 +94,7 @@ def setup_fact_args(args, logger):
     return args
 
 
-def setup_experiment(args):
+def setup_experiment(args, do_reg):
     if args.debug:
         start_debug()
     omegaconf.OmegaConf.set_struct(args, False)
@@ -109,6 +109,7 @@ def setup_experiment(args):
         args = setup_coral_args(args, logger)
     elif args.classifier == "FACT":
         args = setup_fact_args(args, logger)
+    args.do_reg = do_reg
     return args, logger
 
 

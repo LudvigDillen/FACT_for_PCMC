@@ -1,9 +1,11 @@
-import torch
 import os
+import sys
+import torch
 import numpy as np
 
 from utils.pointnet_util import pad_point_clouds, farthest_point_sample_paddded
 from utils.geometrics import change_coordinate_system
+import registration.registration_utils as ru
 
 
 class PCAC_dataset(torch.utils.data.Dataset):
@@ -107,7 +109,7 @@ class PC:
         self.weight_c = None
 
         self.set_label(label)
-        # initiate the fps_inds tensor as all points in the point cloud (i.e. that means no downsampling)
+        # init the fps_inds tensor as the inds to all pc points (i.e. that means no downsampling)
         self.fps_inds = torch.arange(0, self.N_points, dtype=torch.int).to(device)
 
     def set_label(self, label):
@@ -173,7 +175,8 @@ class PC:
 # the point we choose to select after FPS. This might be true for other things we do as well. Like
 # co-visibility score. Potential speed-up possible there.
 class PCPair:
-    def __init__(self, PC0, PC1, device, PCHandler, perturb_settings):
+    def __init__(self, PC0, PC1, device, PCHandler, perturb_settings, do_reg=False,
+                 perturbation_method="m_classes"):
         # Set point cloud pair
         self.PC0 = PC0
         self.pose0 = PCHandler.lidar_pose0.to(device)
@@ -186,10 +189,12 @@ class PCPair:
         self.N_classes = perturb_settings.n_classes
         self.R_bin = perturb_settings.r_bin
         self.t_bin = perturb_settings.t_bin
-
+        self.registration = do_reg
+        self.perturbation_method = perturbation_method
         # Draw random value between 0 and 1 if we should perturb or not perturb the point cloud.
         # if perturb_settings.class_distribution == 'uniform': ... I have variant currently ...
-        self.class_category = np.random.choice(np.arange(self.N_classes))
+        if perturbation_method == "m_classes":
+            self.class_category = np.random.choice(np.arange(self.N_classes))
 
         self.set_union_of_point_clouds()
 
@@ -209,17 +214,52 @@ class PCPair:
         pc_union_dists = torch.cat(
             (self.PC0.distances_to_origin, self.PC1.distances_to_origin)
         )
-        self.pc1_CS0 = change_coordinate_system(self.PC1.pc, self.pose0, self.pose1)
+        if self.registration:
+            self.pc1_CS0 = self.PC1.pc.clone()
+        elif self.perturbation_method == "m_classes":  # discrete
+            self.pc1_CS0 = change_coordinate_system(self.PC1.pc, self.pose0, self.pose1)
+            # if class_category == 0, do not perturb anything ...
+            self.R_offset = self.R_bin * self.class_category
+            self.t_offset = self.t_bin * self.class_category
+            if self.class_category != 0:
+                self.pc1_CS0 = perform_random_perturbation_CorAl(
+                    self.pc1_CS0,
+                    angular_offset=self.R_offset,
+                    translational_offset=self.t_offset,
+                )
+        elif self.perturbation_method in ["GMM", "registration"]:  # continuous
+            if self.perturbation_method == "GMM":
+                s = np.random.rand([0, 1])
+                if s:
+                    self.t_offset = np.random.normal(loc=0, scale=0.05)  # t_tight
+                else:
+                    self.t_offset = np.random.normal(loc=0, scale=0.75)  # t_wide
+                s = np.random.rand([0, 1])
+                if s:
+                    self.R_offset = np.random.normal(loc=0, scale=0.001)  # r_tight
+                else:
+                    self.R_offset = np.random.normal(loc=0, scale=0.015)  # r_wide
+                self.pc1_CS0 = change_coordinate_system(self.PC1.pc, self.pose0, self.pose1)
+                # TODO: Potentially, I want to rewrite perform_random_perturbation_CorAl a bit.
+                self.pc1_CS0 = perform_random_perturbation_CorAl(
+                    self.pc1_CS0,
+                    angular_offset=self.R_offset,
+                    translational_offset=self.t_offset,
+                )
+            else:
+                source = ru.from_tensor_to_pcd(self.PC1.pc)
+                target = ru.from_tensor_to_pcd(self.PC0.pc)
+                rel_pose, _ = ru.register_pair(source, target, method="p2l")
+                gt_pose = torch.matmul(torch.linalg.inv(self.pose0), self.pose1)
+                self.R_offset, self.t_offset = ru.get_transformation_error(rel_pose, gt_pose)
+                self.pc1_CS0 = ru.align_pair(self, rel_pose)
 
-        # if class_category == 0, do not perturb anything ...
-        self.R_offset = self.R_bin * self.class_category
-        self.t_offset = self.t_bin * self.class_category
-        if self.class_category != 0:
-            self.pc1_CS0 = perform_random_perturbation_CorAl(
-                self.pc1_CS0,
-                angular_offset=self.R_offset,
-                translational_offset=self.t_offset,
-            )
+            if self.t_offset < 0.1 and self.R_offset < 0.002:
+                self.class_category = 0
+            else:
+                self.class_category = 1
+        else:
+            sys.exit(f"Perturbation method ({self.perturbation_method}) not known!")
 
         # pc_union is in the coordinate system of pc0
         pc_union = torch.cat((self.PC0.pc, self.pc1_CS0), dim=0)
