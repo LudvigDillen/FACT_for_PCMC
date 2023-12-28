@@ -255,6 +255,7 @@ def features_to_txt_files(
             # Load data sequentially (can't read all at once, too high memory requirement)
             PC_scenes = read_nuscenes_data(
                 params,
+                mode,
                 n_samples=read_n_samples,
                 n_scenes=read_n_scenes,
                 scene_counter=scene_counter,
@@ -317,6 +318,7 @@ def get_diff_entropy_features(
         # Load data sequentially
         PC_scenes = read_nuscenes_data(
             params,
+            mode="test",
             n_samples=read_n_samples,
             n_scenes=read_n_scenes,
             scene_counter=scene_counter,

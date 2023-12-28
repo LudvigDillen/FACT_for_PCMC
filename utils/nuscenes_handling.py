@@ -1,5 +1,6 @@
 import numpy as np
 import torch
+from copy import deepcopy
 
 from utils.geometrics import transformation_matrix
 from utils.pointclouds import PC, PCPair
@@ -11,13 +12,15 @@ DTYPE = torch.float64  # TODO: Add to settings
 
 
 class NuscenesHandling:
-    def __init__(self, params, lidar_token=None, scene_counter=0):
+    def __init__(self, params, mode, lidar_token=None, scene_counter=0):
         self.nusc = params.nusc
         self.scene_counter_init = scene_counter
         self.scene_counter = scene_counter
         self.number_of_scenes_in_dataset = len(self.nusc.scene)
         self.dataset_read = False
         self.scene_read = False
+        self.mode = mode
+        self.dist_between_sample_inds = 1
 
         # Set settings
         self.T_close_thresh = params.args.preprocessing.T_close
@@ -32,21 +35,21 @@ class NuscenesHandling:
         self.setup_new_scene_data(lidar_token)
 
     def downsample_both_point_clouds(self):
-        N_samples_before = self.pc0_CS0.shape[0]
-        N_samples_after = round(N_samples_before / self.downsample_factor)
-        samples_to_keep = np.random.choice(N_samples_before, size=N_samples_after)
-        self.pc0_CS0 = self.pc0_CS0[samples_to_keep]  # Downsample point cloud
+        self.downsample_point_cloud(pc_ind=0)
+        self.downsample_point_cloud(pc_ind=1)
 
-        N_samples_before = self.pc1_CS1.shape[0]
-        N_samples_after = round(N_samples_before / self.downsample_factor)
-        samples_to_keep = np.random.choice(N_samples_before, size=N_samples_after)
-        self.pc1_CS1 = self.pc1_CS1[samples_to_keep]  # Downsample point cloud
-
-    def downsample_second_point_cloud(self):
-        N_samples_before = self.pc1_CS1.shape[0]
-        N_samples_after = round(N_samples_before / self.downsample_factor)
-        samples_to_keep = np.random.choice(N_samples_before, size=N_samples_after)
-        self.pc1_CS1 = self.pc1_CS1[samples_to_keep]  # Downsample point cloud
+    def downsample_point_cloud(self, pc_ind):
+        assert pc_ind in [0, 1]
+        if pc_ind == 0:
+            N_samples_before = self.pc0_CS0.shape[0]
+            N_samples_after = round(N_samples_before / self.downsample_factor)
+            samples_to_keep = np.random.choice(N_samples_before, size=N_samples_after)
+            self.pc0_CS0 = self.pc0_CS0[samples_to_keep]  # Downsample point cloud
+        else:
+            N_samples_before = self.pc1_CS1.shape[0]
+            N_samples_after = round(N_samples_before / self.downsample_factor)
+            samples_to_keep = np.random.choice(N_samples_before, size=N_samples_after)
+            self.pc1_CS1 = self.pc1_CS1[samples_to_keep]  # Downsample point cloud
 
     def setup_new_scene_data(self, lidar_token=None):
         # Set info PC0
@@ -59,7 +62,7 @@ class NuscenesHandling:
         self.pc0_CS0 = self.get_point_cloud(self.lidar_token0)
 
         # Set info PC1
-        self.lidar_token1 = self.get_next_lidar_token(self.lidar_token0)
+        self.lidar_token1 = self.get_next_lidar_token_in_pair(self.lidar_token0)
         self.lidar_pose1 = self.get_sensor_pose_in_WCS(self.lidar_token1)
         self.pc1_CS1 = self.get_point_cloud(self.lidar_token1)
 
@@ -143,9 +146,21 @@ class NuscenesHandling:
         Ts_out = torch.from_numpy(Ts).to(DTYPE)
         return Ts_out
 
-    def get_next_lidar_token(self, lidar_token):
-        lidar_dict = self.get_lidar_dict(lidar_token)
-        return lidar_dict["next"]
+    def next_token(self, token):
+        return self.get_lidar_dict(token)["next"]
+
+    def get_next_lidar_token_in_pair(self, lidar_token):
+        md = self.perturb_settings.train_reg_max_dist
+        if md == 1 or self.mode != 'train':
+            self.dist_between_sample_inds = 1
+            return self.next_token(lidar_token)
+
+        # Gather pairs of pcs that perhaps are not adjacent
+        self.dist_between_sample_inds = np.random.choice(np.arange(1, md+1))
+        token = deepcopy(lidar_token)
+        for _ in range(self.dist_between_sample_inds):
+            token = self.next_token(token)
+        return token
 
     def check_end_of_scene(self, lidar_token):
         return lidar_token == ""
@@ -164,6 +179,23 @@ class NuscenesHandling:
         else:
             self.setup_new_scene_data(lidar_token=None)
 
+    def update_point_cloud_data(self, pc_ind):
+        assert pc_ind in [0, 1]
+        if pc_ind == 0:
+            self.lidar_pose0 = self.get_sensor_pose_in_WCS(self.lidar_token0)
+            self.pc0_CS0 = self.get_point_cloud(self.lidar_token0)
+            # Randomly downsample point clouds
+            if self.downsample_factor > 1:
+                self.downsample_point_cloud(pc_ind)
+            self.point_distances0 = self.get_point_distances_to_origin(self.pc0_CS0)
+        else:
+            self.lidar_pose1 = self.get_sensor_pose_in_WCS(self.lidar_token1)
+            self.pc1_CS1 = self.get_point_cloud(self.lidar_token1)
+            # Randomly downsample point clouds
+            if self.downsample_factor > 1:
+                self.downsample_point_cloud(pc_ind)
+            self.point_distances1 = self.get_point_distances_to_origin(self.pc1_CS1)
+
     def set_next_point_cloud_pair(self, n_samples_jump=0):
         """
         Iteratate to next point cloud in the dataset. If the scene is finished, we go on to
@@ -178,30 +210,23 @@ class NuscenesHandling:
             n_samples_jump, int
         ), "ERROR: n_samples_jump must be an integer"
 
-        if n_samples_jump <= 1:
-            self.lidar_token0 = self.lidar_token1
-            self.lidar_pose0 = self.lidar_pose1
-            self.pc0_CS0 = self.pc1_CS1
-            self.point_distances0 = self.point_distances1
+        gather_pair = n_samples_jump <= 1
+        if gather_pair:
+            self.lidar_token0 = self.next_token(self.lidar_token0)
+            self.update_point_cloud_data(pc_ind=0)
 
         # Set info PC1
-        self.lidar_token1 = self.get_next_lidar_token(self.lidar_token1)
+        if gather_pair:
+            self.lidar_token1 = self.get_next_lidar_token_in_pair(self.lidar_token0)
+        else:
+            self.lidar_token1 = self.next_token(self.lidar_token0)
 
         if self.check_end_of_scene(self.lidar_token1):
             self.update_dataset_status()
             return None
-
-        if n_samples_jump <= 1:
-            self.lidar_pose1 = self.get_sensor_pose_in_WCS(self.lidar_token1)
-            self.pc1_CS1 = self.get_point_cloud(self.lidar_token1)
-
-            # Randomly downsample point clouds
-            if self.downsample_factor > 1:
-                self.downsample_second_point_cloud()
-
-            self.point_distances1 = self.get_point_distances_to_origin(self.pc1_CS1)
-
-        if n_samples_jump > 0:
+        if gather_pair:
+            self.update_point_cloud_data(pc_ind=1)
+        else:
             self.set_next_point_cloud_pair(n_samples_jump=n_samples_jump - 1)
 
     def get_number_of_samples_in_scenes(self, PC_scenes):
@@ -234,8 +259,8 @@ class NuscenesHandling:
 
     def sample_from_scenes(self, params, n_samples, n_scenes):
         """
-        Here we return the sample from the dataset s.t. we evenly distribute the sample of the number
-        of scenes we want to utilize.
+        Here we return the sample from the dataset s.t. we evenly distribute the sample of the
+        number of scenes we want to utilize.
 
         Data format:
             A list of scenes. Each scenes correspond to roughly 20s recoreded lidar data
@@ -269,27 +294,18 @@ class NuscenesHandling:
             PC1 = PC(self.pc1_CS1, self.point_distances1, label=1, device=params.device)
             # Set point cloud pair and their union, and perform possible perturbation
             currentPCPair = PCPair(
-                PC0,
-                PC1,
-                device=params.device,
-                PCHandler=self,
-                perturb_settings=self.perturb_settings,
-                do_reg=params.args.do_reg,
-                perturbation_method=params.args.perturb_settings.perturbation_method
+                PC0, PC1, device=params.device, PCHandler=self,
+                perturb_settings=self.perturb_settings, do_reg=params.args.do_reg,
+                perturbation_method=params.args.perturb_settings.perturbation_method,
+                pc_reg_dist = self.dist_between_sample_inds
             )
 
             if self.apply_hpr_operator:
                 # Calculate the co-visible points
                 PC0_cov, PC1_cov, PCUnion_cov = keep_covisible_points(
-                    PC0,
-                    PC1,
-                    currentPCPair.PCUnion,
-                    currentPCPair.pose0,
-                    currentPCPair.pose1,
-                    compute_weights=params.use_c,
-                    hpr_radius=cov_params.hpr_radius,
-                    gamma=cov_params.gamma,
-                    inversion_kernel=cov_params.inversion_kernel,
+                    PC0, PC1, currentPCPair.PCUnion, currentPCPair.pose0, currentPCPair.pose1,
+                    compute_weights=params.use_c, hpr_radius=cov_params.hpr_radius,
+                    gamma=cov_params.gamma, inversion_kernel=cov_params.inversion_kernel,
                     batch_size=params.batch_size_feature_extraction,
                 )
                 currentPCPair.set_new_PC(PC0_cov, PC1_cov, PCUnion_cov)
@@ -301,10 +317,7 @@ class NuscenesHandling:
                 n_samples_jump=skip_samples_list[skip_sample_index]
             )
             skip_sample_index += 1
-            if (
-                skip_sample_index == n_skip_samples
-                and skip_samples_list[skip_sample_index - 1] == 0
-            ):
+            if skip_sample_index == n_skip_samples:
                 self.update_dataset_status()
 
             if self.scene_read:
@@ -331,7 +344,6 @@ class NuscenesHandling:
             if self.dataset_read:
                 print("We have collected all data from the dataset")
                 break
-
             count += 1
 
         PC_scenes = np.array(PC_scenes)
@@ -344,11 +356,11 @@ class NuscenesHandling:
 
 
 def read_nuscenes_data(
-    params, n_samples, n_scenes="all", lidar_token=None, scene_counter=0
+    params, mode, n_samples, n_scenes="all", lidar_token=None, scene_counter=0
 ):
     # Read data
     PCHandler = NuscenesHandling(
-        params, lidar_token=lidar_token, scene_counter=scene_counter
+        params, mode, lidar_token=lidar_token, scene_counter=scene_counter
     )
     PC_scenes = PCHandler.sample_from_scenes(params, n_samples, n_scenes)
     return PC_scenes

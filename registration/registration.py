@@ -79,7 +79,7 @@ def reg(args):
     # for gamma in np.arange(0.01, 0.10, 0.01):
     #     gd = ru.rot_offset_to_geodesic_distance(gamma)
     for i in range(n_scenes):
-        PC_scene = read_nuscenes_data(params, n_samples=n_samples_per_scene,
+        PC_scene = read_nuscenes_data(params, mode="test", n_samples=n_samples_per_scene,
                                       n_scenes=1, scene_counter=i)[0]
         if i % 5 == 0:
             print(f"Scene {i}")
@@ -182,6 +182,7 @@ def compare_reg_methods(args):
 
     PC_scenes = read_nuscenes_data(
         params,
+        mode="test",
         n_samples=n_samples,
         n_scenes=n_scenes,
         scene_counter=0,

@@ -176,7 +176,7 @@ class PC:
 # co-visibility score. Potential speed-up possible there.
 class PCPair:
     def __init__(self, PC0, PC1, device, PCHandler, perturb_settings, do_reg=False,
-                 perturbation_method="m_classes"):
+                 perturbation_method="m_classes", pc_reg_dist=1):
         # Set point cloud pair
         self.PC0 = PC0
         self.pose0 = PCHandler.lidar_pose0.to(device)
@@ -191,6 +191,8 @@ class PCPair:
         self.t_bin = perturb_settings.t_bin
         self.registration = do_reg
         self.perturbation_method = perturbation_method
+        # 1 if point clouds follow each other, 2 if there is one point cloud in between and so on.
+        self.pc_reg_dist = pc_reg_dist
         # Draw random value between 0 and 1 if we should perturb or not perturb the point cloud.
         # if perturb_settings.class_distribution == 'uniform': ... I have variant currently ...
         if perturbation_method == "m_classes":
@@ -279,6 +281,7 @@ class PCPair:
                         self.class_category = 6
                     else:
                         self.class_category = 7
+                    # print(f"Class category: {self.class_category} (reg dist: {self.pc_reg_dist})")
 
         else:
             sys.exit(f"Perturbation method ({self.perturbation_method}) not known!")
