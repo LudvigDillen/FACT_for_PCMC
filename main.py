@@ -1,7 +1,7 @@
 import numpy as np
 import torch
 
-from classifiers.PointTransformers.train_cls import main as fact
+from classifiers.PointTransformers.train_cls import fact
 from registration.registration import reg, compare_reg_methods
 
 

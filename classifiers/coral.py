@@ -1,8 +1,8 @@
 import os
 import numpy as np
+import pandas as pd
 
-from classifiers.regression import perform_logistic_regression_training
-from classifiers.regression import perform_logistic_regression_inference
+import classifiers.regression as regress
 from utils.data_handling import run_differential_entropy_on_dataset
 from utils.parameters import Params
 
@@ -33,25 +33,35 @@ def get_coral_features(nusc, args, logger):
 
 
 def perform_coral_training(
-    X_train, y_train, X_val, y_val, logger, epochs=10_000, learning_rate=0.03
+    X_train, y_train, X_val, y_val, logger, epochs=10_000, learning_rate=0.03,
+    ordinal_regression=True
 ):
     # TRANING
     logger.info("Start training CorAl linear regression train...")
-    model = perform_logistic_regression_training(
-        X_train,
-        y_train,
-        X_val,
-        y_val,
-        logger,
-        epochs=epochs,
-        learning_rate=learning_rate,
-    )
+    if ordinal_regression:
+        model = regress.multinomial_ordinal_regression(
+            X_train, y_train, X_val, y_val, logger)
+    else:
+        model = regress.perform_logistic_regression_training(
+            X_train, y_train, X_val, y_val, logger, epochs=epochs, learning_rate=learning_rate)
     logger.info("Finsih training CorAl linear regression train")
     return model
 
 
-def perform_coral_inference(X_test, y_test, model):
-    accuracy_test, predicted_test = perform_logistic_regression_inference(
-        X_test, y_test, model
-    )
+def perform_coral_inference(X_test, y_test, model, ordinal_regression=True):
+    if ordinal_regression:
+        # Prediction and Evaluation on Test Set
+        data_test = pd.DataFrame(
+            np.hstack((y_test[:, None], X_test)),
+            columns=["label", "Joint Differential Entropy", "Separate Differential Entropy"])
+        pred_test = model.predict(data_test[["Joint Differential Entropy",
+                                             "Separate Differential Entropy"]])
+        # Convert predictions to ordinal categories
+        predicted_test = pred_test.idxmax(axis=1).values
+        # Evaluate the model
+        accuracy_test = np.mean(predicted_test == data_test['label'])
+    else:
+        accuracy_test, predicted_test = regress.perform_logistic_regression_inference(
+            X_test, y_test, model
+        )
     return accuracy_test, predicted_test

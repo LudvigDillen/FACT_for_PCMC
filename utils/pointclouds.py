@@ -265,24 +265,16 @@ class PCPair:
                 elif version == "average distance est to gt pose":
                     pc1_CS0_gt = ru.align_pair(self, gt_pose)
                     error = torch.linalg.norm(self.pc1_CS0 - pc1_CS0_gt, dim=1).mean()
-                    if error < 0.05:
+                    if error < 0.03:
                         self.class_category = 0
-                    elif error < 0.2:
+                    elif error < 0.10:
                         self.class_category = 1
-                    elif error < 0.5:
+                    elif error < 0.25:
                         self.class_category = 2
-                    elif error < 1:
+                    elif error < 0.5:
                         self.class_category = 3
-                    elif error < 2:
-                        self.class_category = 4
-                    elif error < 4:
-                        self.class_category = 5
-                    elif error < 8:
-                        self.class_category = 6
                     else:
-                        self.class_category = 7
-                    # print(f"Class category: {self.class_category} (reg dist: {self.pc_reg_dist})")
-
+                        self.class_category = 4
         else:
             sys.exit(f"Perturbation method ({self.perturbation_method}) not known!")
 

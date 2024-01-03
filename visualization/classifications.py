@@ -7,6 +7,7 @@ https://gist.github.com/loevlie/5044e62aea2ce625b70d6d6d75113d25
 """
 from datetime import datetime
 import matplotlib.pyplot as plt
+import matplotlib.colors as mcolors
 import numpy as np
 from sklearn.metrics import confusion_matrix
 
@@ -57,7 +58,7 @@ def model_plot(model, X, y, title, args):
     now = datetime.now()
     time_string = now.strftime("%Y%m%d_%H%M%S")
 
-    file_name = f"model_plot_new_{time_string}_{args.model_identifier}"
+    file_name = f"model_plot_{time_string}_{args.model_identifier}"
 
     # Save the figure as .jpg
     plt.savefig(f"{directory}/{file_name}.jpg", format="jpg")
@@ -66,6 +67,67 @@ def model_plot(model, X, y, title, args):
     plt.savefig(f"{directory}/{file_name}.eps", format="eps")
 
     plt.close()  # Close the figure
+
+
+def ordinal_model_plot(model, X, y, title, args):
+    # Create a mesh grid for plotting
+    u = np.linspace(X[:, 0].min() - 0.5, X[:, 0].max() + 0.5, 400)
+    v = np.linspace(X[:, 1].min() - 0.5, X[:, 1].max() + 0.5, 400)
+    U, V = np.meshgrid(u, v)
+
+    # Flatten the grid so that we can feed it into the model
+    grid = np.vstack([U.ravel(), V.ravel()]).T
+
+    # Predict class probabilities for each point on the grid
+    probs = model.predict(grid)
+
+    # Determine the most likely class for each point
+    # This will be the index of the highest probability
+    # If your model outputs class probabilities, use `probs.argmax(axis=1)`
+    # Otherwise, adjust the following line as needed based on your model's output
+    Z = probs.argmax(axis=1)
+
+    # Reshape the class predictions to match the grid shape
+    Z = Z.reshape(U.shape)
+
+    # Define colors for each class
+    class_colors = ['blue', 'green', 'red', 'cyan', 'magenta', 'yellow']  # Add more colors if needed
+
+    # Create a custom colormap
+    cmap = mcolors.ListedColormap(class_colors[:len(np.unique(y))])
+
+    # Plot the decision boundaries
+    plt.contourf(U, V, Z, alpha=0.25, levels=np.arange(y.min(), y.max()+2)-0.5,
+                 cmap=cmap)
+
+    # Plot the data points
+    # for label in np.unique(y):
+    # plt.scatter(X[y == label, 0], X[y == label, 1], c=y, cmap=cmap, edgecolor='k',
+    #             label=np.unique(y))
+    scatter = plt.scatter(X[:, 0], X[:, 1], c=y, cmap=cmap, edgecolor='k')
+
+
+    # Add labels, title, etc.
+    param_names = model.params.index
+    feature_names = [name for name in param_names if '/' not in name]
+
+    plt.xlabel(feature_names[0])
+    plt.ylabel(feature_names[1])
+    plt.title(title)
+    #plt.legend()
+    legend1 = plt.legend(*scatter.legend_elements(), title="Classes")
+
+    # plt.legend(handles=scatter.legend_elements()[0], title="Classes", labels=np.unique(y))
+
+
+    # Save the plot
+    directory = args.visualization_folder
+    now = datetime.now()
+    time_string = now.strftime("%Y%m%d_%H%M%S")
+    file_name = f"model_plot_{time_string}_{args.model_identifier}"
+    plt.savefig(f"{directory}/{file_name}.jpg", format="jpg")
+    plt.savefig(f"{directory}/{file_name}.eps", format="eps")
+    plt.close()
 
 
 def plot_accuracies(

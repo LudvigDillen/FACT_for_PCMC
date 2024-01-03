@@ -74,7 +74,6 @@ def run_ablation_features(args, logger):
 def setup_coral_args(args, logger):
     logger.info("Changing args to conform with coral settings")
     args.fps.do_fps = False
-    args.perturb_settings.n_classes = 2
     args.neighborhood.rmin = 1
     args.neighborhood.rmax = 5
     args.neighborhood.k = "normal"

@@ -17,11 +17,7 @@ import features.feature_utils as fu
 from utils.pointclouds import PCAC_dataset
 import visualization.classifications as vis_cls
 from classifiers.loss_functions import get_loss
-from classifiers.coral import (
-    get_coral_features,
-    perform_coral_training,
-    perform_coral_inference,
-)
+from classifiers.coral import get_coral_features, perform_coral_training, perform_coral_inference
 from classifiers.PointTransformers.classify import classify_pairs
 from utils.other import display_to_logger_before, display_to_logger_after
 
@@ -60,22 +56,16 @@ def inference_loop(data, args, model, class_acc):
     for cat in np.unique(target.cpu()):
         ind_for_cat_target = target == cat
         number_of_correct_prediction_for_cat = (
-            pred_choice[ind_for_cat_target]
-            .eq(target[ind_for_cat_target].long().data)
-            .cpu()
-            .sum()
-        )
+            pred_choice[ind_for_cat_target].eq(target[ind_for_cat_target].long().data).cpu().sum())
         class_acc[cat, 0] += number_of_correct_prediction_for_cat
         number_of_target_cat = float(ind_for_cat_target.sum().cpu())
         class_acc[cat, 1] += number_of_target_cat
-
     return class_acc, target, pred_choice
 
 
 def track_accuracy(args, model, loader):
-    class_acc = np.zeros(
-        (args.perturb_settings.n_classes, 2)
-    )  # num_class x (correct_preds [col. 0], total_preds [col. 1])
+    # num_class x (correct_preds [col. 0], total_preds [col. 1])
+    class_acc = np.zeros((args.perturb_settings.n_classes, 2))  
     for data in tqdm(loader, total=len(loader)):
         class_acc, _, _ = inference_loop(data, args, model, class_acc)
     mean_acc = get_mean_acc(class_acc)
@@ -86,7 +76,7 @@ def track_accuracy(args, model, loader):
 def run_val(args, logger, classifier):
     PCAC_VAL_DATASET = PCAC_dataset(args=args, split="validation")
     valDataLoader = torch.utils.data.DataLoader(
-        PCAC_VAL_DATASET, batch_size=args.batch_size, shuffle=False, num_workers=2
+        PCAC_VAL_DATASET, batch_size=args.batch_size, shuffle=False, num_workers=8
     )
     val_instance_acc, val_class_acc = track_accuracy(args, classifier, valDataLoader)
     logger.info(f"Val Overall Accuracy: {val_instance_acc:.4f}")
@@ -96,19 +86,15 @@ def run_val(args, logger, classifier):
 
 
 def test_results(args, model, loader):
-    class_acc = np.zeros(
-        (args.perturb_settings.n_classes, 2)
-    )  # num_class x (correct_preds [col. 0], total_preds [col. 1])
+    # num_class x (correct_preds [col. 0], total_preds [col. 1])
+    class_acc = np.zeros((args.perturb_settings.n_classes, 2))
     N_samples = len(loader.dataset)
     y_true = np.zeros(N_samples)
     y_pred = np.zeros(N_samples)
     ind = 0
     with torch.inference_mode():
         for data in tqdm(loader, total=len(loader)):
-            class_acc, target, pred_choice = inference_loop(
-                data, args, model, class_acc
-            )
-
+            class_acc, target, pred_choice = inference_loop(data, args, model, class_acc)
             current_batch_size = len(target)
             y_true[ind : ind + current_batch_size] = target.cpu().numpy()
             y_pred[ind : ind + current_batch_size] = pred_choice.cpu().numpy()
@@ -131,40 +117,24 @@ def load_best_model(args, logger, pretrained=True):
         print(f"Input dim: {args.input_dim}")
         shutil.copy(
             hydra.utils.to_absolute_path(
-                "classifiers/PointTransformers/models/{}/model.py".format(
-                    args.model.name
-                )
-            ),
-            ".",
-        )
+                "classifiers/PointTransformers/models/{}/model.py".format(args.model.name)), ".")
 
         if torch.cuda.is_available():
             classifier = getattr(
                 importlib.import_module(
-                    "classifiers.PointTransformers.models.{}.model".format(
-                        args.model.name
-                    )
-                ),
-                "PointTransformerCls",
-            )(args).cuda()
+                    "classifiers.PointTransformers.models.{}.model".format(args.model.name)),
+                "PointTransformerCls")(args).cuda()
         else:
             classifier = getattr(
                 importlib.import_module(
-                    "classifiers.PointTransformers.models.{}.model".format(
-                        args.model.name
-                    )
-                ),
-                "PointTransformerCls",
-            )(args)
+                    "classifiers.PointTransformers.models.{}.model".format(args.model.name)),
+                "PointTransformerCls")(args)
     elif args.classifier == "CorAl":
         shutil.copy(
-            hydra.utils.to_absolute_path("classifiers/regression.py"),
-            ".",
-        )
+            hydra.utils.to_absolute_path("classifiers/regression.py"), ".")
         classifier = getattr(
             importlib.import_module("classifiers.regression"),
-            "LogisticRegression",
-        )(input_dim=2, output_dim=1)
+            "LogisticRegression")(input_dim=2, output_dim=1)
 
     start_epoch = 0
     if pretrained and args.load_model_path:
@@ -178,10 +148,10 @@ def run_cls(args, logger, pretrained=True):
     PCAC_TRAIN_DATASET = PCAC_dataset(args=args, split="train")
     PCAC_VAL_DATASET = PCAC_dataset(args=args, split="validation")
     trainDataLoader = torch.utils.data.DataLoader(
-        PCAC_TRAIN_DATASET, batch_size=args.batch_size, shuffle=True, num_workers=2
+        PCAC_TRAIN_DATASET, batch_size=args.batch_size, shuffle=True, num_workers=8
     )
     valDataLoader = torch.utils.data.DataLoader(
-        PCAC_VAL_DATASET, batch_size=args.batch_size, shuffle=False, num_workers=2
+        PCAC_VAL_DATASET, batch_size=args.batch_size, shuffle=False, num_workers=8
     )
     del PCAC_TRAIN_DATASET, PCAC_VAL_DATASET
 
@@ -190,13 +160,8 @@ def run_cls(args, logger, pretrained=True):
     criterion = torch.nn.CrossEntropyLoss()
 
     if args.optimizer == "Adam":
-        optimizer = torch.optim.Adam(
-            classifier.parameters(),
-            lr=args.learning_rate,
-            betas=(0.9, 0.999),
-            eps=1e-08,
-            weight_decay=args.weight_decay,
-        )
+        optimizer = torch.optim.Adam(classifier.parameters(), lr=args.learning_rate,
+                                     betas=(0.9, 0.999), eps=1e-08, weight_decay=args.weight_decay)
     else:
         optimizer = torch.optim.SGD(classifier.parameters(), lr=0.01, momentum=0.9)
 
@@ -206,6 +171,7 @@ def run_cls(args, logger, pretrained=True):
     global_epoch = 0
     global_step = 0
     best_instance_acc = 0.0
+    best_val_metric_acc = 0.0
     best_class_acc = 0.0
     best_epoch = 0
     mean_correct = []
@@ -262,10 +228,11 @@ def run_cls(args, logger, pretrained=True):
                 args, classifier.eval(), valDataLoader
             )
             val_accuracies[epoch] = instance_acc
-
-            if instance_acc >= best_instance_acc:
+            val_metric_acc = 0.7*instance_acc + 0.3*class_acc
+            if val_metric_acc >= best_val_metric_acc:
                 best_epoch = epoch + 1
                 best_instance_acc = instance_acc
+                best_val_metric_acc = val_metric_acc
                 best_class_acc = class_acc
 
                 logger.info("Save model...")
@@ -275,24 +242,19 @@ def run_cls(args, logger, pretrained=True):
                     "epoch": best_epoch,
                     "instance_acc": instance_acc,
                     "class_acc": class_acc,
+                    "val_metric_acc": val_metric_acc,
                     "model_state_dict": classifier.state_dict(),
                     "optimizer_state_dict": optimizer.state_dict(),
                 }
                 torch.save(state, savepath)
-            logger.info(
-                "Vali Instance Accuracy: %f, Class Accuracy: %f"
-                % (instance_acc, class_acc)
-            )
-            logger.info(
-                "Best Instance Accuracy: %f, Class Accuracy: %f"
-                % (best_instance_acc, best_class_acc)
-            )
+            logger.info("Vali Instance Accuracy: %f, Class Accuracy: %f, Val Metric Acc %f"
+                        % (instance_acc, class_acc, val_metric_acc))
+            logger.info("Best Instance Accuracy: %f, Class Accuracy: %f, Val Metric Acc: %f"
+                        % (best_instance_acc, best_class_acc, best_val_metric_acc))
             global_epoch += 1
 
     # Load best validation model
     best_model_path = "best_model_" + args.model_identifier + ".pth"
-    #checkpoint = torch.load(best_model_path)
-    #classifier.load_state_dict(checkpoint["model_state_dict"])
     classifier, start_epoch = load_model(best_model_path, classifier)
     return train_accuracies, val_accuracies, classifier
 
@@ -300,7 +262,7 @@ def run_cls(args, logger, pretrained=True):
 def run_test(args, logger, classifier):
     PCAC_TEST_DATASET = PCAC_dataset(args=args, split="test")
     testDataLoader = torch.utils.data.DataLoader(
-        PCAC_TEST_DATASET, batch_size=args.batch_size, shuffle=False, num_workers=2
+        PCAC_TEST_DATASET, batch_size=args.batch_size, shuffle=False, num_workers=8
     )
     del PCAC_TEST_DATASET
 
@@ -315,8 +277,9 @@ def run_test(args, logger, classifier):
 
 
 @hydra.main(config_path="config", config_name="cls")
-def main(args):
+def fact(args):
     args, logger = eu.setup_experiment(args, do_reg=False)
+
     for i in range(args.running_iterations):
         # Setup data for new run
         # args = eu.setup_args_for_iteration(i, args)
@@ -327,14 +290,12 @@ def main(args):
         if not args.re_use_data:
             logger.info("Load dataset ...")
             nusc = ns.nuscenes.NuScenes(
-                version=args.dataset, dataroot=args.data_folder, verbose=False
-            )
+                version=args.dataset, dataroot=args.data_folder, verbose=False)
             logger.info("Start feature extraction")
             with torch.inference_mode():
                 if args.classifier == "CorAl":
                     X_train, y_train, X_val, y_val, X_test, y_test = get_coral_features(
-                        nusc, args, logger
-                    )
+                        nusc, args, logger)
                 elif args.classifier == "FACT":
                     # Get features
                     extract_features_to_txt_files(nusc, args=args)
@@ -348,19 +309,19 @@ def main(args):
                 X_test = np.loadtxt(args.feature_folder + "/X_test.txt", delimiter=" ")
                 y_test = np.loadtxt(args.feature_folder + "/y_test.txt", delimiter=" ")
             else:
+                if args.re_use_data:
+                    X_train = np.loadtxt(args.feature_folder + "/X_train.txt", delimiter=" ")
+                    y_train = np.loadtxt(args.feature_folder + "/y_train.txt", delimiter=" ")
+                    X_val = np.loadtxt(args.feature_folder + "/X_val.txt", delimiter=" ")
+                    y_val = np.loadtxt(args.feature_folder + "/y_val.txt", delimiter=" ")
+                    X_test = np.loadtxt(args.feature_folder + "/X_test.txt", delimiter=" ")
+                    y_test = np.loadtxt(args.feature_folder + "/y_test.txt", delimiter=" ")
                 classifier = perform_coral_training(
-                    X_train,
-                    y_train,
-                    X_val,
-                    y_val,
-                    logger,
-                    epochs=args.coral_settings.epochs,
-                    learning_rate=args.coral_settings.learning_rate,
-                )
+                    X_train, y_train, X_val, y_val, logger, epochs=args.coral_settings.epochs,
+                    learning_rate=args.coral_settings.learning_rate, 
+                    ordinal_regression=args.coral_settings.ordinal_regression)
         elif args.classifier == "FACT":
             # Get dataset (features in a data loader)
-            # args = fu.process_features(args)
-            # Run all
             if args.ablation.run_ablation:
                 eu.run_ablation_features(args, logger)
                 sys.exit("Ablation finished!")
@@ -372,22 +333,31 @@ def main(args):
 
         # PERFORM MODEL INFERENCE
         if args.classifier == "CorAl":
-            accuracy_test, y_pred = perform_coral_inference(X_test, y_test, classifier)
+            accuracy_test, y_pred = perform_coral_inference(X_test, y_test, classifier,
+                ordinal_regression=args.coral_settings.ordinal_regression)
         elif args.classifier == "FACT":
             _, _, y_test, y_pred = run_test(args, logger, classifier)
+            # if args.reparation_settings.run_strong_registration_alg:
+            #     for i, pred in enumerate(y_pred):
+            #         if pred in [3, 4]:
+                        # print(f"Rerun registration with predator registration")
+                        # TODO: Rerun registration with predator
+                # TODO: Evaluate if things got better
+                #   - We could look at the how the number of aligned point clouds have changed
+                #   - We could look at our test but then we'd have to extract features again
 
         # VISUALIZE RESULTS
         if args.classifier == "CorAl":
             logger.info(f"Accuracy CorAl {accuracy_test:.4f}")
             fig_title = f"CorAl: {100*accuracy_test:.1f}% accuracy"
-            vis_cls.model_plot(classifier, X_test, y_test, fig_title, args)
+            if args.coral_settings.ordinal_regression:
+                vis_cls.ordinal_model_plot(classifier, X_test, y_test, fig_title, args)
+            else:
+                vis_cls.model_plot(classifier, X_test, y_test, fig_title, args)
         elif args.classifier == "FACT" and not args.load_model_path:
             vis_cls.plot_accuracies(train_accuracies, val_accuracies, args=args)
-        vis_cls.store_confusion_matrix(y_pred, y_test, args.perturb_settings.n_classes, logger, args)
+        vis_cls.store_confusion_matrix(y_pred, y_test, args.perturb_settings.n_classes, logger,
+                                       args)
 
         # LOGGING
         display_to_logger_after(i, args, logger)
-
-
-if __name__ == "__main__":
-    main()

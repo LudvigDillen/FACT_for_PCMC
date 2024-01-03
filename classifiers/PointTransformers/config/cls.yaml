@@ -1,4 +1,4 @@
-batch_size: 16
+batch_size: 64
 epoch: 200
 learning_rate: 0.00005  # 0.00005
 lr_gamma: 0.85
@@ -69,16 +69,18 @@ fps:
                   # point cloud is considered when stuying each sampled points' neighborhoods.
   do_fps: true  # (bool) : Whether or not to apply farthest point sampling
 re_use_data: false  # Set to true if only running training and no feature extraction
-n_scenes: 850  # 335, 850 max
-n_samples_per_scene: 5 # 10  
-dataset: 'v1.0-trainval'  # ['v1.0-trainval', 'v1.0-mini']
+n_scenes: 10  # 335, 850 max
+n_samples_per_scene: 1 # 10
+dataset: 'v1.0-mini'  # ['v1.0-trainval', 'v1.0-mini']
 data_folder: '/home/lu2277di/Projects/FACT/data/nuscenes'
-feature_folder: '/home/lu2277di/Projects/FACT/data/PCAC_data/average_dist_bins_4250_with_max_train_dist_10'  # TODO: Set by new user ...
+# feature_folder: '/home/lu2277di/Projects/FACT/data/PCAC_data/average_dist_bins_5_alt1_classes_34000_with_max_train_dist_5'  # TODO: Set by new user ...
+feature_folder: '/home/lu2277di/Projects/FACT/data/PCAC_data/test'  # TODO: Set by new user ...
 visualization_folder: '/home/lu2277di/Projects/FACT/images/classification/PointTransformer'
 downsample_factor: 1 # Make sure that the point cloud is not so downsampled that num_point does not exist
 train_ratio: 0.60  # The test ratio automatically becomes 1 - train_ratio - val_ratio
 val_ratio: 0.15  # Simply set to 0 if validation set in not needed
-model_identifier: average_dist_bins_4250_with_max_train_dist_10
+# model_identifier: average_dist_bins_5_alt1_classes_34000_with_max_train_dist_5_new_val_metric
+model_identifier: test
 
 # Rerun settings, enables us to rerun after a crash, without rerunning everything
 rerun_crash: false
@@ -87,12 +89,12 @@ time_gone: 19.10  # Time spent, so we can keep track of time left
 # If error is displayed, reduce scenes_finished, so that we do not look at test data ...
 # Perturbation settings
 perturb_settings:
-  n_classes: 8
+  n_classes: 5
   r_bin: 0.01  # 0.03
-  t_bin: 0.1  # 0.3
+  t_bin: 0.1 # 0.3
   class_distribution: uniform
   perturbation_method: registration  # ['m_classes', 'GMM', 'registration'], GMM not tested
-  train_reg_max_dist: 10
+  train_reg_max_dist: 5  # TODO: Should I perhaps have 2 for CorAl
 
 # Plot settings
 ablation:
@@ -133,7 +135,10 @@ preprocessing:
 classifier: FACT  # CorAl, FACT
 coral_settings:
   learning_rate: 0.01
-  epochs: 250_000
+  epochs: 250_000  # Change back to 250_000
+  ordinal_regression: true
+reparation_settings:
+  run_strong_registration_alg: true
 
 # Other settings
 verbose: false  # (bool): If True, print additional information.
@@ -143,6 +148,7 @@ debug: false
 # load_model_path: /home/lu2277di/Projects/FACT/old_weights/2023-09-09/09-21-13/best_model_FACT_best_network_optimal.pth
 # load_model_path: /home/lu2277di/Projects/FACT/old_weights/2023-09-11/18-03-22/best_model_FACT_binary0_1_upd.pth
 # load_model_path: /home/lu2277di/Projects/FACT/old_weights/2023-09-09/09-21-13/best_model_FACT_best_network_fast.pth
+# load_model_path: /home/lu2277di/Projects/FACT/outputs/2023-12-29/23-25-42/best_model_average_dist_bins_5_alt1_classes_17000_with_max_train_dist_5_new_val_metric.pth
 load_model_path: false
 running_iterations: 1  # This requires a setup in the train_cls.py file. Otherwise, set this to 1.
 # This parameter below is handled directly in the program
