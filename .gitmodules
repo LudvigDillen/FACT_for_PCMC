@@ -1,0 +1,3 @@
+[submodule "OverlapPredator"]
+	path = OverlapPredator
+	url = https://github.com/overlappredator/OverlapPredator.git
