@@ -283,17 +283,15 @@ def extract_accuracies(file_name):
     # Convert lists to numpy arrays
     train_accuracies = np.array(train_accuracies)
     test_accuracies = np.array(test_accuracies)
-
     return train_accuracies, test_accuracies
 
 
-def text_color(bg_color):
-    """Return 'black' or 'white' depending on the perceived brightness of bg_color."""
-    brightness = 0.299 * bg_color[0] + 0.587 * bg_color[1] + 0.114 * bg_color[2]
-    return "black" if brightness > 0.5 else "white"
+def text_color(background):
+    # A simple heuristic to determine text color based on background intensity.
+    return 'white' if sum(background[:3]) < 1.5 else 'black'
 
 
-def store_confusion_matrix(y_pred, y_true, N_classes, logger, args):
+def store_confusion_matrix(y_pred, y_true, N_classes, logger, args, accumulate=False):
     # Create a list of all expected classes
     classes = list(range(N_classes))
 
@@ -301,30 +299,49 @@ def store_confusion_matrix(y_pred, y_true, N_classes, logger, args):
     cm = confusion_matrix(y_true, y_pred, labels=classes)
     logger.info(f"Confusion matrix {args.model_identifier}\n {cm}")
 
+    n_ticks = N_classes + int(accumulate)
+    # Extend the confusion matrix with an extra row and column for the sums if required
+    extended_cm = np.zeros((n_ticks, n_ticks), dtype=int)
+    extended_cm[:N_classes, :N_classes] = cm
+    if accumulate:
+        row_sums = cm.sum(axis=1)
+        extended_cm[:N_classes, N_classes] = row_sums
+        col_sums = cm.sum(axis=0)
+        extended_cm[N_classes, :N_classes] = col_sums
+    cm = extended_cm
+
     # Plot the confusion matrix
-    fig, ax = plt.subplots()
+    fig, ax = plt.subplots(figsize=(10, 8))
     cax = ax.matshow(cm, cmap=plt.cm.Blues)
     plt.title("Confusion matrix of the classifier")
-    fig.colorbar(cax)
+
+    # Draw a thick line to separate the sums
+    if accumulate:
+        ax.axhline(y=N_classes - 0.5, color='black', linewidth=2)
+        ax.axvline(x=N_classes - 0.5, color='black', linewidth=2)
+
+    # Adjust color bar position
+    fig.colorbar(cax, fraction=0.046, pad=0.04)
 
     # Setting x and y axis labels
-    class_labels = ["Class {}".format(i) for i in range(N_classes)]
-    ax.set_xticks(np.arange(N_classes))
-    ax.set_yticks(np.arange(N_classes))
+    class_labels = ["Class {}".format(i) if i < N_classes else "Sum" for i in range(n_ticks)]
+    ax.set_xticks(np.arange(n_ticks))
+    ax.set_yticks(np.arange(n_ticks))
     fontsize = min(int(60 / N_classes), 11)
-    ax.set_xticklabels(class_labels, fontsize=fontsize)
+    ax.set_xticklabels(class_labels, fontsize=fontsize, rotation=90)
     ax.set_yticklabels(class_labels, fontsize=fontsize)
     plt.xlabel("Predicted")
     plt.ylabel("True")
     plt.grid(False)  # Hide the grid lines
 
     # Display the counts on the matrix
-    for i in range(N_classes):
-        for j in range(N_classes):
-            cell_color = cax.to_rgba(cm[i, j])[:3]
-            plt.text(
-                j, i, cm[i, j], ha="center", va="center", color=text_color(cell_color)
-            )
+    for i in range(n_ticks):
+        for j in range(n_ticks):
+            if i < N_classes or j < N_classes:
+                cell_color = cax.to_rgba(cm[i, j])[:3]
+                plt.text(
+                    j, i, cm[i, j], ha="center", va="center", color=text_color(cell_color)
+                )
 
     plt.tight_layout()
 
@@ -338,7 +355,7 @@ def store_confusion_matrix(y_pred, y_true, N_classes, logger, args):
 
     # Save the figure to an .eps file
     fig.savefig(f"{directory}/{file_name}.eps", format="eps")
-    # Save the figure to an .eps file
+    # Save the figure to an .jpg file
     fig.savefig(f"{directory}/{file_name}.jpg", format="jpg")
 
     plt.close()  # Close the figure

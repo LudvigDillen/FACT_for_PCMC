@@ -251,7 +251,7 @@ class PCPair:
             else:
                 source = ru.from_tensor_to_pcd(self.PC1.pc)
                 target = ru.from_tensor_to_pcd(self.PC0.pc)
-                rel_pose, _ = ru.register_pair(source, target, method="p2l")
+                rel_pose = ru.register_pair(source, target, method="p2l")
                 gt_pose = torch.matmul(torch.linalg.inv(self.pose0), self.pose1)
                 self.pc1_CS0 = ru.align_pair(self, rel_pose)
 
@@ -265,16 +265,7 @@ class PCPair:
                 elif version == "average distance est to gt pose":
                     pc1_CS0_gt = ru.align_pair(self, gt_pose)
                     error = torch.linalg.norm(self.pc1_CS0 - pc1_CS0_gt, dim=1).mean()
-                    if error < 0.03:
-                        self.class_category = 0
-                    elif error < 0.10:
-                        self.class_category = 1
-                    elif error < 0.25:
-                        self.class_category = 2
-                    elif error < 0.5:
-                        self.class_category = 3
-                    else:
-                        self.class_category = 4
+                    self.class_category = ru.get_error_class(error)
         else:
             sys.exit(f"Perturbation method ({self.perturbation_method}) not known!")
 

@@ -3,9 +3,11 @@ import numpy as np
 import open3d as o3d
 import sys
 import open3d.pipelines.registration as treg
+from utils.pointnet_util import farthest_point_sample
 
 from utils.geometrics import change_coordinate_system
 import visualization.registration as vr
+import registration.overlap_predator as op
 
 
 def rot_offset_to_geodesic_distance(gamma):
@@ -80,6 +82,17 @@ def get_transformation_errors(poses_est_scene, poses_gt_scene):
     return R_errors, t_errors
 
 
+def get_mean_point_error(PC_scene, poses_est_scene, poses_gt_scene):
+    assert len(poses_est_scene) == len(poses_gt_scene)
+    n_samples_in_scene = len(poses_est_scene)
+    errors = torch.zeros((n_samples_in_scene), device='cuda')
+    for i, (pose_est, pose_gt) in enumerate(zip(poses_est_scene, poses_gt_scene)):
+        est_pc = align_pair(PC_scene[i], pose_est)
+        gt_pc = align_pair(PC_scene[i], pose_gt)
+        errors[i] = torch.linalg.norm(est_pc - gt_pc, dim=1).mean()
+    return errors
+
+
 def get_gt_poses(PC_scene):
     rel_poses_gt = torch.zeros((len(PC_scene), 4, 4), device='cuda')
     for j, pair in enumerate(PC_scene):
@@ -122,7 +135,7 @@ def register_pair(source, target, method="p2l", trans_init=None, voxelize=False)
             source, target, threshold, trans_init,
             treg.TransformationEstimationPointToPoint(),
             treg.ICPConvergenceCriteria(max_iteration=1000))
-        rel_pose = torch.from_numpy(reg_res.transformation.copy()).to('cuda')
+        rel_pose = reg_res.transformation.copy()
     elif method in ["ICP-p2l", "icp-p2l", "p2l"]:
         # Compute normals for the target point cloud
         target.estimate_normals(
@@ -133,9 +146,47 @@ def register_pair(source, target, method="p2l", trans_init=None, voxelize=False)
             source, target, threshold, trans_init,
             treg.TransformationEstimationPointToPlane(),
             treg.ICPConvergenceCriteria(max_iteration=1000))
-        rel_pose = torch.from_numpy(reg_res.transformation.copy()).to('cuda')
+        rel_pose = reg_res.transformation.copy()
     elif method == "init":
-        rel_pose = torch.from_numpy(trans_init.copy()).to('cuda')
+        rel_pose = trans_init.copy()
+    elif method == "predator":
+        config = op.setup_op_registration()
+        # neighborhood_limits = op.get_neighborhood_limits(config)
+        # neighborhood_limits = np.array([495, 97, 90, 70], dtype=np.int64)
+        # neighborhood_limits = np.array([100, 100, 100, 100], dtype=np.int64)
+        neighborhood_limits = None
+        src_pc, tgt_pc = np.asarray(source.points), np.asarray(target.points)
+        src_pc_cuda = torch.tensor(src_pc[None, ...]).cuda()
+        tgt_pc_cuda = torch.tensor(src_pc[None, ...]).cuda()
+        src_fps_ids = farthest_point_sample(src_pc_cuda, npoint=2500, inference=True).cpu().numpy()
+        tgt_fps_ids = farthest_point_sample(tgt_pc_cuda, npoint=2500, inference=True).cpu().numpy()
+        src_pc_fps, tgt_pc_fps = src_pc[src_fps_ids].squeeze(), tgt_pc[tgt_fps_ids].squeeze()
+        demo_loader = op.get_pair_loader(config, neighborhood_limits, src_pc_fps, tgt_pc_fps)
+        rel_pose = op.main(config, demo_loader).copy()
     else:
         sys.exit("Have no other method")
-    return rel_pose, reg_res
+    rel_pose = torch.from_numpy(rel_pose).cuda()
+    # print(f"T_Est:\n {rel_pose}")
+    return rel_pose
+
+
+def get_error_class(error):
+    if error < 0.03:
+        error_class = 0
+    elif error < 0.10:
+        error_class = 1
+    elif error < 0.25:
+        error_class = 2
+    elif error < 0.5:
+        error_class = 3
+    else:
+        error_class = 4
+    return error_class
+
+
+def get_gt_classes(errors_scene):
+    n_samples = len(errors_scene)
+    gt_scene = np.zeros(n_samples)
+    for i, error in enumerate(errors_scene):
+        gt_scene[i] = get_error_class(error)
+    return gt_scene
