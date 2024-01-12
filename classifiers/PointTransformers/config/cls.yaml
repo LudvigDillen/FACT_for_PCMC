@@ -69,9 +69,9 @@ fps:
                   # point cloud is considered when stuying each sampled points' neighborhoods.
   do_fps: true  # (bool) : Whether or not to apply farthest point sampling
 re_use_data: true  # Set to true if only running training and no feature extraction
-n_scenes: 640 # 335, 850 max
-n_samples_per_scene: 40 # 10
-dataset: 'v1.0-trainval'  # ['v1.0-trainval', 'v1.0-mini']
+n_scenes: 5 # 335, 850 max
+n_samples_per_scene: 1 # 10
+dataset: 'v1.0-mini'  # ['v1.0-trainval', 'v1.0-mini']
 data_folder: '/home2/lu2277di/data/nuscenes'
 feature_folder: '/home/lu2277di/Projects/FACT/data/PCAC_data/average_dist_bins_5_alt1_classes_34000_with_max_train_dist_5'  # TODO: Set by new user ...
 # feature_folder: '/home/lu2277di/Projects/FACT/data/PCAC_data/test'  # TODO: Set by new user ...

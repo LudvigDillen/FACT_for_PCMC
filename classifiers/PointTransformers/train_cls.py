@@ -337,10 +337,11 @@ def fact(args):
                 ordinal_regression=args.coral_settings.ordinal_regression)
         elif args.classifier == "FACT":
             _, _, y_test, y_pred = run_test(args, logger, classifier)
-            # if args.reparation_settings.run_strong_registration_alg:
-            #     for i, pred in enumerate(y_pred):
-            #         if pred in [3, 4]:
-                        # print(f"Rerun registration with predator registration")
+            if args.reparation_settings.run_strong_registration_alg:
+                for i, pred in enumerate(y_pred):
+                    if pred in [3, 4]:
+                        print(f"Rerun registration with predator registration")
+                        print(f"But write this code in registration.py instead. To start with at least")
                         # TODO: Rerun registration with predator
                 # TODO: Evaluate if things got better
                 #   - We could look at the how the number of aligned point clouds have changed

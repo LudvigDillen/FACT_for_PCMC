@@ -56,7 +56,7 @@ def reg_mpe(args):
     n_samples_per_scene = args.n_samples_per_scene
     n_classes = args.perturb_settings.n_classes
     DO_REG = True
-    test_start_scene = 638  # Set to 630 if we want to only test at test data
+    test_start_scene = 0  # Set to 638 if we want to only test at test data
     n_scenes = args.n_scenes - test_start_scene
 
     # Init Nusc object
