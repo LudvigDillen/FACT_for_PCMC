@@ -1,3 +1,6 @@
 [submodule "OverlapPredator"]
 	path = OverlapPredator
 	url = https://github.com/overlappredator/OverlapPredator.git
+[submodule "LIDAR-SLAM"]
+	path = LIDAR-SLAM
+	url = https://github.com/LudvigDillen/LIDAR-SLAM
