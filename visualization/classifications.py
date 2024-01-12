@@ -311,7 +311,7 @@ def store_confusion_matrix(y_pred, y_true, N_classes, logger, args, accumulate=F
     cm = extended_cm
 
     # Plot the confusion matrix
-    fig, ax = plt.subplots(figsize=(10, 8))
+    fig, ax = plt.subplots()
     cax = ax.matshow(cm, cmap=plt.cm.Blues)
     plt.title("Confusion matrix of the classifier")
 
@@ -354,9 +354,9 @@ def store_confusion_matrix(y_pred, y_true, N_classes, logger, args, accumulate=F
     file_name = f"confusion_matrix_{time_string}_{args.model_identifier}"
 
     # Save the figure to an .eps file
-    fig.savefig(f"{directory}/{file_name}.eps", format="eps")
+    fig.savefig(f"{directory}/{file_name}.eps", format="eps", bbox_inches='tight')
     # Save the figure to an .jpg file
-    fig.savefig(f"{directory}/{file_name}.jpg", format="jpg")
+    fig.savefig(f"{directory}/{file_name}.jpg", format="jpg", bbox_inches='tight')
 
     plt.close()  # Close the figure
 
