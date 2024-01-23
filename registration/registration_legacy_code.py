@@ -217,3 +217,48 @@ def compare_reg_methods(args):
     vr.plot_reg_error_hists(R_errors_init, R_errors_p2p, R_errors_p2l, n_samples,
                                  t_errors_init, t_errors_p2p, t_errors_p2l)
     return None
+
+
+
+
+@hydra.main(config_path="../classifiers/PointTransformers/config", config_name="cls")
+def reg_test_rll(args):
+    ### SETUP
+    # Extra settings:
+    n_samples_per_scene = args.n_samples_per_scene
+    DO_REG = True
+    test_start_scene = 0  # Set to 638 if we want to only test at test data
+    n_scenes = args.n_scenes - test_start_scene
+
+    # Init Nusc object
+    nusc = ns.nuscenes.NuScenes(version=args.dataset, dataroot=args.data_folder, verbose=False)
+
+    args, logger = setup_experiment(args, do_reg=DO_REG)
+    params = Params(nusc=nusc, args=args, pointwise=True)
+    params.set_which_features_to_use(args.features_to_create)
+    PC_scene = read_nuscenes_data(params, mode="test", n_samples=n_samples_per_scene,
+                                  n_scenes=1, scene_counter=0)[0]
+    # TODO: Pretty sure that the bin files should be in np.float32 but not positive.
+    source = PC_scene[0].PC0.pc.float().cpu().numpy()
+    target = PC_scene[0].PC1.pc.float().cpu().numpy()
+    # Add dummy reflectance
+    zeros_source = np.zeros(source.shape[0], dtype=source.dtype)
+    zeros_target = np.zeros(target.shape[0], dtype=source.dtype)
+    source = np.hstack((source, zeros_source[:, None])).flatten()
+    target = np.hstack((target, zeros_target[:, None])).flatten()
+    # 
+    dir = "/home2/lu2277di/data/nuscenes_my_files/test_mini/"
+    source.tofile(dir + 'sequences/00/000000.bin')
+    target.tofile(dir + 'sequences/00/000001.bin')
+    init_poses = np.eye(4, dtype=source.dtype)[:3]
+    init_poses.tofile(dir + "poses/00/init_poses.txt")
+
+    f = open(dir + "poses/00/init_poses.txt", "w+")
+    rm = init_poses[:3, :3]
+    t_vec = init_poses[:3, 3][:, None]
+    cam = np.concatenate((rm, t_vec), axis=1)
+    cam = cam.reshape(-1)
+    f.write(' '.join(map(str, cam))+"\n")
+    f.close()
+    # TODO: Remember that poses_d will be in mm later 
+    print("Done!")
