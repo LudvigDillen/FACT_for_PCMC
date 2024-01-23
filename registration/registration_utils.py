@@ -157,7 +157,7 @@ def register_pair(source, target, method="p2l", trans_init=None, voxelize=False)
         neighborhood_limits = None
         src_pc, tgt_pc = np.asarray(source.points), np.asarray(target.points)
         src_pc_cuda = torch.tensor(src_pc[None, ...]).cuda()
-        tgt_pc_cuda = torch.tensor(src_pc[None, ...]).cuda()
+        tgt_pc_cuda = torch.tensor(tgt_pc[None, ...]).cuda()
         src_fps_ids = farthest_point_sample(src_pc_cuda, npoint=2500, inference=True).cpu().numpy()
         tgt_fps_ids = farthest_point_sample(tgt_pc_cuda, npoint=2500, inference=True).cpu().numpy()
         src_pc_fps, tgt_pc_fps = src_pc[src_fps_ids].squeeze(), tgt_pc[tgt_fps_ids].squeeze()

@@ -15,6 +15,7 @@ import visualization.registration as vr
 from features.feature_extractor import feature_extraction, create_feature_map
 from features.feature_utils import normalize_data_on_condition
 import registration.registration_utils as ru
+from visualization.presentation import visualize_and_save
 
 
 def estimate_transformation_scene(PC_scene, method="p2l", voxelize=False, plot=False):
@@ -56,6 +57,7 @@ def reg_mpe(args):
     n_samples_per_scene = args.n_samples_per_scene
     n_classes = args.perturb_settings.n_classes
     DO_REG = True
+    VISUALIZE_RESULT = True
     test_start_scene = 0  # Set to 638 if we want to only test at test data
     n_scenes = args.n_scenes - test_start_scene
 
@@ -74,6 +76,7 @@ def reg_mpe(args):
     for i in range(n_scenes):
         PC_scene = read_nuscenes_data(params, mode="test", n_samples=n_samples_per_scene,
                                       n_scenes=1, scene_counter=i+test_start_scene)[0]
+    
         if i % 5 == 0:
             print(f"Scene {i}")
         # Register scene
@@ -103,8 +106,33 @@ def reg_mpe(args):
         # Note that since we just normalize so that xyz lie within the unit ball,
         # with the farthest point on the ball => It does not matter which batch size we use.
         points = normalize_data_on_condition(args, points)
-        preds[i] = classify_pairs(pcac_model, points).cpu().numpy()
+        batch_size = 8  # Doesn't matter which bs we use in test, as store lots, lets keep it low.
+        points_batches = torch.split(points, batch_size)
+        for j, ps in enumerate(points_batches):
+            if j == 0:
+                p = classify_pairs(pcac_model, ps)
+            else:
+                p  = torch.cat((p, classify_pairs(pcac_model, ps)))
+        preds[i] = p.cpu().numpy()
     # TODO: Set the acc_col and acc_row to true and solve to get the sum next to the conf matrix.
     store_confusion_matrix(y_pred=preds.ravel(), y_true=gts.ravel(), N_classes=n_classes,
                            logger=logger, args=args, accumulate=True)
+    
+    if VISUALIZE_RESULT:
+        def _align_pc(pc, pose):
+            R_new = pose[:3, :3]
+            t_new = pose[:3, 3]
+            return torch.matmul(pc, R_new.T) + t_new[None, :]
+        
+        eye = torch.eye(4, dtype=PC_scene[0].PC0.pc.dtype, device=PC_scene[0].device)
+        to_CS0 = eye.clone()
+
+        for i, (PC_pair, pose) in enumerate(zip(PC_scene, poses_gt_scenes[0])):
+            if i == 0:
+                complete_pc = _align_pc(PC_pair.PC0.pc, to_CS0)
+            # pose = to_CS0
+            to_CS0 = to_CS0 @ pose.double()
+            pc_new = _align_pc(PC_pair.PC1.pc, to_CS0)
+            complete_pc = torch.cat((complete_pc, pc_new), dim=0)
+        visualize_and_save(complete_pc, title=f"Point clouds 0 to {i}")
     return None
