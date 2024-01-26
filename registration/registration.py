@@ -80,8 +80,111 @@ def reg_mpe(args):
         if i % 5 == 0:
             print(f"Scene {i}")
         # Register scene
-        # TODO: GT pose is not correct since we do not account for a potential perturbation.
+        # TODO: Cannot seem overlap_pred to work or Minkowski engine. Try some other method.
         poses_gt_scenes[i] = ru.get_gt_poses(PC_scene)
+        poses_est_scenes[i] = estimate_transformation_scene(PC_scene, method="predator")
+        # Calculate errors
+        errors_scenes[i] = ru.get_mean_point_error(PC_scene, poses_est_scenes[i], poses_gt_scenes[i])
+        gts[i] = ru.get_gt_classes(errors_scenes[i])
+
+        if DO_REG:
+            PC_scene_reg = align_scene(poses_est_scenes[i], PC_scene, plot=False)
+        else:
+            PC_scene_reg = copy.deepcopy(PC_scene)
+        # EXTRACT FEATURE DATA
+        # FPS on scenes
+        if params.args.fps.do_fps:
+            farthest_point_sample_PC_scenes(PC_scene_reg[None, ...], params.N_fps_points)
+        # Feature extraction. [0]: Go from scenes to scene
+        PC_scene_with_features = feature_extraction(PC_scene_reg[None, ...], params)[0]
+        feature_maps = create_feature_map(PC_scene_with_features[0], params)[None, ...]
+        for pair in PC_scene_with_features[1:]:
+            feature_maps = np.concatenate((feature_maps,
+                                           create_feature_map(pair, params)[None, ...]), axis=0)
+        # B, N, D (batch_size, N_pts, feature_dim)
+        points = torch.from_numpy(feature_maps).to(params.device).float()
+        # Note that since we just normalize so that xyz lie within the unit ball,
+        # with the farthest point on the ball => It does not matter which batch size we use.
+        points = normalize_data_on_condition(args, points)
+        batch_size = 8  # Doesn't matter which bs we use in test, as store lots, lets keep it low.
+        points_batches = torch.split(points, batch_size)
+        for j, ps in enumerate(points_batches):
+            if j == 0:
+                p = classify_pairs(pcac_model, ps)
+            else:
+                p  = torch.cat((p, classify_pairs(pcac_model, ps)))
+        preds[i] = p.cpu().numpy()
+    # TODO: Set the acc_col and acc_row to true and solve to get the sum next to the conf matrix.
+    store_confusion_matrix(y_pred=preds.ravel(), y_true=gts.ravel(), N_classes=n_classes,
+                           logger=logger, args=args, accumulate=True)
+    
+    if VISUALIZE_RESULT:
+        def _align_pc(pc, pose):
+            R_new = pose[:3, :3]
+            t_new = pose[:3, 3]
+            return torch.matmul(pc, R_new.T) + t_new[None, :]
+        
+        eye = torch.eye(4, dtype=PC_scene[0].PC0.pc.dtype, device=PC_scene[0].device)
+        to_CS0 = eye.clone()
+
+        for i, (PC_pair, pose) in enumerate(zip(PC_scene, poses_est_scenes[0])):
+            if i == 0:
+                complete_pc = _align_pc(PC_pair.PC0.pc, to_CS0)
+            # pose = to_CS0
+            to_CS0 = to_CS0 @ pose.double()
+            pc_new = _align_pc(PC_pair.PC1.pc, to_CS0)
+            complete_pc = torch.cat((complete_pc, pc_new), dim=0)
+        visualize_and_save(complete_pc, title=f"Point clouds 0 to {i}")
+    return None
+
+
+@hydra.main(config_path="../classifiers/PointTransformers/config", config_name="cls")
+def reg_geotransformer(args):
+    ### SETUP
+    # Extra settings:
+    n_samples_per_scene = args.n_samples_per_scene
+    n_classes = args.perturb_settings.n_classes
+    DO_REG = True
+    VISUALIZE_RESULT = True
+    test_start_scene = 0  # Set to 638 if we want to only test at test data
+    n_scenes = args.n_scenes - test_start_scene
+
+    # Init Nusc object
+    nusc = ns.nuscenes.NuScenes(version=args.dataset, dataroot=args.data_folder, verbose=False)
+    errors_scenes = torch.zeros((n_scenes, n_samples_per_scene), device='cuda')
+
+    args, logger = setup_experiment(args, do_reg=DO_REG)
+    params = Params(nusc=nusc, args=args, pointwise=True)
+    params.set_which_features_to_use(args.features_to_create)
+    pcac_model, _, args = load_best_model(args, logger)
+    preds = np.zeros((n_scenes, n_samples_per_scene))
+    gts = np.zeros((n_scenes, n_samples_per_scene))
+    poses_est_scenes = torch.zeros((n_scenes, n_samples_per_scene, 4, 4), device='cuda')
+    poses_gt_scenes = torch.zeros((n_scenes, n_samples_per_scene, 4, 4), device='cuda')
+    for i in range(n_scenes):
+        PC_scene = read_nuscenes_data(params, mode="test", n_samples=n_samples_per_scene,
+                                      n_scenes=1, scene_counter=i+test_start_scene)[0]
+
+        if i % 5 == 0:
+            print(f"Scene {i}")
+        # Register scene
+        # TODO: Cannot seem overlap_pred to work or Minkowski engine. Try some other method.
+        poses_gt_scenes[i] = ru.get_gt_poses(PC_scene)
+        scale_factor = 0.05
+        pc0 = PC_scene[0].PC0.pc.float().cpu().numpy()
+        pc1 = PC_scene[0].PC1.pc.float().cpu().numpy()
+        pose = poses_gt_scenes[i, 0].float().cpu().numpy()
+
+        # Scale pcs and pose
+        pc0 = scale_factor*pc0
+        pc1 = scale_factor*pc1
+        pose[:3, 3] = scale_factor*pose[:3, 3]
+        dir = '/home2/lu2277di/data/nuscenes_my_files/nuscens_npy/'
+        np.save(dir + 'pc0.npy', pc0)
+        np.save(dir + 'pc1.npy', pc1)
+        np.save(dir + 'gt.npy', pose)
+        import sys
+        sys.exit("Exit early")
         poses_est_scenes[i] = estimate_transformation_scene(PC_scene, method="p2l")
         # Calculate errors
         errors_scenes[i] = ru.get_mean_point_error(PC_scene, poses_est_scenes[i], poses_gt_scenes[i])

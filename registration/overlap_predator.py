@@ -4,7 +4,7 @@ Scripts for pairwise registration demo
 Author: Shengyu Huang
 Last modified: 22.02.2021
 """
-import os, torch, sys, argparse
+import os, torch, sys
 from pathlib import Path
 import numpy as np
 from easydict import EasyDict as edict
@@ -18,7 +18,6 @@ from OverlapPredator.models.architectures import KPFCNN
 from OverlapPredator.lib.utils import load_obj, setup_seed, load_config
 from OverlapPredator.lib.benchmark_utils import ransac_pose_estimation
 
-#sys.path.append('/home/lu2277di/Projects/FACT/OverlapPredator')
 setup_seed(0)
 
 
@@ -31,26 +30,30 @@ class ThreeDMatchDemo(Dataset):
         rot:            [3,3]
         trans:          [3,1]
     """
-    def __init__(self, config, src_pcd, tgt_pcd):
+    def __init__(self,config, src_path, tgt_path):
         super(ThreeDMatchDemo,self).__init__()
         self.config = config
-        self.src_pcd = src_pcd.astype(np.float32)
-        self.tgt_pcd = tgt_pcd.astype(np.float32)
+        self.src_path = src_path
+        self.tgt_path = tgt_path
 
     def __len__(self):
         return 1
 
     def __getitem__(self, item):
-        src_feats=np.ones_like(self.src_pcd[:,:1]).astype(np.float32)
-        tgt_feats=np.ones_like(self.tgt_pcd[:,:1]).astype(np.float32)
+        # get pointcloud
+        src_pcd = torch.load(self.src_path).astype(np.float32)
+        tgt_pcd = torch.load(self.tgt_path).astype(np.float32)   
+        src_feats=np.ones_like(src_pcd[:,:1]).astype(np.float32)
+        tgt_feats=np.ones_like(tgt_pcd[:,:1]).astype(np.float32)
 
         # fake the ground truth information
         rot = np.eye(3).astype(np.float32)
         trans = np.ones((3,1)).astype(np.float32)
         correspondences = torch.ones(1,2).long()
 
-        return (self.src_pcd, self.tgt_pcd, src_feats, tgt_feats, rot, trans, correspondences,
-                self.src_pcd, self.tgt_pcd, torch.ones(1))
+        return (src_pcd, tgt_pcd, src_feats, tgt_feats, rot, trans, correspondences,
+                src_pcd, tgt_pcd, torch.ones(1))
+
 
 def lighter(color, percent):
     '''assumes color is rgb between (0, 0, 0) and (1,1,1)'''
@@ -106,11 +109,10 @@ def main(config, demo_loader):
         ########################################
         # run ransac and draw registration
         tsfm = ransac_pose_estimation(src_pcd, tgt_pcd, src_feats, tgt_feats, mutual=False)
-    print(f"transformation estimate: {tsfm}")
     return tsfm
 
 
-def setup_op_registration(config_path="OverlapPredator/configs/test/indoor.yaml"):
+def setup_op_registration(config_path="OverlapPredator/configs/test/kitti.yaml"):
     # load configs
     # TODO: Perhaps it's better to have the KITTI configs (weights) since nuScenes is outdoors
     path = str(Path(__file__).parent.parent) + "/" + config_path
@@ -157,8 +159,8 @@ def get_neighborhood_limits(config):
     return neighborhood_limits
 
 
-def get_pair_loader(config, neighborhood_limits, src_pc, tgt_pc):
-    demo_set = ThreeDMatchDemo(config, src_pc, tgt_pc)
+def get_pair_loader(config, neighborhood_limits, src_pth, tgt_pth):
+    demo_set = ThreeDMatchDemo(config, src_pth, tgt_pth)
     demo_loader, _ = get_dataloader(dataset=demo_set, batch_size=config.batch_size, shuffle=False,
                                     num_workers=1, neighborhood_limits=neighborhood_limits)
     return demo_loader

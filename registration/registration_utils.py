@@ -151,17 +151,15 @@ def register_pair(source, target, method="p2l", trans_init=None, voxelize=False)
         rel_pose = trans_init.copy()
     elif method == "predator":
         config = op.setup_op_registration()
-        # neighborhood_limits = op.get_neighborhood_limits(config)
-        # neighborhood_limits = np.array([495, 97, 90, 70], dtype=np.int64)
-        # neighborhood_limits = np.array([100, 100, 100, 100], dtype=np.int64)
         neighborhood_limits = None
-        src_pc, tgt_pc = np.asarray(source.points), np.asarray(target.points)
-        src_pc_cuda = torch.tensor(src_pc[None, ...]).cuda()
-        tgt_pc_cuda = torch.tensor(tgt_pc[None, ...]).cuda()
-        src_fps_ids = farthest_point_sample(src_pc_cuda, npoint=2500, inference=True).cpu().numpy()
-        tgt_fps_ids = farthest_point_sample(tgt_pc_cuda, npoint=2500, inference=True).cpu().numpy()
-        src_pc_fps, tgt_pc_fps = src_pc[src_fps_ids].squeeze(), tgt_pc[tgt_fps_ids].squeeze()
-        demo_loader = op.get_pair_loader(config, neighborhood_limits, src_pc_fps, tgt_pc_fps)
+        s = 0.1  # scale_factor
+        src_pc, tgt_pc = s*np.asarray(source.points), s*np.asarray(target.points)
+        dir = '/home/lu2277di/Projects/FACT/data/point_clouds/'
+        src_pth = dir + 'pc0.pth'
+        tgt_pth = dir + 'pc1.pth'
+        torch.save(tgt_pc.squeeze(), src_pth)
+        torch.save(src_pc.squeeze(), tgt_pth)
+        demo_loader = op.get_pair_loader(config, neighborhood_limits, src_pth, tgt_pth)
         rel_pose = op.main(config, demo_loader).copy()
     else:
         sys.exit("Have no other method")
