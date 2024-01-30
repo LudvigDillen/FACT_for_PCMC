@@ -275,7 +275,12 @@ class NuscenesHandling:
 
         # HACK: Avoid circular imports
         from utils.data_handling import list_of_samples_per_scene, calculate_sample_gaps
-
+        tot_samples_in_scene = self.get_number_lidar_samples_in_scene()
+        if n_samples == 'all':
+            n_samples = tot_samples_in_scene - 1
+        elif n_samples == tot_samples_in_scene:
+            print(f"Cannot have {n_samples} pairs in scene with {n_samples} pcs. You get {n_samples - 1}!")
+            n_samples = tot_samples_in_scene - 1
         samples_per_scene = list_of_samples_per_scene(n_samples, n_scenes)
 
         skip_sample_index = 0
@@ -285,7 +290,7 @@ class NuscenesHandling:
         )
         n_skip_samples = len(skip_samples_list)
         while True:
-            if count % 200 == 0 and count != 0:
+            if count % 50 == 0 and count != 0:
                 print(f"We have collected {count} number of samples")
 
             # Load in first point cloud

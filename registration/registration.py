@@ -5,7 +5,7 @@ import numpy as np
 import copy
 
 from utils.parameters import Params
-from utils.nuscenes_handling import read_nuscenes_data
+from utils.nuscenes_handling import read_nuscenes_data, NuscenesHandling
 from utils.pointclouds import farthest_point_sample_PC_scenes
 from utils.experiment_utils import setup_experiment
 from classifiers.PointTransformers.classify import classify_pairs
@@ -58,15 +58,24 @@ def reg_mpe(args):
     n_classes = args.perturb_settings.n_classes
     DO_REG = True
     VISUALIZE_RESULT = True
+    GT_RUN = False
+    REPAIR = True
+    ONE_SCENE = True
     test_start_scene = 0  # Set to 638 if we want to only test at test data
     n_scenes = args.n_scenes - test_start_scene
 
     # Init Nusc object
     nusc = ns.nuscenes.NuScenes(version=args.dataset, dataroot=args.data_folder, verbose=False)
-    errors_scenes = torch.zeros((n_scenes, n_samples_per_scene), device='cuda')
-
     args, logger = setup_experiment(args, do_reg=DO_REG)
     params = Params(nusc=nusc, args=args, pointwise=True)
+    if ONE_SCENE:
+        # Read data
+        PCHandler = NuscenesHandling(params, mode="test", lidar_token=None,
+                                    scene_counter=test_start_scene)
+        if n_samples_per_scene == PCHandler.get_number_lidar_samples_in_scene():
+            n_samples_per_scene -= 1
+
+    errors_scenes = torch.zeros((n_scenes, n_samples_per_scene), device='cuda')
     params.set_which_features_to_use(args.features_to_create)
     pcac_model, _, args = load_best_model(args, logger)
     preds = np.zeros((n_scenes, n_samples_per_scene))
@@ -74,15 +83,18 @@ def reg_mpe(args):
     poses_est_scenes = torch.zeros((n_scenes, n_samples_per_scene, 4, 4), device='cuda')
     poses_gt_scenes = torch.zeros((n_scenes, n_samples_per_scene, 4, 4), device='cuda')
     for i in range(n_scenes):
-        PC_scene = read_nuscenes_data(params, mode="test", n_samples=n_samples_per_scene,
-                                      n_scenes=1, scene_counter=i+test_start_scene)[0]
+        if ONE_SCENE:
+            PC_scene = PCHandler.sample_from_scenes(params, n_samples=n_samples_per_scene, n_scenes=1)[0]
+        else:
+            PC_scene = read_nuscenes_data(params, mode="test", n_samples=n_samples_per_scene,
+                                        n_scenes=1, scene_counter=i+test_start_scene)[0]
     
         if i % 5 == 0:
             print(f"Scene {i}")
         # Register scene
-        # TODO: Cannot seem overlap_pred to work or Minkowski engine. Try some other method.
+        # TODO: Try GeoTransformer
         poses_gt_scenes[i] = ru.get_gt_poses(PC_scene)
-        poses_est_scenes[i] = estimate_transformation_scene(PC_scene, method="predator")
+        poses_est_scenes[i] = estimate_transformation_scene(PC_scene, method="p2l")
         # Calculate errors
         errors_scenes[i] = ru.get_mean_point_error(PC_scene, poses_est_scenes[i], poses_gt_scenes[i])
         gts[i] = ru.get_gt_classes(errors_scenes[i])
@@ -114,7 +126,6 @@ def reg_mpe(args):
             else:
                 p  = torch.cat((p, classify_pairs(pcac_model, ps)))
         preds[i] = p.cpu().numpy()
-    # TODO: Set the acc_col and acc_row to true and solve to get the sum next to the conf matrix.
     store_confusion_matrix(y_pred=preds.ravel(), y_true=gts.ravel(), N_classes=n_classes,
                            logger=logger, args=args, accumulate=True)
     
@@ -127,10 +138,13 @@ def reg_mpe(args):
         eye = torch.eye(4, dtype=PC_scene[0].PC0.pc.dtype, device=PC_scene[0].device)
         to_CS0 = eye.clone()
 
-        for i, (PC_pair, pose) in enumerate(zip(PC_scene, poses_est_scenes[0])):
+        for i, (PC_pair, pose, pose_gt) in enumerate(zip(PC_scene, poses_est_scenes[0], poses_gt_scenes[0])):
             if i == 0:
                 complete_pc = _align_pc(PC_pair.PC0.pc, to_CS0)
-            # pose = to_CS0
+            if REPAIR:
+                predicted_misalignment = (preds[0, i] == 3 or preds[0, i] == 4) 
+                if predicted_misalignment or GT_RUN:
+                    pose = pose_gt
             to_CS0 = to_CS0 @ pose.double()
             pc_new = _align_pc(PC_pair.PC1.pc, to_CS0)
             complete_pc = torch.cat((complete_pc, pc_new), dim=0)
@@ -170,7 +184,7 @@ def reg_geotransformer(args):
         # Register scene
         # TODO: Cannot seem overlap_pred to work or Minkowski engine. Try some other method.
         poses_gt_scenes[i] = ru.get_gt_poses(PC_scene)
-        scale_factor = 0.05
+        scale_factor = 1
         pc0 = PC_scene[0].PC0.pc.float().cpu().numpy()
         pc1 = PC_scene[0].PC1.pc.float().cpu().numpy()
         pose = poses_gt_scenes[i, 0].float().cpu().numpy()
@@ -180,9 +194,17 @@ def reg_geotransformer(args):
         pc1 = scale_factor*pc1
         pose[:3, 3] = scale_factor*pose[:3, 3]
         dir = '/home2/lu2277di/data/nuscenes_my_files/nuscens_npy/'
-        np.save(dir + 'pc0.npy', pc0)
-        np.save(dir + 'pc1.npy', pc1)
+        np.save(dir + 'pc0_nonscaled.npy', pc0)
+        np.save(dir + 'pc1_nonscaled.npy', pc1)
         np.save(dir + 'gt.npy', pose)
+        """
+        Then run GeoTrans with
+        CUDA_VISIBLE_DEVICES=0 python demo.py --ref_file=/home2/lu2277di/data/nuscenes_my_files/nuscens_npy/pc0.npy --src_file=/home2/lu2277di/data/nuscenes_my_files/nuscens_npy/pc1.npy --gt_file=/home2/lu2277di/data/nuscenes_my_files/nuscens_npy/gt.npy --weights=../../weights/geotransformer-3dmatch.pth.tar
+        RRE(deg): 0.112, RTE(m): 0.006
+        kitti non_scaled, neigh [300, 300, 300, 300, 300]
+        RRE(deg): 0.084, RTE(m): 0.158
+
+        TODO: Possiblt try GeoTransformer with kitti-weights instead."""
         import sys
         sys.exit("Exit early")
         poses_est_scenes[i] = estimate_transformation_scene(PC_scene, method="p2l")
