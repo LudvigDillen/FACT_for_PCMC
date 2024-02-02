@@ -18,16 +18,19 @@ import registration.registration_utils as ru
 from visualization.presentation import visualize_and_save
 
 
-def estimate_transformation_scene(PC_scene, method="p2l", voxelize=False, plot=False):
+
+def estimate_transformation_scene(PC_scene, gt_poses, method="p2l", voxelize=False, plot=False,
+                                  geo_args=None):
     trans_init = np.eye(4)
     rel_poses_est = torch.zeros((len(PC_scene), 4, 4), device='cuda')
-    for j, pair in enumerate(PC_scene):
+    for j, (pair, gt_pose) in enumerate(zip(PC_scene, gt_poses)):
         # We want to find T from CS1 to CS0
         source = ru.from_tensor_to_pcd(pair.PC1.pc)
         target = ru.from_tensor_to_pcd(pair.PC0.pc)
 
         rel_poses_est[j] = ru.register_pair(source, target, method=method,
-                                            trans_init=trans_init, voxelize=voxelize)
+                                            trans_init=trans_init, voxelize=voxelize,
+                                            gt_pose=gt_pose, geo_args=geo_args)
 
         if plot:
             vr.draw_registration_result(source, target, rel_poses_est[j].cpu().numpy(),
@@ -58,22 +61,29 @@ def reg_mpe(args):
     n_classes = args.perturb_settings.n_classes
     DO_REG = True
     VISUALIZE_RESULT = True
-    GT_RUN = False
-    REPAIR = True
-    ONE_SCENE = True
-    test_start_scene = 0  # Set to 638 if we want to only test at test data
+    REPAIR_METHOD = "gt"  # [gt, p2l]
+
+    # Some settings if I use geotrans
+    geo_args = ru.get_geo_config(mode="kitti")  # [kitti, 3dmatch]
+    #cfg, neighbor_limits = None, None
+    #
+    if args.one_scene:
+        test_start_scene = args.n_scenes - 1  # Set to 638 if we want to only test at test data
     n_scenes = args.n_scenes - test_start_scene
 
     # Init Nusc object
     nusc = ns.nuscenes.NuScenes(version=args.dataset, dataroot=args.data_folder, verbose=False)
     args, logger = setup_experiment(args, do_reg=DO_REG)
     params = Params(nusc=nusc, args=args, pointwise=True)
-    if ONE_SCENE:
+    if args.one_scene:
         # Read data
         PCHandler = NuscenesHandling(params, mode="test", lidar_token=None,
-                                    scene_counter=test_start_scene)
-        if n_samples_per_scene == PCHandler.get_number_lidar_samples_in_scene():
-            n_samples_per_scene -= 1
+                                     scene_counter=test_start_scene)
+        max_samples = PCHandler.get_number_lidar_samples_in_scene()
+        if n_samples_per_scene >= max_samples:
+            print(f"There are not {n_samples_per_scene} samples in scene {n_scenes}." + 
+                  f" Let's use the max number of samples: {max_samples}.")
+            n_samples_per_scene = max_samples - 1
 
     errors_scenes = torch.zeros((n_scenes, n_samples_per_scene), device='cuda')
     params.set_which_features_to_use(args.features_to_create)
@@ -83,18 +93,18 @@ def reg_mpe(args):
     poses_est_scenes = torch.zeros((n_scenes, n_samples_per_scene, 4, 4), device='cuda')
     poses_gt_scenes = torch.zeros((n_scenes, n_samples_per_scene, 4, 4), device='cuda')
     for i in range(n_scenes):
-        if ONE_SCENE:
+        if args.one_scene:
             PC_scene = PCHandler.sample_from_scenes(params, n_samples=n_samples_per_scene, n_scenes=1)[0]
         else:
             PC_scene = read_nuscenes_data(params, mode="test", n_samples=n_samples_per_scene,
-                                        n_scenes=1, scene_counter=i+test_start_scene)[0]
-    
+                                          n_scenes=1, scene_counter=i+test_start_scene)[0]
+
         if i % 5 == 0:
             print(f"Scene {i}")
         # Register scene
-        # TODO: Try GeoTransformer
         poses_gt_scenes[i] = ru.get_gt_poses(PC_scene)
-        poses_est_scenes[i] = estimate_transformation_scene(PC_scene, method="p2l")
+        poses_est_scenes[i] = estimate_transformation_scene(PC_scene, gt_poses=poses_gt_scenes[i],
+                                                            method="geotrans", geo_args=geo_args)
         # Calculate errors
         errors_scenes[i] = ru.get_mean_point_error(PC_scene, poses_est_scenes[i], poses_gt_scenes[i])
         gts[i] = ru.get_gt_classes(errors_scenes[i])
@@ -137,127 +147,46 @@ def reg_mpe(args):
         
         eye = torch.eye(4, dtype=PC_scene[0].PC0.pc.dtype, device=PC_scene[0].device)
         to_CS0 = eye.clone()
+        to_CSO_repaired = eye.clone()
+        to_CSO_gt = eye.clone()
 
         for i, (PC_pair, pose, pose_gt) in enumerate(zip(PC_scene, poses_est_scenes[0], poses_gt_scenes[0])):
             if i == 0:
                 complete_pc = _align_pc(PC_pair.PC0.pc, to_CS0)
-            if REPAIR:
-                predicted_misalignment = (preds[0, i] == 3 or preds[0, i] == 4) 
-                if predicted_misalignment or GT_RUN:
-                    pose = pose_gt
+                complete_pc_repaired = _align_pc(PC_pair.PC0.pc, to_CSO_repaired)
+                complete_pc_gt = _align_pc(PC_pair.PC0.pc, to_CSO_gt)
+
             to_CS0 = to_CS0 @ pose.double()
             pc_new = _align_pc(PC_pair.PC1.pc, to_CS0)
             complete_pc = torch.cat((complete_pc, pc_new), dim=0)
-        visualize_and_save(complete_pc, title=f"Point clouds 0 to {i}")
-    return None
 
-
-@hydra.main(config_path="../classifiers/PointTransformers/config", config_name="cls")
-def reg_geotransformer(args):
-    ### SETUP
-    # Extra settings:
-    n_samples_per_scene = args.n_samples_per_scene
-    n_classes = args.perturb_settings.n_classes
-    DO_REG = True
-    VISUALIZE_RESULT = True
-    test_start_scene = 0  # Set to 638 if we want to only test at test data
-    n_scenes = args.n_scenes - test_start_scene
-
-    # Init Nusc object
-    nusc = ns.nuscenes.NuScenes(version=args.dataset, dataroot=args.data_folder, verbose=False)
-    errors_scenes = torch.zeros((n_scenes, n_samples_per_scene), device='cuda')
-
-    args, logger = setup_experiment(args, do_reg=DO_REG)
-    params = Params(nusc=nusc, args=args, pointwise=True)
-    params.set_which_features_to_use(args.features_to_create)
-    pcac_model, _, args = load_best_model(args, logger)
-    preds = np.zeros((n_scenes, n_samples_per_scene))
-    gts = np.zeros((n_scenes, n_samples_per_scene))
-    poses_est_scenes = torch.zeros((n_scenes, n_samples_per_scene, 4, 4), device='cuda')
-    poses_gt_scenes = torch.zeros((n_scenes, n_samples_per_scene, 4, 4), device='cuda')
-    for i in range(n_scenes):
-        PC_scene = read_nuscenes_data(params, mode="test", n_samples=n_samples_per_scene,
-                                      n_scenes=1, scene_counter=i+test_start_scene)[0]
-
-        if i % 5 == 0:
-            print(f"Scene {i}")
-        # Register scene
-        # TODO: Cannot seem overlap_pred to work or Minkowski engine. Try some other method.
-        poses_gt_scenes[i] = ru.get_gt_poses(PC_scene)
-        scale_factor = 1
-        pc0 = PC_scene[0].PC0.pc.float().cpu().numpy()
-        pc1 = PC_scene[0].PC1.pc.float().cpu().numpy()
-        pose = poses_gt_scenes[i, 0].float().cpu().numpy()
-
-        # Scale pcs and pose
-        pc0 = scale_factor*pc0
-        pc1 = scale_factor*pc1
-        pose[:3, 3] = scale_factor*pose[:3, 3]
-        dir = '/home2/lu2277di/data/nuscenes_my_files/nuscens_npy/'
-        np.save(dir + 'pc0_nonscaled.npy', pc0)
-        np.save(dir + 'pc1_nonscaled.npy', pc1)
-        np.save(dir + 'gt.npy', pose)
-        """
-        Then run GeoTrans with
-        CUDA_VISIBLE_DEVICES=0 python demo.py --ref_file=/home2/lu2277di/data/nuscenes_my_files/nuscens_npy/pc0.npy --src_file=/home2/lu2277di/data/nuscenes_my_files/nuscens_npy/pc1.npy --gt_file=/home2/lu2277di/data/nuscenes_my_files/nuscens_npy/gt.npy --weights=../../weights/geotransformer-3dmatch.pth.tar
-        RRE(deg): 0.112, RTE(m): 0.006
-        kitti non_scaled, neigh [300, 300, 300, 300, 300]
-        RRE(deg): 0.084, RTE(m): 0.158
-
-        TODO: Possiblt try GeoTransformer with kitti-weights instead."""
-        import sys
-        sys.exit("Exit early")
-        poses_est_scenes[i] = estimate_transformation_scene(PC_scene, method="p2l")
-        # Calculate errors
-        errors_scenes[i] = ru.get_mean_point_error(PC_scene, poses_est_scenes[i], poses_gt_scenes[i])
-        gts[i] = ru.get_gt_classes(errors_scenes[i])
-
-        if DO_REG:
-            PC_scene_reg = align_scene(poses_est_scenes[i], PC_scene, plot=False)
-        else:
-            PC_scene_reg = copy.deepcopy(PC_scene)
-        # EXTRACT FEATURE DATA
-        # FPS on scenes
-        if params.args.fps.do_fps:
-            farthest_point_sample_PC_scenes(PC_scene_reg[None, ...], params.N_fps_points)
-        # Feature extraction. [0]: Go from scenes to scene
-        PC_scene_with_features = feature_extraction(PC_scene_reg[None, ...], params)[0]
-        feature_maps = create_feature_map(PC_scene_with_features[0], params)[None, ...]
-        for pair in PC_scene_with_features[1:]:
-            feature_maps = np.concatenate((feature_maps,
-                                           create_feature_map(pair, params)[None, ...]), axis=0)
-        # B, N, D (batch_size, N_pts, feature_dim)
-        points = torch.from_numpy(feature_maps).to(params.device).float()
-        # Note that since we just normalize so that xyz lie within the unit ball,
-        # with the farthest point on the ball => It does not matter which batch size we use.
-        points = normalize_data_on_condition(args, points)
-        batch_size = 8  # Doesn't matter which bs we use in test, as store lots, lets keep it low.
-        points_batches = torch.split(points, batch_size)
-        for j, ps in enumerate(points_batches):
-            if j == 0:
-                p = classify_pairs(pcac_model, ps)
-            else:
-                p  = torch.cat((p, classify_pairs(pcac_model, ps)))
-        preds[i] = p.cpu().numpy()
-    # TODO: Set the acc_col and acc_row to true and solve to get the sum next to the conf matrix.
-    store_confusion_matrix(y_pred=preds.ravel(), y_true=gts.ravel(), N_classes=n_classes,
-                           logger=logger, args=args, accumulate=True)
+            to_CSO_gt = to_CSO_gt @ pose_gt.double()
+            pc_new = _align_pc(PC_pair.PC1.pc, to_CSO_gt)
+            complete_pc_gt = torch.cat((complete_pc_gt, pc_new), dim=0)
     
-    if VISUALIZE_RESULT:
-        def _align_pc(pc, pose):
-            R_new = pose[:3, :3]
-            t_new = pose[:3, 3]
-            return torch.matmul(pc, R_new.T) + t_new[None, :]
-        
-        eye = torch.eye(4, dtype=PC_scene[0].PC0.pc.dtype, device=PC_scene[0].device)
-        to_CS0 = eye.clone()
+            predicted_misalignment = (preds[0, i] == 3 or preds[0, i] == 4)
+            if predicted_misalignment:
+                if REPAIR_METHOD == "gt":
+                    pose = pose_gt
+                elif REPAIR_METHOD == "p2l":
+                    # We want to find T from CS1 to CS0
+                    source = ru.from_tensor_to_pcd(PC_pair.PC1.pc)
+                    target = ru.from_tensor_to_pcd(PC_pair.PC0.pc)
+                    if i > 0:
+                        new_init = poses_est_scenes[0][i-1].cpu().numpy()
+                    else:
+                        new_init = np.eye(4)
+                    pose = ru.register_pair(source, target, method="p2l",
+                                            trans_init=new_init)
+                else:
+                    print(f"Repair method {REPAIR_METHOD} is not implemented. Using p2l.")
+            to_CSO_repaired = to_CSO_repaired @ pose.double()
+            pc_new = _align_pc(PC_pair.PC1.pc, to_CSO_repaired)
 
-        for i, (PC_pair, pose) in enumerate(zip(PC_scene, poses_gt_scenes[0])):
-            if i == 0:
-                complete_pc = _align_pc(PC_pair.PC0.pc, to_CS0)
-            # pose = to_CS0
-            to_CS0 = to_CS0 @ pose.double()
-            pc_new = _align_pc(PC_pair.PC1.pc, to_CS0)
-            complete_pc = torch.cat((complete_pc, pc_new), dim=0)
+            complete_pc_repaired = torch.cat((complete_pc_repaired, pc_new), dim=0)
+
         visualize_and_save(complete_pc, title=f"Point clouds 0 to {i}")
+        visualize_and_save(complete_pc_repaired, title=f"Point clouds 0 to {i} repaired")
+        visualize_and_save(complete_pc_gt, title=f"Point clouds 0 to {i} gt")
+
     return None

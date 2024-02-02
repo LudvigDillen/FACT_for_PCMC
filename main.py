@@ -9,7 +9,7 @@ from registration.registration import reg_mpe
 # TODO: Why is the previous confusion matrices looking worse than the previous once I gathered?
 #      Compare latex with the most previous confusion matrices. They should be run on the same model
 #      but the results vastly differs.
-# TODO: Commit soon ...
+# TODO: Cannot seem overlap_pred to work or Minkowski engine. Try some other method.
 if __name__ == "__main__":
     if True:
         np.random.seed(1)

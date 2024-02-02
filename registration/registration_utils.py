@@ -3,7 +3,20 @@ import numpy as np
 import open3d as o3d
 import sys
 import open3d.pipelines.registration as treg
-from utils.pointnet_util import farthest_point_sample
+
+import os
+ABS_PTH = os.path.abspath('GeoTransformer_fork')
+sys.path.append(ABS_PTH)
+from experiments.kitti.config import make_cfg as make_cfg_kitti
+from experiments.kitti.model import create_model as create_model_kitti
+from experiments.kitti.dataset import test_data_loader as test_data_loader_kitti
+from experiments.threedmatch.config import make_cfg as make_cfg_3dmatch
+from experiments.threedmatch.model import create_model as create_model_3dmatch
+
+from geotransformer.utils.data import registration_collate_fn_stack_mode
+from geotransformer.utils.torch import to_cuda, release_cuda
+from geotransformer.utils.open3d import make_open3d_point_cloud, get_color, draw_geometries
+from geotransformer.utils.registration import compute_registration_error
 
 from utils.geometrics import change_coordinate_system
 import visualization.registration as vr
@@ -113,7 +126,8 @@ def align_pair(pair, rel_pose):
     return pc1_CS0_reg
 
 
-def register_pair(source, target, method="p2l", trans_init=None, voxelize=False):
+def register_pair(source, target, method="p2l", trans_init=None, voxelize=False,
+                  gt_pose=None, geo_args=None):
     if trans_init is None:
         trans_init = np.asarray([[1.0, 0.0, 0.0, 0.0],
                                  [0.0, 1.0, 0.0, 0.0],
@@ -161,7 +175,17 @@ def register_pair(source, target, method="p2l", trans_init=None, voxelize=False)
         torch.save(src_pc.squeeze(), tgt_pth)
         demo_loader = op.get_pair_loader(config, neighborhood_limits, src_pth, tgt_pth)
         rel_pose = op.main(config, demo_loader).copy()
+    elif method == "geotrans":
+        s = 1
+        if geo_args["mode"] == "3dmatch":
+            s = 0.05
+        src_pc, tgt_pc = s*np.asarray(source.points), s*np.asarray(target.points)
+        gt_pose[:3, 3] = s*gt_pose[:3, 3]
+        output_dict, _ = reg_with_geo(src_pc, tgt_pc, gt_pose.cpu().numpy(), geo_args)
+        rel_pose = output_dict["estimated_transform"]
+        rel_pose[:3, 3]= rel_pose[:3, 3] * 1/s
     else:
+
         sys.exit("Have no other method")
     rel_pose = torch.from_numpy(rel_pose).cuda()
     # print(f"T_Est:\n {rel_pose}")
@@ -188,3 +212,94 @@ def get_gt_classes(errors_scene):
     for i, error in enumerate(errors_scene):
         gt_scene[i] = get_error_class(error)
     return gt_scene
+
+
+def load_data(src_points, ref_points, gt_pose):
+    src_feats = np.ones_like(src_points[:, :1])
+    ref_feats = np.ones_like(ref_points[:, :1])
+
+    data_dict = {
+        "ref_points": ref_points.astype(np.float32),
+        "src_points": src_points.astype(np.float32),
+        "ref_feats": ref_feats.astype(np.float32),
+        "src_feats": src_feats.astype(np.float32),
+    }
+    data_dict["transform"] = gt_pose.astype(np.float32)
+    return data_dict
+
+
+def reg_with_geo(pc0, pc1, gt_pose, geo_args):
+    cfg = geo_args["cfg"]
+
+    data_dict = load_data(pc0, pc1, gt_pose)
+    data_dict = registration_collate_fn_stack_mode(
+        [data_dict], cfg.backbone.num_stages, cfg.backbone.init_voxel_size,
+        cfg.backbone.init_radius, geo_args["neighbor_limits"]
+    )
+
+    # prepare model
+    if geo_args["mode"] == "kitti":
+        model = create_model_kitti(cfg).cuda()
+    elif geo_args["mode"] == "3dmatch":
+        model = create_model_3dmatch(cfg).cuda()
+    else:
+        print(f"Mode {geo_args['mode']} not recognized. Using kitti instead.")
+        model = create_model_kitti(cfg).cuda()
+
+    state_dict = torch.load(str(ABS_PTH) + geo_args["weight_pth"])
+    model.load_state_dict(state_dict["model"])
+
+    # prediction
+    data_dict = to_cuda(data_dict)
+    output_dict = model(data_dict)
+    data_dict = release_cuda(data_dict)
+    output_dict = release_cuda(output_dict)
+    return output_dict, data_dict
+
+
+def get_geo_config(mode):
+    if mode == "kitti":
+        cfg = make_cfg_kitti()
+        _, neighbor_limits = test_data_loader_kitti(cfg)
+    elif mode == "3dmatch":
+        cfg = make_cfg_3dmatch()
+        neighbor_limits = [38, 36, 36, 38]  # default setting in 3DMatch
+    else:
+        sys.exit(f"Mode {mode} does not exist. Choose from kitti and 3dmatch")
+
+    geo_args = {
+        "mode": mode,
+        "cfg": cfg,
+        "neighbor_limits": neighbor_limits,
+        "weight_pth": f"/weights/geotransformer-{mode}.pth.tar"
+    }
+    return geo_args
+
+
+def reg_and_plot(pc0, pc1, gt_pose):
+    # prepare data
+    cfg, neighbor_limits = get_geo_config()
+
+    output_dict, data_dict = reg_with_geo(pc0, pc1, gt_pose, cfg, neighbor_limits)
+
+    # get results
+    ref_points = output_dict["ref_points"]
+    src_points = output_dict["src_points"]
+    estimated_transform = output_dict["estimated_transform"]
+    #transform = 
+    transform = data_dict["transform"]
+
+    # visualization
+    ref_pcd = make_open3d_point_cloud(ref_points)
+    ref_pcd.estimate_normals()
+    ref_pcd.paint_uniform_color(get_color("custom_yellow"))
+    src_pcd = make_open3d_point_cloud(src_points)
+    src_pcd.estimate_normals()
+    src_pcd.paint_uniform_color(get_color("custom_blue"))
+    draw_geometries(ref_pcd, src_pcd)
+    src_pcd = src_pcd.transform(estimated_transform)
+    draw_geometries(ref_pcd, src_pcd)
+
+    # compute error
+    rre, rte = compute_registration_error(transform, estimated_transform)
+    print(f"RRE(deg): {rre:.3f}, RTE(m): {rte:.3f}")

@@ -278,14 +278,14 @@ class NuscenesHandling:
         tot_samples_in_scene = self.get_number_lidar_samples_in_scene()
         if n_samples == 'all':
             n_samples = tot_samples_in_scene - 1
-        elif n_samples == tot_samples_in_scene:
+        elif n_samples >= tot_samples_in_scene:
             print(f"Cannot have {n_samples} pairs in scene with {n_samples} pcs. You get {n_samples - 1}!")
             n_samples = tot_samples_in_scene - 1
         samples_per_scene = list_of_samples_per_scene(n_samples, n_scenes)
 
         skip_sample_index = 0
         skip_samples_list = calculate_sample_gaps(
-            self.get_number_lidar_samples_in_scene(),
+            tot_samples_in_scene,
             samples_per_scene[self.scene_counter - self.scene_counter_init],
         )
         n_skip_samples = len(skip_samples_list)
