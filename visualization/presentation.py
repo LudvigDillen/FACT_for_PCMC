@@ -8,6 +8,7 @@ from utils.experiment_utils import setup_experiment
 from utils.parameters import Params
 import open3d as o3d
 import time
+import matplotlib.cm as cm
 
 
 def visualize_and_save(point_cloud, title="Point Cloud"):
@@ -17,8 +18,19 @@ def visualize_and_save(point_cloud, title="Point Cloud"):
     # Translate point cloud to center it around the origin
     # centroid = points_np.mean(axis=0)
     # points_centered = points_np - centroid
-    mask = points_np[:, 2] > -1
-    pcd.points = o3d.utility.Vector3dVector(points_np[mask])
+    # mask = points_np[:, 2] > -1
+    # points_masked = points_np[mask]
+
+    # Normalize the z-coordinates for color mapping
+    z_coordinates = points_np[:, 2]
+    z_min, z_max = -5, 20
+    z_normalized = (z_coordinates - z_min) / (z_max - z_min)
+
+    # Create a color map
+    colors = cm.jet(z_normalized)[:, :3]  # Get RGB colors from the color map
+
+    pcd.points = o3d.utility.Vector3dVector(points_np)
+    pcd.colors = o3d.utility.Vector3dVector(colors)
 
     vis = o3d.visualization.Visualizer()
     vis.create_window(window_name=title, visible=False)

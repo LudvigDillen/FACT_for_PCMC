@@ -56,24 +56,29 @@ def align_scene(poses_est_scene, PC_scene, plot=False):
 @hydra.main(config_path="../classifiers/PointTransformers/config", config_name="cls")
 def reg_mpe(args):
     ### SETUP
+    # Init Nusc object
+    nusc = ns.nuscenes.NuScenes(version=args.dataset, dataroot=args.data_folder, verbose=False)
+
+    # args.n_scenes = int(scene_ind)
     # Extra settings:
     n_samples_per_scene = args.n_samples_per_scene
     n_classes = args.perturb_settings.n_classes
     DO_REG = True
+    CHANGE_OF_POSE_C1 = True
     VISUALIZE_RESULT = True
     REPAIR_METHOD = "gt"  # [gt, p2l]
+    REG_METHOD = "p2l"  # [p2l, geotrans]
 
     # Some settings if I use geotrans
     geo_args = ru.get_geo_config(mode="kitti")  # [kitti, 3dmatch]
-    #cfg, neighbor_limits = None, None
     #
     if args.one_scene:
         test_start_scene = args.n_scenes - 1  # Set to 638 if we want to only test at test data
     n_scenes = args.n_scenes - test_start_scene
 
-    # Init Nusc object
-    nusc = ns.nuscenes.NuScenes(version=args.dataset, dataroot=args.data_folder, verbose=False)
-    args, logger = setup_experiment(args, do_reg=DO_REG)
+
+    args, logger = setup_experiment(args, do_reg=DO_REG, change_of_pose_C1=CHANGE_OF_POSE_C1,
+                                    reg_method=REG_METHOD)
     params = Params(nusc=nusc, args=args, pointwise=True)
     if args.one_scene:
         # Read data
@@ -94,7 +99,8 @@ def reg_mpe(args):
     poses_gt_scenes = torch.zeros((n_scenes, n_samples_per_scene, 4, 4), device='cuda')
     for i in range(n_scenes):
         if args.one_scene:
-            PC_scene = PCHandler.sample_from_scenes(params, n_samples=n_samples_per_scene, n_scenes=1)[0]
+            PC_scene = PCHandler.sample_from_scenes(params, n_samples=n_samples_per_scene, n_scenes=1,
+                                                    geo_args=geo_args)[0]
         else:
             PC_scene = read_nuscenes_data(params, mode="test", n_samples=n_samples_per_scene,
                                           n_scenes=1, scene_counter=i+test_start_scene)[0]
@@ -103,8 +109,11 @@ def reg_mpe(args):
             print(f"Scene {i}")
         # Register scene
         poses_gt_scenes[i] = ru.get_gt_poses(PC_scene)
-        poses_est_scenes[i] = estimate_transformation_scene(PC_scene, gt_poses=poses_gt_scenes[i],
-                                                            method="geotrans", geo_args=geo_args)
+        if CHANGE_OF_POSE_C1:
+            poses_est_scenes[i] = ru.get_est_rel_poses(PC_scene)
+        else:
+            poses_est_scenes[i] = estimate_transformation_scene(PC_scene, gt_poses=poses_gt_scenes[i],
+                                                                method=REG_METHOD, geo_args=geo_args)
         # Calculate errors
         errors_scenes[i] = ru.get_mean_point_error(PC_scene, poses_est_scenes[i], poses_gt_scenes[i])
         gts[i] = ru.get_gt_classes(errors_scenes[i])
@@ -138,7 +147,6 @@ def reg_mpe(args):
         preds[i] = p.cpu().numpy()
     store_confusion_matrix(y_pred=preds.ravel(), y_true=gts.ravel(), N_classes=n_classes,
                            logger=logger, args=args, accumulate=True)
-    
     if VISUALIZE_RESULT:
         def _align_pc(pc, pose):
             R_new = pose[:3, :3]

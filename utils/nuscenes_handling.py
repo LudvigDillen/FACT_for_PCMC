@@ -257,7 +257,7 @@ class NuscenesHandling:
         num_lidar_sweeps = len(lidar_data)
         return num_lidar_sweeps
 
-    def sample_from_scenes(self, params, n_samples, n_scenes):
+    def sample_from_scenes(self, params, n_samples, n_scenes, geo_args=None):
         """
         Here we return the sample from the dataset s.t. we evenly distribute the sample of the
         number of scenes we want to utilize.
@@ -300,9 +300,10 @@ class NuscenesHandling:
             # Set point cloud pair and their union, and perform possible perturbation
             currentPCPair = PCPair(
                 PC0, PC1, device=params.device, PCHandler=self,
-                perturb_settings=self.perturb_settings, do_reg=params.args.do_reg,
+                perturb_settings=self.perturb_settings, change_of_pose_C1=params.args.change_of_pose_C1,
                 perturbation_method=params.args.perturb_settings.perturbation_method,
-                pc_reg_dist = self.dist_between_sample_inds
+                pc_reg_dist = self.dist_between_sample_inds,
+                reg_method = params.args.reg_method, geo_args=geo_args
             )
 
             if self.apply_hpr_operator:

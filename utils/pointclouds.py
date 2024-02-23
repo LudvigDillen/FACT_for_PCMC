@@ -175,8 +175,8 @@ class PC:
 # the point we choose to select after FPS. This might be true for other things we do as well. Like
 # co-visibility score. Potential speed-up possible there.
 class PCPair:
-    def __init__(self, PC0, PC1, device, PCHandler, perturb_settings, do_reg=False,
-                 perturbation_method="m_classes", pc_reg_dist=1):
+    def __init__(self, PC0, PC1, device, PCHandler, perturb_settings, change_of_pose_C1=False,
+                 perturbation_method="m_classes", pc_reg_dist=1, reg_method="p2l", geo_args=None):
         # Set point cloud pair
         self.PC0 = PC0
         self.pose0 = PCHandler.lidar_pose0.to(device)
@@ -189,8 +189,10 @@ class PCPair:
         self.N_classes = perturb_settings.n_classes
         self.R_bin = perturb_settings.r_bin
         self.t_bin = perturb_settings.t_bin
-        self.registration = do_reg
+        self.change_of_pose_C1 = change_of_pose_C1
         self.perturbation_method = perturbation_method
+        self.reg_method = reg_method
+        self.geo_args = geo_args
         # 1 if point clouds follow each other, 2 if there is one point cloud in between and so on.
         self.pc_reg_dist = pc_reg_dist
         # Draw random value between 0 and 1 if we should perturb or not perturb the point cloud.
@@ -216,7 +218,7 @@ class PCPair:
         pc_union_dists = torch.cat(
             (self.PC0.distances_to_origin, self.PC1.distances_to_origin)
         )
-        if self.registration:
+        if self.change_of_pose_C1 is False:
             self.pc1_CS0 = self.PC1.pc.clone()
         elif self.perturbation_method == "m_classes":  # discrete
             self.pc1_CS0 = change_coordinate_system(self.PC1.pc, self.pose0, self.pose1)
@@ -224,48 +226,52 @@ class PCPair:
             self.R_offset = self.R_bin * self.class_category
             self.t_offset = self.t_bin * self.class_category
             if self.class_category != 0:
-                self.pc1_CS0 = perform_random_perturbation_CorAl(
+                self.pc1_CS0 = self.perform_random_perturbation_CorAl(
                     self.pc1_CS0,
                     angular_offset=self.R_offset,
                     translational_offset=self.t_offset,
                 )
         elif self.perturbation_method in ["GMM", "registration"]:  # continuous
-            if self.perturbation_method == "GMM":
-                s = np.random.rand([0, 1])
-                if s:
-                    self.t_offset = np.random.normal(loc=0, scale=0.05)  # t_tight
-                else:
-                    self.t_offset = np.random.normal(loc=0, scale=0.75)  # t_wide
-                s = np.random.rand([0, 1])
-                if s:
-                    self.R_offset = np.random.normal(loc=0, scale=0.001)  # r_tight
-                else:
-                    self.R_offset = np.random.normal(loc=0, scale=0.015)  # r_wide
-                self.pc1_CS0 = change_coordinate_system(self.PC1.pc, self.pose0, self.pose1)
-                # TODO: Potentially, I want to rewrite perform_random_perturbation_CorAl a bit.
-                self.pc1_CS0 = perform_random_perturbation_CorAl(
-                    self.pc1_CS0,
-                    angular_offset=self.R_offset,
-                    translational_offset=self.t_offset,
-                )
-            else:
-                source = ru.from_tensor_to_pcd(self.PC1.pc)
-                target = ru.from_tensor_to_pcd(self.PC0.pc)
-                rel_pose = ru.register_pair(source, target, method="p2l")
-                gt_pose = torch.matmul(torch.linalg.inv(self.pose0), self.pose1)
-                self.pc1_CS0 = ru.align_pair(self, rel_pose)
+            # CODE FOR GMM is not checked and might not work
+            # if self.perturbation_method == "GMM":
+            #     s = np.random.rand([0, 1])
+            #     if s:
+            #         self.t_offset = np.random.normal(loc=0, scale=0.05)  # t_tight
+            #     else:
+            #         self.t_offset = np.random.normal(loc=0, scale=0.75)  # t_wide
+            #     s = np.random.rand([0, 1])
+            #     if s:
+            #         self.R_offset = np.random.normal(loc=0, scale=0.001)  # r_tight
+            #     else:
+            #         self.R_offset = np.random.normal(loc=0, scale=0.015)  # r_wide
+            #     self.pc1_CS0 = change_coordinate_system(self.PC1.pc, self.pose0, self.pose1)
+            #     # TODO: Potentially, I want to rewrite perform_random_perturbation_CorAl a bit.
+            #     self.pc1_CS0 = perform_random_perturbation_CorAl(
+            #         self.pc1_CS0,
+            #         angular_offset=self.R_offset,
+            #         translational_offset=self.t_offset,
+            #     )
+            gt_pose = torch.matmul(torch.linalg.inv(self.pose0), self.pose1)
 
-                version = "average distance est to gt pose"  # ["average distance est to gt pose", "binary"]
-                if version == "binary":
-                    self.R_offset, self.t_offset = ru.get_transformation_error(rel_pose, gt_pose)
-                    if self.t_offset < 0.1 and self.R_offset < 0.002:
-                        self.class_category = 0
-                    else:
-                        self.class_category = 1
-                elif version == "average distance est to gt pose":
-                    pc1_CS0_gt = ru.align_pair(self, gt_pose)
-                    error = torch.linalg.norm(self.pc1_CS0 - pc1_CS0_gt, dim=1).mean()
-                    self.class_category = ru.get_error_class(error)
+            source = ru.from_tensor_to_pcd(self.PC1.pc)
+            target = ru.from_tensor_to_pcd(self.PC0.pc)
+            rel_pose = ru.register_pair(source, target, method=self.reg_method,
+                                        gt_pose=gt_pose, geo_args=self.geo_args)
+            self.est_rel_pose = rel_pose
+            self.gt_pose = gt_pose
+            self.pc1_CS0 = ru.align_pair(self, rel_pose)
+
+            version = "average distance est to gt pose"  # ["average distance est to gt pose", "binary"]
+            if version == "binary":
+                self.R_offset, self.t_offset = ru.get_transformation_error(rel_pose, gt_pose)
+                if self.t_offset < 0.1 and self.R_offset < 0.002:
+                    self.class_category = 0
+                else:
+                    self.class_category = 1
+            elif version == "average distance est to gt pose":
+                pc1_CS0_gt = ru.align_pair(self, gt_pose)
+                error = torch.linalg.norm(self.pc1_CS0 - pc1_CS0_gt, dim=1).mean()
+                self.class_category = ru.get_error_class(error)
         else:
             sys.exit(f"Perturbation method ({self.perturbation_method}) not known!")
 
@@ -275,47 +281,48 @@ class PCPair:
         return None
 
 
-# TODO: If I want to a speed up I should do this in batches,
-# TODO: Why didn't I perturb T1 instead of PC1?
-def perform_random_perturbation_CorAl(
-    pc, angular_offset=0.01, translational_offset=0.1
-):
-    """
-    This function a point cloud perturb it with an angular and translational offset.
+    # TODO: If I want to a speed up I should do this in batches,
+    # TODO: Why didn't I perturb T1 instead of PC1?
+    def perform_random_perturbation_CorAl(
+        self, pc, angular_offset=0.01, translational_offset=0.1
+    ):
+        """
+        This function a point cloud perturb it with an angular and translational offset.
 
-    :param pc: point cloud
-    :param angular_offset: float, angular offset in radians around the sensor's vertical axis
-                            (default: 0.01 rad)
-    :param translational_offset: float, distance of random translational offset (x,y)-coord in meters
-                                    (default: 0.1 m)
-    :return: perturbed point cloud
-    """
-    # Define rotation with angle "angular_offset" around the up-vector
-    cos_off = torch.cos(torch.tensor(angular_offset))
-    sin_off = torch.sin(torch.tensor(angular_offset))
-    R_peturb = torch.tensor([[cos_off, -sin_off, 0], [sin_off, cos_off, 0], [0, 0, 1]])
+        :param pc: point cloud
+        :param angular_offset: float, angular offset in radians around the sensor's vertical axis
+                                (default: 0.01 rad)
+        :param translational_offset: float, distance of random translational offset (x,y)-coord in meters
+                                        (default: 0.1 m)
+        :return: perturbed point cloud
+        """
+        # Define rotation with angle "angular_offset" around the up-vector
+        cos_off = torch.cos(torch.tensor(angular_offset))
+        sin_off = torch.sin(torch.tensor(angular_offset))
+        R_peturb = torch.tensor([[cos_off, -sin_off, 0], [sin_off, cos_off, 0], [0, 0, 1]])
 
-    # Define random translation offset of 0.1m in (x,y)-plane
-    random_xy_offset = torch.rand((2, 1))
-    scaled_random_xy_offset = (
-        translational_offset * random_xy_offset / torch.norm(random_xy_offset)
-    )
-    z_offset = torch.tensor(0)  # there should be no offset in y-direction
-    t_peturb = torch.vstack((scaled_random_xy_offset, z_offset)).squeeze()
+        # Define random translation offset of 0.1m in (x,y)-plane
+        random_xy_offset = torch.rand((2, 1))
+        scaled_random_xy_offset = (
+            translational_offset * random_xy_offset / torch.norm(random_xy_offset)
+        )
+        z_offset = torch.tensor(0)  # there should be no offset in y-direction
+        t_peturb = torch.vstack((scaled_random_xy_offset, z_offset)).squeeze()
 
-    # Define rigid transformation matrix in homogeneuous coordinates
-    T_peturb = torch.eye(4, dtype=pc.dtype, device=pc.device)
-    T_peturb[:3, :3] = R_peturb
-    T_peturb[:3, 3] = t_peturb
+        # Define rigid transformation matrix in homogeneuous coordinates
+        T_peturb = torch.eye(4, dtype=pc.dtype, device=pc.device)
+        T_peturb[:3, :3] = R_peturb
+        T_peturb[:3, 3] = t_peturb
+        self.est_rel_pose = T_peturb
 
-    # Peturb point cloud
-    n_points = pc.shape[0]
-    homog_ones = torch.ones(n_points, device=pc.device)
-    pc_homog_swapped = torch.vstack((torch.swapaxes(pc, 0, 1), homog_ones))
-    perturbed_point_cloud = torch.swapaxes(
-        torch.matmul(T_peturb, pc_homog_swapped)[:3], 0, 1
-    )
-    return perturbed_point_cloud
+        # Peturb point cloud
+        n_points = pc.shape[0]
+        homog_ones = torch.ones(n_points, device=pc.device)
+        pc_homog_swapped = torch.vstack((torch.swapaxes(pc, 0, 1), homog_ones))
+        perturbed_point_cloud = torch.swapaxes(
+            torch.matmul(T_peturb, pc_homog_swapped)[:3], 0, 1
+        )
+        return perturbed_point_cloud
 
 
 def farthest_point_sample_PC_scenes(PC_scenes, fps_N_points):

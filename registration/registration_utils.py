@@ -113,6 +113,13 @@ def get_gt_poses(PC_scene):
     return rel_poses_gt
 
 
+def get_est_rel_poses(PC_scene):
+    rel_poses_est = torch.zeros((len(PC_scene), 4, 4), device='cuda')
+    for j, pair in enumerate(PC_scene):
+        rel_poses_est[j] = pair.est_rel_pose
+    return rel_poses_est
+
+
 def plot_pc_pair(pair, title):
     pc0_npoints = pair.PC0.N_points
     source = from_tensor_to_pcd(pair.PCUnion.pc[:pc0_npoints])

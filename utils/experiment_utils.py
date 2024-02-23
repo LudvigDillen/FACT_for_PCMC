@@ -93,7 +93,7 @@ def setup_fact_args(args, logger):
     return args
 
 
-def setup_experiment(args, do_reg):
+def setup_experiment(args, do_reg, change_of_pose_C1=True, reg_method="p2l"):
     if args.debug:
         start_debug()
     omegaconf.OmegaConf.set_struct(args, False)
@@ -109,6 +109,8 @@ def setup_experiment(args, do_reg):
     elif args.classifier == "FACT":
         args = setup_fact_args(args, logger)
     args.do_reg = do_reg
+    args.change_of_pose_C1 = change_of_pose_C1
+    args.reg_method = reg_method
     return args, logger
 
 
