@@ -53,8 +53,9 @@ def align_scene(poses_est_scene, PC_scene, plot=False):
     return PC_scene_registered
 
 
-@hydra.main(config_path="../classifiers/PointTransformers/config", config_name="cls")
+@hydra.main(config_path="../classifiers/PointTransformers/config", config_name="cls_registration")
 def reg_mpe(args):
+    print("If you want to plot point clouds. Consider not applying the HPR operator")
     ### SETUP
     # Init Nusc object
     nusc = ns.nuscenes.NuScenes(version=args.dataset, dataroot=args.data_folder, verbose=False)
@@ -65,15 +66,15 @@ def reg_mpe(args):
     n_classes = args.perturb_settings.n_classes
     DO_REG = True
     CHANGE_OF_POSE_C1 = True
-    VISUALIZE_RESULT = True
+    VISUALIZE_RESULT = False
     REPAIR_METHOD = "gt"  # [gt, p2l]
     REG_METHOD = "p2l"  # [p2l, geotrans]
 
-    # Some settings if I use geotrans
-    geo_args = ru.get_geo_config(mode="kitti")  # [kitti, 3dmatch]
+    # Some settings if I use geotrans. Mode in [kitti, 3dmatch]
+    geo_args = ru.get_geo_config(mode="kitti") if REG_METHOD == "geotrans" else None
     #
-    if args.one_scene:
-        test_start_scene = args.n_scenes - 1  # Set to 638 if we want to only test at test data
+    test_start_scene = args.n_scenes - 1 if args.one_scene else 0
+    # Set to 638 if we want to only test at test data
     n_scenes = args.n_scenes - test_start_scene
 
 
@@ -148,6 +149,7 @@ def reg_mpe(args):
     store_confusion_matrix(y_pred=preds.ravel(), y_true=gts.ravel(), N_classes=n_classes,
                            logger=logger, args=args, accumulate=True)
     if VISUALIZE_RESULT:
+        #region Visualize
         def _align_pc(pc, pose):
             R_new = pose[:3, :3]
             t_new = pose[:3, 3]
@@ -196,5 +198,6 @@ def reg_mpe(args):
         visualize_and_save(complete_pc, title=f"Point clouds 0 to {i}")
         visualize_and_save(complete_pc_repaired, title=f"Point clouds 0 to {i} repaired")
         visualize_and_save(complete_pc_gt, title=f"Point clouds 0 to {i} gt")
+        #endregion
 
     return None
