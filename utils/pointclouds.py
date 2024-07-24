@@ -170,18 +170,84 @@ class PC:
         # initiate features
         self.init_features()
 
+def subsample_point_cloud(point_cloud, fraction=0.15):
+    """
+    Subsamples the point cloud by retaining only a fraction of the points.
+    
+    :param point_cloud: Nx3 array of points in the point cloud.
+    :param fraction: Fraction of points to retain.
+    :return: Subsampled point cloud.
+    """
+    num_points = point_cloud.shape[0]
+    num_subsampled_points = int(num_points * fraction)
+    
+    # Randomly select indices to retain
+    indices = np.random.choice(num_points, num_subsampled_points, replace=False)
+    
+    return point_cloud[indices]
+
+import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
+
+def plot_3d_point_clouds(point_cloud1, point_cloud2):
+    """
+    Plots two 3D point clouds in different colors.
+    
+    :param point_cloud1: Nx3 array of points for the first point cloud.
+    :param point_cloud2: Mx3 array of points for the second point cloud.
+    """
+    point_cloud1 = subsample_point_cloud(point_cloud1)
+    point_cloud2 = subsample_point_cloud(point_cloud2)
+                                                
+    fig = plt.figure()
+    ax = fig.add_subplot(111, projection='3d')
+
+    # Plot the first point cloud in blue
+    ax.scatter(point_cloud1[:, 0], point_cloud1[:, 1], point_cloud1[:, 2], c='b', marker='o', s=3, label='Point Cloud 1')
+
+    # Plot the second point cloud in red
+    ax.scatter(point_cloud2[:, 0], point_cloud2[:, 1], point_cloud2[:, 2], c='r', marker='o', s=3, label='Point Cloud 2')
+
+    # Set labels
+    ax.set_xlabel('X')
+    ax.set_ylabel('Y')
+    ax.set_zlabel('Z')
+
+    # Set title
+    ax.set_title('3D Point Clouds')
+
+    # Add legend
+    ax.legend()
+
+    # Show plot
+    plt.show()
+    print("hej")
+
 
 # TODO: I do not need to calculate the distance from the origin for all points. It suffices with
 # the point we choose to select after FPS. This might be true for other things we do as well. Like
 # co-visibility score. Potential speed-up possible there.
 class PCPair:
     def __init__(self, PC0, PC1, device, PCHandler, perturb_settings, change_of_pose_C1=False,
-                 perturbation_method="m_classes", pc_reg_dist=1, reg_method="p2l", geo_args=None):
+                 perturbation_method="m_classes", pc_reg_dist=1, reg_method="p2l", geo_args=None,
+                 est_pc1_to_pc0=None, gt_pc1_to_pc0=None):
         # Set point cloud pair
         self.PC0 = PC0
-        self.pose0 = PCHandler.lidar_pose0.to(device)
         self.PC1 = PC1
-        self.pose1 = PCHandler.lidar_pose1.to(device)
+
+        plot_3d_point_clouds(PC0.pc.cpu(), PC1.pc.cpu())
+
+        if est_pc1_to_pc0 is not None:
+            self.pose0 = torch.eye(4, dtype=PC0.dtype, device=device)
+            self.pose1 = gt_pc1_to_pc0
+            self.already_registered = True
+            self.est_pc1_to_pc0 = est_pc1_to_pc0
+            self.updated_pc1 = change_coordinate_system(PC1.pc, self.pose0, self.pose1)
+            plot_3d_point_clouds(PC0.pc.cpu(), self.updated_pc1.cpu())
+        else:
+            self.pose0 = PCHandler.lidar_pose0.to(device)
+            self.pose1 = PCHandler.lidar_pose1.to(device)
+            self.already_registered = False
 
         self.device = device
 
@@ -252,11 +318,14 @@ class PCPair:
             #         translational_offset=self.t_offset,
             #     )
             gt_pose = torch.matmul(torch.linalg.inv(self.pose0), self.pose1)
-
+            
             source = ru.from_tensor_to_pcd(self.PC1.pc)
             target = ru.from_tensor_to_pcd(self.PC0.pc)
-            rel_pose = ru.register_pair(source, target, method=self.reg_method,
-                                        gt_pose=gt_pose, geo_args=self.geo_args)
+            if self.already_registered:
+                rel_pose = self.est_pc1_to_pc0
+            else:
+                rel_pose = ru.register_pair(source, target, method=self.reg_method,
+                                            gt_pose=gt_pose, geo_args=self.geo_args)
             self.est_rel_pose = rel_pose
             self.gt_pose = gt_pose
             self.pc1_CS0 = ru.align_pair(self, rel_pose)
@@ -276,6 +345,7 @@ class PCPair:
             sys.exit(f"Perturbation method ({self.perturbation_method}) not known!")
 
         # pc_union is in the coordinate system of pc0
+        print(f"Error {error}")
         pc_union = torch.cat((self.PC0.pc, self.pc1_CS0), dim=0)
         self.PCUnion = PC(pc_union, pc_union_dists, label=2, device=self.device)
         return None
