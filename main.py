@@ -3,6 +3,7 @@ import torch
 
 from classifiers.PointTransformers.train_cls import fact
 from registration.registration import reg_mpe
+from registration.geotransformer_handling import geotransformer_with_fact
 
 
 # TODO: Maybe, I should not have an EMD loss when doing binary classification.
@@ -18,4 +19,4 @@ if __name__ == "__main__":
         # If you are using CUDA (PyTorch with GPU support)
         torch.cuda.manual_seed(1)
 
-    reg_mpe()
+    geotransformer_with_fact()
