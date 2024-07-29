@@ -1,6 +1,9 @@
 import os
+import sys
 import numpy as np
 import time
+import torch
+import importlib.util
 
 from features.differential_entropy import differential_entropy_dataset
 from utils.nuscenes_handling import read_nuscenes_data
@@ -253,6 +256,7 @@ def features_to_txt_files(
             read_n_samples = read_n_scenes * params.n_samples_per_scene
 
             # Load data sequentially (can't read all at once, too high memory requirement)
+            # TODO: Probably I can read KITTI instead or use dataloader or something ... Perhaps I create a completely new function for this ...
             PC_scenes = read_nuscenes_data(
                 params,
                 mode,
@@ -279,6 +283,170 @@ def features_to_txt_files(
 
             write_features_to_txt_files(PC_scenes_named, params, data_folder)
     return class_counts
+
+
+def geotrans_features_to_txt_files(
+    scenes_lower,
+    scenes_upper,
+    n_scenes_per_loop,
+    params,
+    mode,
+    class_counts,
+    start,
+    write_mode,
+):
+    """
+    Extract differential entropy features from a range of scenes.
+
+    Parameters:
+    scenes_lower (int): The starting scene index.
+    scenes_upper (int): The ending scene index.
+    n_scenes_per_loop (int): The number of scenes to process in each loop.
+    params (see the class Params in utils.parameters)
+    """
+    # Prepare storage for features
+    assert mode in [
+        "train",
+        "validation",
+        "test",
+    ], f"Specified mode ({mode}) is not known!"
+
+    #region Load some GeoTransformer functions/modules
+    from registration.geotransformer_handling import to_PC_format
+    from GeoTransformer_202407.geotransformer.utils.torch import to_cuda
+
+    # Specify the full path to the config.py file
+    config_path = 'GeoTransformer_202407/experiments/geotransformer.kitti.stage5.gse.k3.max.oacl.stage2.sinkhorn/config.py'
+    dataset_path = 'GeoTransformer_202407/experiments/geotransformer.kitti.stage5.gse.k3.max.oacl.stage2.sinkhorn/dataset.py'
+    model_path = 'GeoTransformer_202407/experiments/geotransformer.kitti.stage5.gse.k3.max.oacl.stage2.sinkhorn/model.py'
+    # Get the module name (you can name it anything that doesn't conflict with existing module names)
+    config_name = 'config_module'
+    dataset_name = 'dataset_module'
+    model_name = 'model_module'
+
+    # Handle some path complications
+    original_cwd = os.getcwd()
+
+    # Change to the parent directory (e.g., back up two levels)
+    os.chdir("../../../")
+
+    geo_path = os.path.abspath('GeoTransformer_202407/experiments/geotransformer.kitti.stage5.gse.k3.max.oacl.stage2.sinkhorn')
+    sys.path.append(geo_path)
+
+    # Load the module
+    config_spec = importlib.util.spec_from_file_location(config_name, config_path)
+    dataset_spec = importlib.util.spec_from_file_location(dataset_name, dataset_path)
+    model_spec = importlib.util.spec_from_file_location(model_name, model_path)
+
+    config_module = importlib.util.module_from_spec(config_spec)
+    dataset_module = importlib.util.module_from_spec(dataset_spec)
+    model_module = importlib.util.module_from_spec(model_spec)
+
+    config_spec.loader.exec_module(config_module)
+    dataset_spec.loader.exec_module(dataset_module)
+    model_spec.loader.exec_module(model_module)
+
+    make_cfg = getattr(config_module, 'make_cfg', None)
+    train_valid_data_loader = getattr(dataset_module, 'train_valid_data_loader', None)
+    test_data_loader = getattr(dataset_module, 'test_data_loader', None)
+    create_model = getattr(model_module, 'create_model', None)
+    #endregion
+
+    cfg = make_cfg()
+    model = create_model(cfg).cuda()
+    snapshot = 'GeoTransformer_202407/weights/geotransformer-kitti.pth.tar'
+    # Load the snapshot
+    print('Loading from "{}".'.format(snapshot))
+    state_dict = torch.load(snapshot, map_location=torch.device('cpu'))
+    assert 'model' in state_dict, 'No model can be loaded.'
+    model.load_state_dict(state_dict['model'], strict=True)
+    print('Model has been loaded.')
+    model.eval()
+    torch.set_grad_enabled(False)
+
+    # Revert back to the original working directory
+    os.chdir(original_cwd)
+
+    from features.feature_extractor import (
+        write_features_to_txt_files,
+        feature_extraction,
+    )
+
+    data_folder = params.args.feature_folder
+    file_name = "PCAC_data_" + mode + ".txt"
+    data_file = os.path.join(data_folder, file_name)
+    scene_counter = scenes_lower
+    with open(data_file, write_mode) as file:
+        if mode == "train":
+            train_loader, _, _ = train_valid_data_loader(cfg, False)  # TODO: Should I augment train data or not
+            loader = train_loader
+        elif mode == "validation":
+            _, val_loader, _ = train_valid_data_loader(cfg, False)  # TODO: Should I augment train data or not
+            loader = val_loader
+        elif mode == "test":
+            test_loader, _ = test_data_loader(cfg)
+            loader = test_loader
+        else:
+            raise ValueError("Unknown mode")
+
+        PC_scenes = []
+        counter = 0
+        for iteration, data_dict in enumerate(loader):  # TODO: I cannot loop through a full epoch ...
+            data_dict = to_cuda(data_dict)
+            # GeoTransformer registration done
+            output_dict = model(data_dict)
+
+            # Extract data from GeoTransformer output
+            src = output_dict['src_points']
+            ref = output_dict['ref_points']
+            gt_trans = data_dict['transform']
+            est_trans = output_dict['estimated_transform']
+            del output_dict, data_dict
+            torch.cuda.empty_cache()
+
+            # TODO: Load more than one scene at a time ...
+            # TODO: I currently do HPR operator things like in nuscenes handling,
+            #       but geotransformer is not trained on HPR operator filtered data, so it might be unfair ...
+            #       I could however compare the difference in performance between the two ...
+            # TODO I think I perhaps should remove the closest points after the registration ...
+            PC_scene = to_PC_format(src, ref, params, est_trans, gt_trans, geo_args=None)
+            PC_scenes.append(PC_scene)
+            counter += 1
+            if (iteration + 1) % n_scenes_per_loop == 0 or scene_counter + counter == scenes_upper:
+                scene_counter += counter
+                # Display data loading progress
+                display_progress(
+                    scene_counter,
+                    params.n_scenes,
+                    mode,
+                    start,
+                    params.train_ratio,
+                    params.args.val_ratio,
+                )
+                PC_scenes = np.array(PC_scenes)
+
+                if params.args.fps.do_fps:
+                    farthest_point_sample_PC_scenes(PC_scenes, params.N_fps_points)
+
+                # Feature extraction.
+                PC_scenes_with_features = feature_extraction(PC_scenes, params)
+
+                # Write class names to text file
+                class_counts, PC_scenes_named = classes_to_txt(
+                    PC_scenes_with_features,
+                    class_counts,
+                    file,
+                    params.class_names,
+                    scene_counter,
+                )
+                del PC_scenes_with_features
+
+                write_features_to_txt_files(PC_scenes_named, params, data_folder)
+                PC_scenes = []
+                counter = 0
+                if scene_counter + counter == scenes_upper:
+                    break
+        return class_counts
 
 
 def get_diff_entropy_features(
@@ -350,7 +518,7 @@ def get_n_scenes_per_loop(n_samples_per_scene, n_training_scenes, n_scenes):
     n_test_scenes = n_scenes - n_training_scenes
     smallest_loop = min(n_test_scenes, n_training_scenes)
     # TODO: Maybe try to increase from 40, could give faster computations ...
-    n_scenes_per_loop = max(round(40 / n_samples_per_scene), 1)
+    n_scenes_per_loop = max(round(100 / n_samples_per_scene), 1)
     n_scenes_per_loop = min(n_scenes_per_loop, smallest_loop)
     return n_scenes_per_loop
 
@@ -474,41 +642,82 @@ def setup_inputs_to_dnn(params):
         # Extract features from the training scenes
 
     if continue_training_extraction:
-        class_counts = features_to_txt_files(
-            scenes_lower=scenes_lower_train,
-            scenes_upper=n_training_scenes,
-            n_scenes_per_loop=n_scenes_per_loop,
-            params=params,
-            mode="train",
-            class_counts=class_counts,
-            start=start,
-            write_mode=write_mode_train,
-        )
-
+        if params.args.general_dataset == "nuscenes":
+            class_counts = features_to_txt_files(
+                scenes_lower=scenes_lower_train,
+                scenes_upper=n_training_scenes,
+                n_scenes_per_loop=n_scenes_per_loop,
+                params=params,
+                mode="train",
+                class_counts=class_counts,
+                start=start,
+                write_mode=write_mode_train,
+            )
+        elif params.args.general_dataset == "kitti":
+            class_counts = geotrans_features_to_txt_files(
+                scenes_lower=scenes_lower_train,
+                scenes_upper=n_training_scenes,
+                n_scenes_per_loop=n_scenes_per_loop,
+                params=params,
+                mode="train",
+                class_counts=class_counts,
+                start=start,
+                write_mode=write_mode_train,
+            )
+        else:
+            raise ValueError("Unknown dataset")
     # Extract features from the validation scenes
     if continue_val_extraction:
-        class_counts = features_to_txt_files(
-            scenes_lower=scenes_lower_val,
-            scenes_upper=n_training_scenes + n_val_scenes,
-            n_scenes_per_loop=n_scenes_per_loop,
-            params=params,
-            mode="validation",
-            class_counts=class_counts,
-            start=start,
-            write_mode=write_mode_val,
-        )
+        if params.args.general_dataset == "nuscenes":
+            class_counts = features_to_txt_files(
+                scenes_lower=scenes_lower_val,
+                scenes_upper=n_training_scenes + n_val_scenes,
+                n_scenes_per_loop=n_scenes_per_loop,
+                params=params,
+                mode="validation",
+                class_counts=class_counts,
+                start=start,
+                write_mode=write_mode_val,
+            )
+        elif params.args.general_dataset == "kitti":
+            class_counts = geotrans_features_to_txt_files(
+                scenes_lower=scenes_lower_val,
+                scenes_upper=n_training_scenes + n_val_scenes,
+                n_scenes_per_loop=n_scenes_per_loop,
+                params=params,
+                mode="validation",
+                class_counts=class_counts,
+                start=start,
+                write_mode=write_mode_val,
+            )
+        else:
+            raise ValueError("Unknown dataset")
 
     # Extract features from the test scenes
-    class_counts = features_to_txt_files(
-        scenes_lower=scenes_lower_test,
-        scenes_upper=params.n_scenes,
-        n_scenes_per_loop=n_scenes_per_loop,
-        params=params,
-        mode="test",
-        class_counts=class_counts,
-        start=start,
-        write_mode=write_mode_test,
-    )
+    if params.args.general_dataset == "nuscenes":
+        class_counts = features_to_txt_files(
+            scenes_lower=scenes_lower_test,
+            scenes_upper=params.n_scenes,
+            n_scenes_per_loop=n_scenes_per_loop,
+            params=params,
+            mode="test",
+            class_counts=class_counts,
+            start=start,
+            write_mode=write_mode_test,
+        )
+    elif params.args.general_dataset == "kitti":
+        class_counts = geotrans_features_to_txt_files(
+            scenes_lower=scenes_lower_test,
+            scenes_upper=params.n_scenes,
+            n_scenes_per_loop=n_scenes_per_loop,
+            params=params,
+            mode="test",
+            class_counts=class_counts,
+            start=start,
+            write_mode=write_mode_test,
+        )
+    else:
+        raise ValueError("Unknown dataset")
 
 
 def extract_max_values_from_end(args, file_path):

@@ -5,18 +5,18 @@ import sys
 import open3d.pipelines.registration as treg
 
 import os
-ABS_PTH = os.path.abspath('GeoTransformer_fork')
-sys.path.append(ABS_PTH)
-from experiments.kitti.config import make_cfg as make_cfg_kitti
-from experiments.kitti.model import create_model as create_model_kitti
-from experiments.kitti.dataset import test_data_loader as test_data_loader_kitti
-from experiments.threedmatch.config import make_cfg as make_cfg_3dmatch
-from experiments.threedmatch.model import create_model as create_model_3dmatch
+#ABS_PTH = os.path.abspath('GeoTransformer_202407')
+#sys.path.append(ABS_PTH)
+# from experiments.kitti.config import make_cfg as make_cfg_kitti
+# from experiments.kitti.model import create_model as create_model_kitti
+# from experiments.kitti.dataset import test_data_loader as test_data_loader_kitti
+# from experiments.threedmatch.config import make_cfg as make_cfg_3dmatch
+# from experiments.threedmatch.model import create_model as create_model_3dmatch
 
-from geotransformer.utils.data import registration_collate_fn_stack_mode
-from geotransformer.utils.torch import to_cuda, release_cuda
-from geotransformer.utils.open3d import make_open3d_point_cloud, get_color, draw_geometries
-from geotransformer.utils.registration import compute_registration_error
+# from geotransformer.utils.data import registration_collate_fn_stack_mode
+# from geotransformer.utils.torch import to_cuda, release_cuda
+# from geotransformer.utils.open3d import make_open3d_point_cloud, get_color, draw_geometries
+# from geotransformer.utils.registration import compute_registration_error
 
 from utils.geometrics import change_coordinate_system
 import visualization.registration as vr
@@ -128,8 +128,8 @@ def plot_pc_pair(pair, title):
 
 
 def align_pair(pair, rel_pose):
-    pose0_CS0 = torch.eye(4).to(pair.device).to(torch.float64)
-    pc1_CS0_reg = change_coordinate_system(pair.PC1.pc, pose0_CS0, rel_pose.to(torch.float64))
+    pose0_CS0 = torch.eye(4).to(pair.device).to(pair.PC1.dtype)
+    pc1_CS0_reg = change_coordinate_system(pair.PC1.pc, pose0_CS0, rel_pose.to(pair.PC1.dtype))
     return pc1_CS0_reg
 
 
@@ -192,24 +192,37 @@ def register_pair(source, target, method="p2l", trans_init=None, voxelize=False,
         rel_pose = output_dict["estimated_transform"]
         rel_pose[:3, 3]= rel_pose[:3, 3] * 1/s
     else:
-
         sys.exit("Have no other method")
     rel_pose = torch.from_numpy(rel_pose).cuda()
     # print(f"T_Est:\n {rel_pose}")
     return rel_pose
 
 
-def get_error_class(error):
-    if error < 0.03:
-        error_class = 0
-    elif error < 0.10:
-        error_class = 1
-    elif error < 0.25:
-        error_class = 2
-    elif error < 0.5:
-        error_class = 3
+def get_error_class(error, reg_method="p2l"):
+    if reg_method == "p2l":
+        if error < 0.03:
+            error_class = 0
+        elif error < 0.10:
+            error_class = 1
+        elif error < 0.25:
+            error_class = 2
+        elif error < 0.5:
+            error_class = 3
+        else:
+            error_class = 4
+    elif reg_method == "geotransformer":
+        if error < 0.07:
+            error_class = 0
+        elif error < 0.085:
+            error_class = 1
+        elif error < 0.10:
+            error_class = 2
+        elif error < 0.14:
+            error_class = 3
+        else:
+            error_class = 4
     else:
-        error_class = 4
+        sys.exit(f"Registration method {reg_method} not recognized")
     return error_class
 
 

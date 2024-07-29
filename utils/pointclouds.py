@@ -170,7 +170,7 @@ class PC:
         # initiate features
         self.init_features()
 
-def subsample_point_cloud(point_cloud, fraction=0.15):
+def subsample_point_cloud(point_cloud, fraction=0.20):
     """
     Subsamples the point cloud by retaining only a fraction of the points.
     
@@ -221,7 +221,6 @@ def plot_3d_point_clouds(point_cloud1, point_cloud2):
 
     # Show plot
     plt.show()
-    print("hej")
 
 
 # TODO: I do not need to calculate the distance from the origin for all points. It suffices with
@@ -235,15 +234,18 @@ class PCPair:
         self.PC0 = PC0
         self.PC1 = PC1
 
-        plot_3d_point_clouds(PC0.pc.cpu(), PC1.pc.cpu())
+        # plot_3d_point_clouds(PC0.pc.cpu(), PC1.pc.cpu())
 
         if est_pc1_to_pc0 is not None:
+            # This below is correct, I have checked around 15 samples and they all look good (
+            # except one which I think has error in the ground truth pose).
             self.pose0 = torch.eye(4, dtype=PC0.dtype, device=device)
             self.pose1 = gt_pc1_to_pc0
             self.already_registered = True
+            reg_method = "geotransformer"
             self.est_pc1_to_pc0 = est_pc1_to_pc0
-            self.updated_pc1 = change_coordinate_system(PC1.pc, self.pose0, self.pose1)
-            plot_3d_point_clouds(PC0.pc.cpu(), self.updated_pc1.cpu())
+            #self.updated_pc1 = change_coordinate_system(PC1.pc, self.pose0, self.pose1)
+            #plot_3d_point_clouds(PC0.pc.cpu(), self.updated_pc1.cpu())
         else:
             self.pose0 = PCHandler.lidar_pose0.to(device)
             self.pose1 = PCHandler.lidar_pose1.to(device)
@@ -272,7 +274,7 @@ class PCPair:
         self.PC0 = PC0
         self.PC1 = PC1
         self.PCUnion = PCUnion
-        # There was a bugg here previously where we had this line:
+        # TODO: Remove line this later ... There was a bugg here previously where we had this line:
         # self.pc1_CS0 = change_coordinate_system(PC1.pc, self.pose0, self.pose1)
         # instead of the one below
         self.pc1_CS0 = PCUnion.pc[PC0.pc.shape[0] :]
@@ -319,11 +321,11 @@ class PCPair:
             #     )
             gt_pose = torch.matmul(torch.linalg.inv(self.pose0), self.pose1)
             
-            source = ru.from_tensor_to_pcd(self.PC1.pc)
-            target = ru.from_tensor_to_pcd(self.PC0.pc)
             if self.already_registered:
                 rel_pose = self.est_pc1_to_pc0
             else:
+                source = ru.from_tensor_to_pcd(self.PC1.pc)
+                target = ru.from_tensor_to_pcd(self.PC0.pc)
                 rel_pose = ru.register_pair(source, target, method=self.reg_method,
                                             gt_pose=gt_pose, geo_args=self.geo_args)
             self.est_rel_pose = rel_pose
@@ -340,12 +342,12 @@ class PCPair:
             elif version == "average distance est to gt pose":
                 pc1_CS0_gt = ru.align_pair(self, gt_pose)
                 error = torch.linalg.norm(self.pc1_CS0 - pc1_CS0_gt, dim=1).mean()
-                self.class_category = ru.get_error_class(error)
+                self.class_category = ru.get_error_class(error, self.reg_method)
         else:
             sys.exit(f"Perturbation method ({self.perturbation_method}) not known!")
 
         # pc_union is in the coordinate system of pc0
-        print(f"Error {error}")
+        # print(f"Error {error:.3f} and class {self.class_category}")
         pc_union = torch.cat((self.PC0.pc, self.pc1_CS0), dim=0)
         self.PCUnion = PC(pc_union, pc_union_dists, label=2, device=self.device)
         return None
