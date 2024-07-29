@@ -19,4 +19,4 @@ if __name__ == "__main__":
         # If you are using CUDA (PyTorch with GPU support)
         torch.cuda.manual_seed(1)
 
-    geotransformer_with_fact()
+    fact()
