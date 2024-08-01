@@ -262,3 +262,40 @@ def reg_test_rll(args):
     f.close()
     # TODO: Remember that poses_d will be in mm later 
     print("Done!")
+
+
+# import matplotlib.pyplot as plt
+# from mpl_toolkits.mplot3d import Axes3D
+
+# def plot_3d_point_clouds(point_cloud1, point_cloud2):
+#     """
+#     Plots two 3D point clouds in different colors.
+    
+#     :param point_cloud1: Nx3 array of points for the first point cloud.
+#     :param point_cloud2: Mx3 array of points for the second point cloud.
+#     """
+#     point_cloud1 = subsample_point_cloud(point_cloud1)
+#     point_cloud2 = subsample_point_cloud(point_cloud2)
+                                                
+#     fig = plt.figure()
+#     ax = fig.add_subplot(111, projection='3d')
+
+#     # Plot the first point cloud in blue
+#     ax.scatter(point_cloud1[:, 0], point_cloud1[:, 1], point_cloud1[:, 2], c='b', marker='o', s=3, label='Point Cloud 1')
+
+#     # Plot the second point cloud in red
+#     ax.scatter(point_cloud2[:, 0], point_cloud2[:, 1], point_cloud2[:, 2], c='r', marker='o', s=3, label='Point Cloud 2')
+
+#     # Set labels
+#     ax.set_xlabel('X')
+#     ax.set_ylabel('Y')
+#     ax.set_zlabel('Z')
+
+#     # Set title
+#     ax.set_title('3D Point Clouds')
+
+#     # Add legend
+#     ax.legend()
+
+#     # Show plot
+#     plt.show()

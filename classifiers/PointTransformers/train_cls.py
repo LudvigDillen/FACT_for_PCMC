@@ -9,6 +9,9 @@ from tqdm import tqdm
 import importlib
 import shutil
 import hydra
+from hydra import compose, initialize
+from omegaconf import OmegaConf
+
 
 import nuscenes as ns
 from features.feature_extractor import extract_features_to_txt_files
@@ -111,10 +114,41 @@ def load_model(model_path, classifier):
     return classifier, start_epoch
 
 
+# def load_best_model(cfg, logger, pretrained=True):
+#     if cfg.classifier == "FACT":
+#         cfg.input_dim, cfg = fu.number_of_features(cfg)
+#         shutil.copy(
+#             hydra.utils.to_absolute_path(
+#                 f"classifiers/PointTransformers/models/{cfg.model.name}/model.py"), ".")
+
+#         if torch.cuda.is_available():
+#             classifier = getattr(
+#                 importlib.import_module(
+#                     f"classifiers.PointTransformers.models.{cfg.model.name}.model"),
+#                 "PointTransformerCls")(cfg).cuda()
+#         else:
+#             classifier = getattr(
+#                 importlib.import_module(
+#                     f"classifiers.PointTransformers.models.{cfg.model.name}.model"),
+#                 "PointTransformerCls")(cfg)
+#     elif cfg.classifier == "CorAl":
+#         shutil.copy(
+#             hydra.utils.to_absolute_path("classifiers/regression.py"), ".")
+#         classifier = getattr(
+#             importlib.import_module("classifiers.regression"),
+#             "LogisticRegression")(input_dim=2, output_dim=1)
+
+#     start_epoch = 0
+#     if pretrained and cfg.load_model_path:
+#         classifier, start_epoch = load_model(cfg.load_model_path, classifier)
+#         logger.info("Use pretrain model")
+
+#     return classifier, start_epoch, cfg
+
+
 def load_best_model(args, logger, pretrained=True):
     if args.classifier == "FACT":
         args.input_dim, args = fu.number_of_features(args)
-        print(f"Input dim: {args.input_dim}")
         shutil.copy(
             hydra.utils.to_absolute_path(
                 "classifiers/PointTransformers/models/{}/model.py".format(args.model.name)), ".")
@@ -275,8 +309,11 @@ def run_test(args, logger, classifier):
     logger.info("End of training...")
     return test_instance_acc, test_class_acc, y_true, y_pred
 
-
-@hydra.main(config_path="config", config_name="cls")
+# Choose either cls_default or cls_adaptive.
+# @hydra.main(config_path="config", config_name="cls_adaptive")
+#@hydra.main(config_path="config", config_name="cls_registration_geotrans_3dmatch")
+@hydra.main(config_path="config", config_name="cls_registration_geotrans_kitti")
+# @hydra.main(config_path="config", config_name="cls_registration")
 def fact(args):
     args, logger = eu.setup_experiment(args, do_reg=False)
 
@@ -288,7 +325,7 @@ def fact(args):
 
         # EXTRACT FEATURES
         if not args.re_use_data:
-            logger.info("Load dataset ...")
+            logger.info("Load dataset ...") # TODO: Not necessary to use nusc if I train on KITTI, but leave for now
             nusc = ns.nuscenes.NuScenes(
                 version=args.dataset, dataroot=args.data_folder, verbose=False)
             logger.info("Start feature extraction")
@@ -337,15 +374,6 @@ def fact(args):
                 ordinal_regression=args.coral_settings.ordinal_regression)
         elif args.classifier == "FACT":
             _, _, y_test, y_pred = run_test(args, logger, classifier)
-            if args.reparation_settings.run_strong_registration_alg:
-                for i, pred in enumerate(y_pred):
-                    if pred in [3, 4]:
-                        print(f"Rerun registration with predator registration")
-                        print(f"But write this code in registration.py instead. To start with at least")
-                        # TODO: Rerun registration with predator
-                # TODO: Evaluate if things got better
-                #   - We could look at the how the number of aligned point clouds have changed
-                #   - We could look at our test but then we'd have to extract features again
 
         # VISUALIZE RESULTS
         if args.classifier == "CorAl":
