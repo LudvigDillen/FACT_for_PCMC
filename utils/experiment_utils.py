@@ -106,8 +106,12 @@ def setup_experiment(args, do_reg, change_of_pose_C1=True, reg_method="p2l"):
     # NOTICE THAT THE BELOW OVERWRITES SOME SETTINGS
     if args.classifier == "CorAl":
         args = setup_coral_args(args, logger)
-    elif args.classifier == "FACT":
+    elif args.classifier == "FACT" and args.general_dataset == "nuscenes":
         args = setup_fact_args(args, logger)
+    elif args.general_dataset in ["kitti", "3dmatch", "3dlomatch", "modelnet"]:
+        args = process_features(args)
+    else:
+        sys.exit(f"ERROR: Did not get a valid dataset: {args.general_dataset}")
     args.do_reg = do_reg
     args.change_of_pose_C1 = change_of_pose_C1
     args.reg_method = reg_method
@@ -116,25 +120,38 @@ def setup_experiment(args, do_reg, change_of_pose_C1=True, reg_method="p2l"):
 
 def setup_args_for_iteration(i, args):
     # High Performance
+    # if i == 0:
+    #     args.feature_folder = (
+    #         "/home/luddi824/thesis/PCAC/data/PCAC_data/FACT_best_network_optimal"
+    #     )
+    #     args.model_identifier = "FACT_best_network_optimal"
+    #     args.re_use_data = True
+    # elif i == 1:  # Fast
+    #     args.feature_folder = (
+    #         "/home/luddi824/thesis/PCAC/data/PCAC_data/FACT_best_network_fast"
+    #     )
+    #     args.model_identifier = "FACT_best_network_fast"
+    #     args.preprocessing.T_close = 2.5
+    #     args.features_to_create.use_c = False
+    #     args.features_to_use.use_c = False
+    #     args.fps.num_point = 1024
+    #     args.batch_size = 32
+    #     args.epoch = 200
+    #     args.lr_gamma = 0.80
+    #     args.re_use_data = False
     if i == 0:
-        args.feature_folder = (
-            "/home/luddi824/thesis/PCAC/data/PCAC_data/FACT_best_network_optimal"
-        )
         args.model_identifier = "FACT_best_network_optimal"
-        args.re_use_data = True
-    elif i == 1:  # Fast
-        args.feature_folder = (
-            "/home/luddi824/thesis/PCAC/data/PCAC_data/FACT_best_network_fast"
-        )
-        args.model_identifier = "FACT_best_network_fast"
-        args.preprocessing.T_close = 2.5
-        args.features_to_create.use_c = False
-        args.features_to_use.use_c = False
-        args.fps.num_point = 1024
-        args.batch_size = 32
-        args.epoch = 200
-        args.lr_gamma = 0.80
+        args.lambda_lf = 0.5
         args.re_use_data = False
+    elif i == 1:
+        args.model_identifier = "FACT_best_network_optimal_lambda0"
+        args.lambda_lf = 0
+        args.re_use_data = True
+    elif i == 2:
+        args.model_identifier = "FACT_best_network_optimal_lambda1"
+        args.lambda_lf = 1
+        args.re_use_data = True
+    # High Performance
     else:
         sys.exit(f"Not supposed to be more than {args.running_iterations} runs")
     args = process_features(args)
