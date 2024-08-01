@@ -6,6 +6,7 @@ import numpy as np
 from utils.pointnet_util import pad_point_clouds, farthest_point_sample_paddded
 from utils.geometrics import change_coordinate_system
 import registration.registration_utils as ru
+from visualization.point_clouds import vis_2pcs
 
 
 class PCAC_dataset(torch.utils.data.Dataset):
@@ -186,42 +187,6 @@ def subsample_point_cloud(point_cloud, fraction=0.20):
     
     return point_cloud[indices]
 
-import matplotlib.pyplot as plt
-from mpl_toolkits.mplot3d import Axes3D
-
-def plot_3d_point_clouds(point_cloud1, point_cloud2):
-    """
-    Plots two 3D point clouds in different colors.
-    
-    :param point_cloud1: Nx3 array of points for the first point cloud.
-    :param point_cloud2: Mx3 array of points for the second point cloud.
-    """
-    point_cloud1 = subsample_point_cloud(point_cloud1)
-    point_cloud2 = subsample_point_cloud(point_cloud2)
-                                                
-    fig = plt.figure()
-    ax = fig.add_subplot(111, projection='3d')
-
-    # Plot the first point cloud in blue
-    ax.scatter(point_cloud1[:, 0], point_cloud1[:, 1], point_cloud1[:, 2], c='b', marker='o', s=3, label='Point Cloud 1')
-
-    # Plot the second point cloud in red
-    ax.scatter(point_cloud2[:, 0], point_cloud2[:, 1], point_cloud2[:, 2], c='r', marker='o', s=3, label='Point Cloud 2')
-
-    # Set labels
-    ax.set_xlabel('X')
-    ax.set_ylabel('Y')
-    ax.set_zlabel('Z')
-
-    # Set title
-    ax.set_title('3D Point Clouds')
-
-    # Add legend
-    ax.legend()
-
-    # Show plot
-    plt.show()
-
 
 # TODO: I do not need to calculate the distance from the origin for all points. It suffices with
 # the point we choose to select after FPS. This might be true for other things we do as well. Like
@@ -229,12 +194,10 @@ def plot_3d_point_clouds(point_cloud1, point_cloud2):
 class PCPair:
     def __init__(self, PC0, PC1, device, PCHandler, perturb_settings, change_of_pose_C1=False,
                  perturbation_method="m_classes", pc_reg_dist=1, reg_method="p2l", geo_args=None,
-                 est_pc1_to_pc0=None, gt_pc1_to_pc0=None):
+                 est_pc1_to_pc0=None, gt_pc1_to_pc0=None, geotrans_dataset="kitti"):
         # Set point cloud pair
         self.PC0 = PC0
         self.PC1 = PC1
-
-        # plot_3d_point_clouds(PC0.pc.cpu(), PC1.pc.cpu())
 
         if est_pc1_to_pc0 is not None:
             # This below is correct, I have checked around 15 samples and they all look good (
@@ -244,8 +207,10 @@ class PCPair:
             self.already_registered = True
             reg_method = "geotransformer"
             self.est_pc1_to_pc0 = est_pc1_to_pc0
-            #self.updated_pc1 = change_coordinate_system(PC1.pc, self.pose0, self.pose1)
-            #plot_3d_point_clouds(PC0.pc.cpu(), self.updated_pc1.cpu())
+            plot = False
+            if plot:
+                updated_pc = change_coordinate_system(PC1.pc, self.pose0, self.pose1)
+                vis_2pcs(self.PC0.pc.cpu(), updated_pc.cpu(), title="GT aligned")
         else:
             self.pose0 = PCHandler.lidar_pose0.to(device)
             self.pose1 = PCHandler.lidar_pose1.to(device)
@@ -330,7 +295,7 @@ class PCPair:
                                             gt_pose=gt_pose, geo_args=self.geo_args)
             self.est_rel_pose = rel_pose
             self.gt_pose = gt_pose
-            self.pc1_CS0 = ru.align_pair(self, rel_pose)
+            self.pc1_CS0 = ru.align_pair(self, rel_pose, plot=False)
 
             version = "average distance est to gt pose"  # ["average distance est to gt pose", "binary"]
             if version == "binary":
@@ -340,7 +305,7 @@ class PCPair:
                 else:
                     self.class_category = 1
             elif version == "average distance est to gt pose":
-                pc1_CS0_gt = ru.align_pair(self, gt_pose)
+                pc1_CS0_gt = ru.align_pair(self, gt_pose, plot=False)
                 error = torch.linalg.norm(self.pc1_CS0 - pc1_CS0_gt, dim=1).mean()
                 self.class_category = ru.get_error_class(error, self.reg_method)
         else:

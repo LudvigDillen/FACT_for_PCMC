@@ -12,21 +12,27 @@ def vis_pc(pc):
     vis.destroy_window()
 
 
-def vis_2pcs(pc0, pc1):
+def vis_2pcs(pc0, pc1, title="point cloud registration", cmap=None):
     pcdl = []
     for i, pc in enumerate([pc0, pc1]):
         zval = np.ones(pc.shape[0])
         cvec = np.zeros((len(zval), 3))
-        if i == 0:
-            cvec[:, 2] = zval  # All blue colormap
-        elif i == 1:
-            cvec[:, 1] = zval  # All green colormap
+        if cmap is not None:
+            if i == 0:
+                cvec[:, 2] = cmap[0:pc0.shape[0]].astype(np.float64)
+            else:
+                cvec[:, 1] = cmap[pc0.shape[0]:].astype(np.float64)
+        else:
+            if i == 0:
+                cvec[:, 2] = zval  # All blue colormap
+            elif i == 1:
+                cvec[:, 1] = zval  # All green colormap
         pcd = o3d.geometry.PointCloud()
         pcd.points = o3d.utility.Vector3dVector(pc)
         pcd.colors = o3d.utility.Vector3dVector(cvec)
         pcdl.append(pcd)
     vis = o3d.visualization.Visualizer()
-    vis.create_window()
+    vis.create_window(window_name=title, width=1900, height=2000)
     for pc in pcdl:
         vis.add_geometry(pc)
     vis.run()
