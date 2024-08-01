@@ -6,24 +6,21 @@ import numpy as np
 import copy
 
 from utils.parameters import Params
-from utils.nuscenes_handling import read_nuscenes_data, NuscenesHandling
 from utils.pointclouds import farthest_point_sample_PC_scenes
 from utils.experiment_utils import setup_experiment
 from classifiers.PointTransformers.classify import classify_pairs
 from classifiers.PointTransformers.train_cls import load_best_model
-from visualization.classifications import store_confusion_matrix
-import visualization.registration as vr
 from features.feature_extractor import feature_extraction, create_feature_map
 from features.feature_utils import normalize_data_on_condition
-import registration.registration_utils as ru
-from visualization.presentation import visualize_and_save
 
-from utils.geometrics import transformation_matrix
 from utils.pointclouds import PC, PCPair
 from utils.visibility import keep_covisible_points
+from utils.geometrics import change_coordinate_system
+from visualization.point_clouds import vis_2pcs
 
 
-@hydra.main(config_path="../classifiers/PointTransformers/config", config_name="cls_registration")
+#@hydra.main(config_path="../classifiers/PointTransformers/config", config_name="cls_registration")
+@hydra.main(config_path="../classifiers/PointTransformers/config", config_name="cls_adaptive")
 def geotransformer_with_fact(args):
     # Set the environment variable
     os.environ['CUDA_VISIBLE_DEVICES'] = '0'
@@ -125,13 +122,12 @@ def to_PC_format(src_pc, ref_pc, params, est_trans, gt_trans, geo_args=None):
         perturb_settings=params.args.perturb_settings, change_of_pose_C1=params.args.change_of_pose_C1,
         perturbation_method=params.args.perturb_settings.perturbation_method,
         reg_method = params.args.reg_method, geo_args=geo_args, est_pc1_to_pc0=est_trans,
-        gt_pc1_to_pc0=gt_trans,
+        gt_pc1_to_pc0=gt_trans, geotrans_dataset=params.args.general_dataset
     )
-    #from utils.geometrics import change_coordinate_system
-    #from visualization.point_clouds import vis_2pcs
+
 
     #updated_pc1 = change_coordinate_system(PC1.pc, currentPCPair.pose0, currentPCPair.pose1)
-    #vis_2pcs(PC0.pc.cpu(), updated_pc1.cpu())
+    #v'is_2pcs(PC0.pc.cpu(), updated_pc1.cpu())
     if params.args.preprocessing.apply_hpr_operator:
         # Calculate the co-visible points
         PC0_cov, PC1_cov, PCUnion_cov = keep_covisible_points(
@@ -145,5 +141,11 @@ def to_PC_format(src_pc, ref_pc, params, est_trans, gt_trans, geo_args=None):
     PC_scene = np.array([currentPCPair])  # this is just the format that the code expects
 
     #updated_cov_pc1 = change_coordinate_system(PC1_cov.pc, currentPCPair.pose0, currentPCPair.pose1)
-    #vis_2pcs(PC0_cov.pc.cpu(), updated_cov_pc1.cpu())
+    #vis_2pcs(PC0_cov.pc.cpu(), updated_cov_pc1.cpu(), title="Gt aligned co-visible points")
+
+    #far_points0 = PC0_cov.pc[torch.norm(PC0_cov.pc, dim=1) > 10]
+    #far_points1 = updated_cov_pc1[torch.norm(updated_cov_pc1, dim=1) > 10]
+
+    #vis_2pcs(PC0_cov.pc.cpu(), updated_cov_pc1.cpu(), title="Gt aligned co-visible points (colored)",
+    #         cmap=PCUnion_cov.weight_c.cpu().numpy())
     return PC_scene
