@@ -315,10 +315,23 @@ def geotrans_features_to_txt_files(
     from registration.geotransformer_handling import to_PC_format
     from GeoTransformer_202407.geotransformer.utils.torch import to_cuda
 
-    # Specify the full path to the config.py file
-    config_path = 'GeoTransformer_202407/experiments/geotransformer.kitti.stage5.gse.k3.max.oacl.stage2.sinkhorn/config.py'
-    dataset_path = 'GeoTransformer_202407/experiments/geotransformer.kitti.stage5.gse.k3.max.oacl.stage2.sinkhorn/dataset.py'
-    model_path = 'GeoTransformer_202407/experiments/geotransformer.kitti.stage5.gse.k3.max.oacl.stage2.sinkhorn/model.py'
+    weight_dir = 'GeoTransformer_202407/weights'
+    if params.args.general_dataset == 'kitti':
+        geo_folder = 'GeoTransformer_202407/experiments/geotransformer.kitti.stage5.gse.k3.max.oacl.stage2.sinkhorn'
+        snapshot = os.path.join(weight_dir, 'geotransformer-kitti.pth.tar')
+    elif params.args.general_dataset in ['3dmatch', '3dlomatch']:
+        geo_folder = 'GeoTransformer_202407/experiments/geotransformer.3dmatch.stage4.gse.k3.max.oacl.stage2.sinkhorn'
+        snapshot = os.path.join(weight_dir, 'geotransformer-3dmatch.pth.tar')
+    elif params.args.general_dataset == 'modelnet':
+        geo_folder = 'GeoTransformer_202407/experiments/geotransformer.modelnet.rpmnet.stage4.gse.k3.max.oacl.stage2.sinkhorn'
+        snapshot = os.path.join(weight_dir, 'geotransformer-modelnet.pth.tar')
+    else:
+        raise ValueError('Unknown dataset')
+
+    config_path = os.path.join(geo_folder, 'config.py')
+    dataset_path = os.path.join(geo_folder, 'dataset.py')
+    model_path = os.path.join(geo_folder, 'model.py')
+
     # Get the module name (you can name it anything that doesn't conflict with existing module names)
     config_name = 'config_module'
     dataset_name = 'dataset_module'
@@ -330,7 +343,8 @@ def geotrans_features_to_txt_files(
     # Change to the parent directory (e.g., back up two levels)
     os.chdir("../../../")
 
-    geo_path = os.path.abspath('GeoTransformer_202407/experiments/geotransformer.kitti.stage5.gse.k3.max.oacl.stage2.sinkhorn')
+    geo_path = os.path.abspath(geo_folder)
+
     sys.path.append(geo_path)
 
     # Load the module
@@ -354,7 +368,6 @@ def geotrans_features_to_txt_files(
 
     cfg = make_cfg()
     model = create_model(cfg).cuda()
-    snapshot = 'GeoTransformer_202407/weights/geotransformer-kitti.pth.tar'
     # Load the snapshot
     print('Loading from "{}".'.format(snapshot))
     state_dict = torch.load(snapshot, map_location=torch.device('cpu'))
@@ -376,22 +389,38 @@ def geotrans_features_to_txt_files(
     file_name = "PCAC_data_" + mode + ".txt"
     data_file = os.path.join(data_folder, file_name)
     scene_counter = scenes_lower
+
+    if params.args.perturb_settings.augment_before_reg is False:
+        cfg.use_augmentation = False
+        cfg.augmentation_noise = 0.0
+        cfg.augmentation_min_scale = 1.0
+        cfg.augmentation_max_scale = 1.0
+        cfg.augmentation_shift = 0.0
+        cfg.augmentation_rotation = 0.0
+
     with open(data_file, write_mode) as file:
         if mode == "train":
-            train_loader, _, _ = train_valid_data_loader(cfg, False)  # TODO: Should I augment train data or not
-            loader = train_loader
+            loader, _, _ = train_valid_data_loader(cfg, False)  # TODO: Should I augment train data or not
         elif mode == "validation":
-            _, val_loader, _ = train_valid_data_loader(cfg, False)  # TODO: Should I augment train data or not
-            loader = val_loader
+            _, loader, _ = train_valid_data_loader(cfg, False)  # TODO: Should I augment train data or not
         elif mode == "test":
-            test_loader, _ = test_data_loader(cfg)
-            loader = test_loader
+            if params.args.general_dataset == 'kitti':
+                loader, _ = test_data_loader(cfg)
+            elif params.args.general_dataset == '3dmatch':
+                loader, _ = test_data_loader(cfg, benchmark='3DMatch')
+            elif params.args.general_dataset == '3dlomatch':
+                loader, _ = test_data_loader(cfg, benchmark='3DLoMatch')
+            elif params.args.general_dataset == 'modelnet':
+                loader, _ = test_data_loader(cfg)
+            else:
+                raise ValueError("Unknown mode")
         else:
             raise ValueError("Unknown mode")
 
         PC_scenes = []
         counter = 0
-        for iteration, data_dict in enumerate(loader):  # TODO: I cannot loop through a full epoch ...
+        counter_error_classes = np.zeros(params.args.perturb_settings.n_classes)
+        for iteration, data_dict in enumerate(loader):
             data_dict = to_cuda(data_dict)
             # GeoTransformer registration done
             output_dict = model(data_dict)
@@ -401,6 +430,8 @@ def geotrans_features_to_txt_files(
             ref = output_dict['ref_points']
             gt_trans = data_dict['transform']
             est_trans = output_dict['estimated_transform']
+            # print("norms mean", torch.norm(src, dim=1).mean().item(), torch.norm(ref, dim=1).mean().item())
+            # print("norms max", torch.norm(src, dim=1).max().item(), torch.norm(ref, dim=1).max().item())
             del output_dict, data_dict
             torch.cuda.empty_cache()
 
@@ -410,19 +441,13 @@ def geotrans_features_to_txt_files(
             #       I could however compare the difference in performance between the two ...
             # TODO I think I perhaps should remove the closest points after the registration ...
             PC_scene = to_PC_format(src, ref, params, est_trans, gt_trans, geo_args=None)
+            counter_error_classes[PC_scene[0].class_category] += 1
             PC_scenes.append(PC_scene)
             counter += 1
             if (iteration + 1) % n_scenes_per_loop == 0 or scene_counter + counter == scenes_upper:
+                print([f"Error class {i}: {counter_error_classes[i]}" for i in range(len(counter_error_classes))])
                 scene_counter += counter
                 # Display data loading progress
-                display_progress(
-                    scene_counter,
-                    params.n_scenes,
-                    mode,
-                    start,
-                    params.train_ratio,
-                    params.args.val_ratio,
-                )
                 PC_scenes = np.array(PC_scenes)
 
                 if params.args.fps.do_fps:
@@ -446,6 +471,8 @@ def geotrans_features_to_txt_files(
                 counter = 0
                 if scene_counter + counter == scenes_upper:
                     break
+                display_progress(scene_counter, params.n_scenes, mode, start, params.train_ratio,
+                                 params.args.val_ratio)
         return class_counts
 
 
@@ -518,7 +545,7 @@ def get_n_scenes_per_loop(n_samples_per_scene, n_training_scenes, n_scenes):
     n_test_scenes = n_scenes - n_training_scenes
     smallest_loop = min(n_test_scenes, n_training_scenes)
     # TODO: Maybe try to increase from 40, could give faster computations ...
-    n_scenes_per_loop = max(round(100 / n_samples_per_scene), 1)
+    n_scenes_per_loop = max(round(10 / n_samples_per_scene), 1)
     n_scenes_per_loop = min(n_scenes_per_loop, smallest_loop)
     return n_scenes_per_loop
 
@@ -653,7 +680,7 @@ def setup_inputs_to_dnn(params):
                 start=start,
                 write_mode=write_mode_train,
             )
-        elif params.args.general_dataset == "kitti":
+        elif params.args.general_dataset in ["kitti", "3dmatch", "3dlomatch", "modelnet"]:
             class_counts = geotrans_features_to_txt_files(
                 scenes_lower=scenes_lower_train,
                 scenes_upper=n_training_scenes,
@@ -679,7 +706,7 @@ def setup_inputs_to_dnn(params):
                 start=start,
                 write_mode=write_mode_val,
             )
-        elif params.args.general_dataset == "kitti":
+        elif params.args.general_dataset in ["kitti", "3dmatch", "3dlomatch", "modelnet"]:
             class_counts = geotrans_features_to_txt_files(
                 scenes_lower=scenes_lower_val,
                 scenes_upper=n_training_scenes + n_val_scenes,
@@ -705,7 +732,7 @@ def setup_inputs_to_dnn(params):
             start=start,
             write_mode=write_mode_test,
         )
-    elif params.args.general_dataset == "kitti":
+    elif params.args.general_dataset in ["kitti", "3dmatch", "3dlomatch", "modelnet"]:
         class_counts = geotrans_features_to_txt_files(
             scenes_lower=scenes_lower_test,
             scenes_upper=params.n_scenes,
