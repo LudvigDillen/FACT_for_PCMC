@@ -1,9 +1,9 @@
 batch_size: 16
-epoch: 200 # 250
+epoch: 250 # 250
 learning_rate: 0.0001  # 0.00005
 lr_gamma: 0.825
 lr_step: 10
-lambda_lf: 1  # how to weight emd (lambda=0) vs cross entropy (lambda=1)
+lambda_lf: 0.5  # how to weight emd (lambda=0) vs cross entropy (lambda=1)
 gpu: 0
 optimizer: Adam
 weight_decay: 0.0001
@@ -71,24 +71,19 @@ fps:
 re_use_data: true  # Set to true if only running training and no feature extraction
 n_scenes: 850 # 335, 850 max
 one_scene: False
-n_samples_per_scene: 1 # 20
+n_samples_per_scene: 20 # 20
 dataset: 'v1.0-trainval'  # ['v1.0-trainval', 'v1.0-mini']
 data_folder: '/home2/lu2277di/data/nuscenes'
 # feature_folder: '/home/lu2277di/Projects/FACT/data/PCAC_data/average_dist_bins_5_alt1_classes_34000_with_max_train_dist_5'  # TODO: Set by new user ...
 # feature_folder: '/home/lu2277di/Projects/FACT/data/PCAC_data/test'  # TODO: Set by new user ...
-# feature_folder: /home/lu2277di/Projects/FACT/data/PCAC_data/FACT_best_network_optimal
+feature_folder: /home/lu2277di/Projects/FACT/data/PCAC_data/FACT_best_network_optimal
 # feature_folder: '/home/lu2277di/Projects/FACT/data/PCAC_data/multinomial_fixed_reg_error_17000'
-feature_folder: '/home/lu2277di/Projects/FACT/data/PCAC_data/reg_p2l_debugging_850'
-
 visualization_folder: '/home/lu2277di/Projects/FACT/images/classification/PointTransformer'
 downsample_factor: 1 # Make sure that the point cloud is not so downsampled that num_point does not exist
 train_ratio: 0.60  # The test ratio automatically becomes 1 - train_ratio - val_ratio
 val_ratio: 0.15  # Simply set to 0 if validation set in not needed
 # model_identifier: average_dist_bins_5_alt1_classes_34000_with_max_train_dist_5_new_val_metric
-# model_identifier: FACT_best_network_optimal_cross_entropy_old_network_new_data
-# model_identifier: FACT_best_network_optimal_cross_entropy_new_network_old_data
-model_identifier: reg_p2l_debugging_850
-general_dataset: "nuscenes"  # ['nuscenes', 'kitti']
+model_identifier: FACT_best_network_optimal_thesis_data
 
 # Rerun settings, enables us to rerun after a crash, without rerunning everything
 rerun_crash: false
@@ -97,11 +92,11 @@ time_gone: 19.10  # Time spent, so we can keep track of time left
 # If error is displayed, reduce scenes_finished, so that we do not look at test data ...
 # Perturbation settings
 perturb_settings:
-  n_classes: 5
+  n_classes: 10
   r_bin: 0.01  # 0.03
   t_bin: 0.1 # 0.3
   class_distribution: uniform
-  perturbation_method: registration  # ['m_classes', 'GMM', 'registration'], GMM not tested
+  perturbation_method: m_classes  # ['m_classes', 'GMM', 'registration'], GMM not tested
   train_reg_max_dist: 5  # TODO: Should I perhaps have 2 for CorAl
 
 # Plot settings
@@ -151,16 +146,11 @@ verbose: false  # (bool): If True, print additional information.
 debug: false
 # If I only want to run test, set the path to something
 # load_model_path: /home/lu2277di/Projects/FACT/outputs/2023-12-18/11-49-27/best_model_binary_850samples.pth
-# load_model_path: /home/lu2277di/Projects/FACT/old_weights/2023-09-09/09-21-13/best_model_FACT_best_network_optimal.pth
-# load_model_path: /home/lu2277di/Projects/FACT/outputs/2024-02-23/17-43-18/best_model_FACT_best_network_optimal.pth
+load_model_path: /home/lu2277di/Projects/FACT/old_weights/2023-09-09/09-21-13/best_model_FACT_best_network_optimal.pth
 # load_model_path: /home/lu2277di/Projects/FACT/old_weights/2023-09-11/18-03-22/best_model_FACT_binary0_1_upd.pth
 # load_model_path: /home/lu2277di/Projects/FACT/old_weights/2023-09-09/09-21-13/best_model_FACT_best_network_fast.pth
 # load_model_path: /home/lu2277di/Projects/FACT/outputs/2023-12-31/15-35-07/best_model_average_dist_bins_5_alt1_classes_34000_with_max_train_dist_5_new_val_metric.pth
-load_model_path: false
-# load_model_path: /home/lu2277di/Projects/FACT/outputs/2024-02-26/14-05-27/best_model_FACT_best_network_optimal_cross_entropy_thesis_data.pth
 # load_model_path: false
-# load_model_path: /home/lu2277di/Projects/FACT/outputs/2024-02-23/17-43-18/best_model_FACT_best_network_optimal_lambda0.pth
-# load_model_path: /home/lu2277di/Projects/FACT/outputs/2024-02-23/17-43-18/best_model_FACT_best_network_optimal_lambda1.pth
 running_iterations: 1  # This requires a setup in the train_cls.py file. Otherwise, set this to 1.
 # This parameter below is handled directly in the program
 # inference: false
