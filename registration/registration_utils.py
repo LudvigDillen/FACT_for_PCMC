@@ -21,6 +21,7 @@ import os
 from utils.geometrics import change_coordinate_system
 import visualization.registration as vr
 import registration.overlap_predator as op
+from visualization.point_clouds import vis_2pcs
 
 
 def rot_offset_to_geodesic_distance(gamma):
@@ -127,9 +128,13 @@ def plot_pc_pair(pair, title):
     vr.draw_registration_result(source, target, np.eye(4), title=title)
 
 
-def align_pair(pair, rel_pose):
+def  align_pair(pair, rel_pose, plot=False):
+    if plot:
+        vis_2pcs(pair.PC0.pc.cpu(), pair.PC1.pc.cpu(), title="Before registration")
     pose0_CS0 = torch.eye(4).to(pair.device).to(pair.PC1.dtype)
     pc1_CS0_reg = change_coordinate_system(pair.PC1.pc, pose0_CS0, rel_pose.to(pair.PC1.dtype))
+    if plot:
+        vis_2pcs(pair.PC0.pc.cpu(), pc1_CS0_reg.cpu(), title="After registration")
     return pc1_CS0_reg
 
 
@@ -211,16 +216,22 @@ def get_error_class(error, reg_method="p2l"):
         else:
             error_class = 4
     elif reg_method == "geotransformer":
-        if error < 0.07:
+        if error < 0.05:
             error_class = 0
-        elif error < 0.085:
-            error_class = 1
         elif error < 0.10:
-            error_class = 2
-        elif error < 0.14:
-            error_class = 3
+            error_class = 1
         else:
-            error_class = 4
+            error_class = 2
+        # if error < 0.07:
+        #     error_class = 0
+        # elif error < 0.085:
+        #     error_class = 1
+        # elif error < 0.10:
+        #     error_class = 2
+        # elif error < 0.14:
+        #     error_class = 3
+        # else:
+        #     error_class = 4
     else:
         sys.exit(f"Registration method {reg_method} not recognized")
     return error_class
