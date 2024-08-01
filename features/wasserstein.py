@@ -3,7 +3,7 @@ import torch
 import time
 
 
-COMPUTATION_THRESHOLD = 2.5 * 1e7
+COMPUTATION_THRESHOLD = 4 * 2.5 * 1e7
 
 
 # TODO: Make this function easier to comprehend. Split it into several functions.

@@ -129,7 +129,7 @@ def extract_differential_entropy(
         return batch_entropies
 
     filtered_neighbor_mask = neighbor_mask[inds_to_valid_neighborhood]
-    del neighbor_mask
+    #del neighbor_mask
     # Update neighbor count for valid neighborhoods
     filtered_n_neighbors = n_neighbors_per_point_in_batch[
         inds_to_valid_neighborhood
@@ -150,10 +150,14 @@ def extract_differential_entropy(
     covariances = (centered_data[..., None] * centered_data[..., None, :]).sum(
         dim=1
     ) / (filtered_n_neighbors.unsqueeze(dim=2) - 1)
-    del centered_data
+    #del centered_data
 
     # Compute determinants of covariance matrices
     determinants = torch.linalg.det(covariances)
+    # The determinant is only below zero due to numerical errors. In theory, it cannot be lower
+    # than zero since the covariance matrix is symmetric positive semi-definite. To avoid nans
+    # when taking the log, it thus becomes important to set the negative values to zero.
+    determinants[determinants < 0] = 0
 
     scaler = (2 * np.pi * np.exp(1)) ** PC.N_dim
     batch_entropies[inds_to_valid_neighborhood] = (
