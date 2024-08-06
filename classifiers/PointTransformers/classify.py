@@ -3,4 +3,4 @@ def classify_pairs(model, points):
     pred = classifier(
         points, inference=True
     )  # [B, n_classes], here we have a score for each class
-    return pred.data.max(1)[1]  # highest score wins
+    return pred.data.max(1)[1], pred  # highest score wins

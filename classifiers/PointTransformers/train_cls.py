@@ -54,7 +54,7 @@ def inference_loop(data, args, model, class_acc):
         target = target[:, 0]
 
     points = fu.normalize_data_on_condition(args, points)
-    pred_choice = classify_pairs(model, points)
+    pred_choice, logits = classify_pairs(model, points)
 
     for cat in np.unique(target.cpu()):
         ind_for_cat_target = target == cat
@@ -63,14 +63,14 @@ def inference_loop(data, args, model, class_acc):
         class_acc[cat, 0] += number_of_correct_prediction_for_cat
         number_of_target_cat = float(ind_for_cat_target.sum().cpu())
         class_acc[cat, 1] += number_of_target_cat
-    return class_acc, target, pred_choice
+    return class_acc, target, pred_choice, logits
 
 
 def track_accuracy(args, model, loader):
     # num_class x (correct_preds [col. 0], total_preds [col. 1])
     class_acc = np.zeros((args.perturb_settings.n_classes, 2))  
     for data in tqdm(loader, total=len(loader)):
-        class_acc, _, _ = inference_loop(data, args, model, class_acc)
+        class_acc, _, _, _ = inference_loop(data, args, model, class_acc)
     mean_acc = get_mean_acc(class_acc)
     instance_acc = get_overall_acc(class_acc)
     return instance_acc, mean_acc
@@ -95,15 +95,19 @@ def test_results(args, model, loader):
     y_true = np.zeros(N_samples)
     y_pred = np.zeros(N_samples)
     ind = 0
+    all_logits = np.zeros((N_samples, args.perturb_settings.n_classes))
     with torch.inference_mode():
         for data in tqdm(loader, total=len(loader)):
-            class_acc, target, pred_choice = inference_loop(data, args, model, class_acc)
+            class_acc, target, pred_choice, logits = inference_loop(data, args, model, class_acc)
             current_batch_size = len(target)
             y_true[ind : ind + current_batch_size] = target.cpu().numpy()
             y_pred[ind : ind + current_batch_size] = pred_choice.cpu().numpy()
+            all_logits[ind : ind + current_batch_size] = logits.cpu().numpy()
             ind = ind + current_batch_size
     mean_acc = get_mean_acc(class_acc)
     instance_acc = get_overall_acc(class_acc)
+    vis_cls.hist_of_logits(all_logits, args)
+    
     return instance_acc, mean_acc, y_true, y_pred
 
 
@@ -311,8 +315,8 @@ def run_test(args, logger, classifier):
 
 # Choose either cls_default or cls_adaptive.
 # @hydra.main(config_path="config", config_name="cls_adaptive")
-#@hydra.main(config_path="config", config_name="cls_registration_geotrans_3dmatch")
-@hydra.main(config_path="config", config_name="cls_registration_geotrans_kitti")
+@hydra.main(config_path="config", config_name="cls_registration_geotrans_3dmatch")
+#@hydra.main(config_path="config", config_name="cls_registration_geotrans_kitti")
 # @hydra.main(config_path="config", config_name="cls_registration")
 def fact(args):
     args, logger = eu.setup_experiment(args, do_reg=False)

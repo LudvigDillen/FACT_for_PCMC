@@ -361,6 +361,47 @@ def store_confusion_matrix(y_pred, y_true, N_classes, logger, args, accumulate=F
     plt.close()  # Close the figure
 
 
+def hist_of_logits(logits, args):
+    n_columns = logits.shape[1]
+    if n_columns <= 3:
+        fig, axes = plt.subplots(1, n_columns, figsize=(15, 5))
+    elif n_columns == 4:
+        fig, axes = plt.subplots(2, 2, figsize=(15, 10))
+    elif n_columns <= 6:
+        fig, axes = plt.subplots(2, 3, figsize=(15, 10))
+    elif n_columns == 8:
+        fig, axes = plt.subplots(2, 4, figsize=(15, 10))
+    elif n_columns == 9:
+        fig, axes = plt.subplots(3, 3, figsize=(15, 15))
+    else:
+        n_columns = 12
+        print("Too many columns, only plotting the first 12.")
+        fig, axes = plt.subplots(3, 4, figsize=(15, 15))
+    colors = ['blue', 'red', 'green', 'orange', 'purple', 'yellow', 'cyan', 'magenta', 'brown', 'pink', 'gray', 'olive']
+
+    for i in range(n_columns):
+        # Plot histograms for each column
+        axes[i].hist(logits[:, i], bins=30, alpha=0.7, color=colors[i])
+        axes[i].set_title(f'Class {i}')
+        axes[i].set_xlabel('Logits')
+        axes[i].set_ylabel('Frequency')
+    plt.tight_layout()
+    directory = args.visualization_folder
+
+    # Get the current time and format it as a string
+    now = datetime.now()
+    time_string = now.strftime("%Y%m%d_%H%M%S")
+
+    file_name = f"logit_histogram_{time_string}_{args.model_identifier}"
+
+    # Save the figure to an .eps file
+    fig.savefig(f"{directory}/{file_name}.eps", format="eps", bbox_inches='tight')
+    # Save the figure to an .jpg file
+    fig.savefig(f"{directory}/{file_name}.jpg", format="jpg", bbox_inches='tight')
+
+    plt.close()  # Close the figure
+
+
 if __name__ == "__main__":
     filename = input("Enter the path to the file: ")
     train_accuracies, val_accuracies = extract_accuracies(filename)
