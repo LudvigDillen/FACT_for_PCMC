@@ -361,30 +361,48 @@ def store_confusion_matrix(y_pred, y_true, N_classes, logger, args, accumulate=F
     plt.close()  # Close the figure
 
 
+plt.switch_backend('Agg')
 def hist_of_logits(logits, args):
     n_columns = logits.shape[1]
     if n_columns <= 3:
+        cols = n_columns
+        rows = 1
         fig, axes = plt.subplots(1, n_columns, figsize=(15, 5))
     elif n_columns == 4:
+        cols = 2
+        rows = 2
         fig, axes = plt.subplots(2, 2, figsize=(15, 10))
     elif n_columns <= 6:
+        cols = 3
+        rows = 2
         fig, axes = plt.subplots(2, 3, figsize=(15, 10))
     elif n_columns == 8:
+        cols = 4
+        rows = 2
         fig, axes = plt.subplots(2, 4, figsize=(15, 10))
     elif n_columns == 9:
+        cols = 3
+        rows = 3
         fig, axes = plt.subplots(3, 3, figsize=(15, 15))
     else:
         n_columns = 12
+        cols = 4
+        rows = 3
         print("Too many columns, only plotting the first 12.")
         fig, axes = plt.subplots(3, 4, figsize=(15, 15))
     colors = ['blue', 'red', 'green', 'orange', 'purple', 'yellow', 'cyan', 'magenta', 'brown', 'pink', 'gray', 'olive']
 
-    for i in range(n_columns):
-        # Plot histograms for each column
-        axes[i].hist(logits[:, i], bins=30, alpha=0.7, color=colors[i])
-        axes[i].set_title(f'Class {i}')
-        axes[i].set_xlabel('Logits')
-        axes[i].set_ylabel('Frequency')
+    k = 0
+    for i in range(rows):
+        for j in range(cols):
+            if k == n_columns:
+                break
+            # Plot histograms for each column
+            axes[i, j].hist(logits[:, k], bins=30, alpha=0.7, color=colors[k])
+            axes[i, j].set_title(f'Class {k}')
+            axes[i, j].set_xlabel('Logits')
+            axes[i, j].set_ylabel('Frequency')
+            k += 1
     plt.tight_layout()
     directory = args.visualization_folder
 
