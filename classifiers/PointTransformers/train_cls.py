@@ -370,10 +370,12 @@ def fact(args):
                 eu.run_ablation_features(args, logger)
                 sys.exit("Ablation finished!")
             else:
-                if args.load_model_path:
+                if (args.load_model_path and args.continue_training) or not args.load_model_path:
+                    train_accuracies, val_accuracies, classifier = run_cls(args, logger)
+                elif args.load_model_path:
                     classifier, _, args = load_best_model(args, logger)
                 else:
-                    train_accuracies, val_accuracies, classifier = run_cls(args, logger)
+                    raise ValueError("No model loaded or trained")
 
         # PERFORM MODEL INFERENCE
         if args.classifier == "CorAl":
