@@ -162,11 +162,23 @@ def classes_to_txt(PC_scenes, class_counts, file, class_names, scene_counter):
                 f"scene_{scene_counter+i}_"
                 + class_names[PC_pair.class_category]
                 + "_"
-                + str(class_counts[PC_pair.class_category]).zfill(4)
+                + str(class_counts[PC_pair.class_category]).zfill(5)
             )
             PC_pair.set_name(message)
             file.write(message + "\n")
     return class_counts, PC_scenes
+
+
+def errors_to_txt(PC_scenes, error_list, file, scene_counter):
+    for i, PC_scene in enumerate(PC_scenes):
+        for PC_pair in PC_scene:
+            reg_error = round(PC_pair.reg_error.item(), 6)
+            reg_error_str = str(reg_error).replace(".", "_")
+            message = f"scene_{scene_counter+i}_reg_error_{reg_error_str}"
+            error_list.append(reg_error)
+            PC_pair.set_name(message)
+            file.write(message + "\n")
+    return error_list, PC_scenes
 
 
 def display_progress(scene_counter, n_scenes, mode, start, train_ratio, val_ratio):
@@ -285,6 +297,34 @@ def features_to_txt_files(
     return class_counts
 
 
+def get_loader(mode, while_counter, cfg, train_valid_data_loader, test_data_loader, params):
+    if mode == "train":
+        if while_counter == 0:
+            print("Now using non-augmented data")
+            cfg.train.use_augmentation = False
+            loader, _, _ = train_valid_data_loader(cfg, False)  # TODO: Should I augment train data or not
+        else:
+            print("Now going to augmented data")
+            cfg.train.use_augmentation = True
+            loader, _, _ = train_valid_data_loader(cfg, False)
+    elif mode == "validation":
+        _, loader, _ = train_valid_data_loader(cfg, False)  # TODO: Should I augment train data or not
+    elif mode == "test":
+        if params.args.general_dataset == 'kitti':
+            loader, _ = test_data_loader(cfg)
+        elif params.args.general_dataset == '3dmatch':
+            loader, _ = test_data_loader(cfg, benchmark='3DMatch')
+        elif params.args.general_dataset == '3dlomatch':
+            loader, _ = test_data_loader(cfg, benchmark='3DLoMatch')
+        elif params.args.general_dataset == 'modelnet':
+            loader, _ = test_data_loader(cfg)
+        else:
+            raise ValueError("Unknown mode")
+    else:
+        raise ValueError("Unknown mode")
+    return loader, cfg
+
+
 def geotrans_features_to_txt_files(
     scenes_lower,
     scenes_upper,
@@ -389,90 +429,77 @@ def geotrans_features_to_txt_files(
     file_name = "PCAC_data_" + mode + ".txt"
     data_file = os.path.join(data_folder, file_name)
     scene_counter = scenes_lower
+    if params.args.while_counter is not None:
+        while_counter = params.args.while_counter
+    else:
+        while_counter = 0
+    print(f"Starting at scene {scene_counter}")
+    print(f"Starting at while_counter {while_counter}")
 
-    if params.args.perturb_settings.augment_before_reg is False:
-        cfg.use_augmentation = False
-        cfg.augmentation_noise = 0.0
-        cfg.augmentation_min_scale = 1.0
-        cfg.augmentation_max_scale = 1.0
-        cfg.augmentation_shift = 0.0
-        cfg.augmentation_rotation = 0.0
+    counter_error_classes = np.zeros(params.args.perturb_settings.n_classes)
+    counter = 0
+    error_list = []
 
     with open(data_file, write_mode) as file:
-        if mode == "train":
-            loader, _, _ = train_valid_data_loader(cfg, False)  # TODO: Should I augment train data or not
-        elif mode == "validation":
-            _, loader, _ = train_valid_data_loader(cfg, False)  # TODO: Should I augment train data or not
-        elif mode == "test":
-            if params.args.general_dataset == 'kitti':
-                loader, _ = test_data_loader(cfg)
-            elif params.args.general_dataset == '3dmatch':
-                loader, _ = test_data_loader(cfg, benchmark='3DMatch')
-            elif params.args.general_dataset == '3dlomatch':
-                loader, _ = test_data_loader(cfg, benchmark='3DLoMatch')
-            elif params.args.general_dataset == 'modelnet':
-                loader, _ = test_data_loader(cfg)
-            else:
-                raise ValueError("Unknown mode")
-        else:
-            raise ValueError("Unknown mode")
+        while scene_counter + counter < scenes_upper:
+            loader, cfg = get_loader(mode, while_counter, cfg, train_valid_data_loader, test_data_loader, params)
+            PC_scenes = []
+            for iteration, data_dict in enumerate(loader):
+                data_dict = to_cuda(data_dict)
+                # GeoTransformer registration done
+                output_dict = model(data_dict)
+                # Extract data from GeoTransformer output
+                src = output_dict['src_points']
+                ref = output_dict['ref_points']
+                gt_trans = data_dict['transform']
+                est_trans = output_dict['estimated_transform']
+                # print("norms mean", torch.norm(src, dim=1).mean().item(), torch.norm(ref, dim=1).mean().item())
+                # print("norms max", torch.norm(src, dim=1).max().item(), torch.norm(ref, dim=1).max().item())
+                del output_dict, data_dict
+                torch.cuda.empty_cache()
 
-        PC_scenes = []
-        counter = 0
-        counter_error_classes = np.zeros(params.args.perturb_settings.n_classes)
-        for iteration, data_dict in enumerate(loader):
-            data_dict = to_cuda(data_dict)
-            # GeoTransformer registration done
-            output_dict = model(data_dict)
+                # TODO: Load more than one scene at a time ...
+                PC_scene = to_PC_format(src, ref, params, est_trans, gt_trans, geo_args=None)
+                counter_error_classes[PC_scene[0].class_category] += 1
+                PC_scenes.append(PC_scene)
+                counter += 1
+                if (iteration + 1) % n_scenes_per_loop == 0 or scene_counter + counter == scenes_upper:
+                    print([f"Error class {i}: {counter_error_classes[i]}" for i in range(len(counter_error_classes))])
+                    scene_counter += counter
+                    # Display data loading progress
+                    PC_scenes = np.array(PC_scenes)
 
-            # Extract data from GeoTransformer output
-            src = output_dict['src_points']
-            ref = output_dict['ref_points']
-            gt_trans = data_dict['transform']
-            est_trans = output_dict['estimated_transform']
-            # print("norms mean", torch.norm(src, dim=1).mean().item(), torch.norm(ref, dim=1).mean().item())
-            # print("norms max", torch.norm(src, dim=1).max().item(), torch.norm(ref, dim=1).max().item())
-            del output_dict, data_dict
-            torch.cuda.empty_cache()
+                    if params.args.fps.do_fps:
+                        farthest_point_sample_PC_scenes(PC_scenes, params.N_fps_points)
 
-            # TODO: Load more than one scene at a time ...
-            # TODO: I currently do HPR operator things like in nuscenes handling,
-            #       but geotransformer is not trained on HPR operator filtered data, so it might be unfair ...
-            #       I could however compare the difference in performance between the two ...
-            # TODO I think I perhaps should remove the closest points after the registration ...
-            PC_scene = to_PC_format(src, ref, params, est_trans, gt_trans, geo_args=None)
-            counter_error_classes[PC_scene[0].class_category] += 1
-            PC_scenes.append(PC_scene)
-            counter += 1
-            if (iteration + 1) % n_scenes_per_loop == 0 or scene_counter + counter == scenes_upper:
-                print([f"Error class {i}: {counter_error_classes[i]}" for i in range(len(counter_error_classes))])
-                scene_counter += counter
-                # Display data loading progress
-                PC_scenes = np.array(PC_scenes)
+                    # Feature extraction.
+                    PC_scenes_with_features = feature_extraction(PC_scenes, params)
 
-                if params.args.fps.do_fps:
-                    farthest_point_sample_PC_scenes(PC_scenes, params.N_fps_points)
+                    # Write class names to text file
+                    #error_list, PC_scenes_named = errors_to_txt(
+                    #    PC_scenes_with_features, error_list, file, scene_counter)
+                    class_counts, PC_scenes_named = classes_to_txt(
+                        PC_scenes_with_features,
+                        class_counts,
+                        file,
+                        params.class_names,
+                        scene_counter,
+                    )
+                    del PC_scenes_with_features
 
-                # Feature extraction.
-                PC_scenes_with_features = feature_extraction(PC_scenes, params)
+                    write_features_to_txt_files(PC_scenes_named, params, data_folder)
+                    PC_scenes = []
+                    counter = 0
+                    if scene_counter + counter == scenes_upper:
+                        break
+                    display_progress(scene_counter, params.n_scenes, mode, start, params.train_ratio,
+                                     params.args.val_ratio)
+            scene_counter += counter
+            counter = 0
+            if mode in ["test", "validation"] or params.args.perturb_settings.mix_augment_before_reg == False:
+                break
+            while_counter += 1
 
-                # Write class names to text file
-                class_counts, PC_scenes_named = classes_to_txt(
-                    PC_scenes_with_features,
-                    class_counts,
-                    file,
-                    params.class_names,
-                    scene_counter,
-                )
-                del PC_scenes_with_features
-
-                write_features_to_txt_files(PC_scenes_named, params, data_folder)
-                PC_scenes = []
-                counter = 0
-                if scene_counter + counter == scenes_upper:
-                    break
-                display_progress(scene_counter, params.n_scenes, mode, start, params.train_ratio,
-                                 params.args.val_ratio)
         return class_counts
 
 
@@ -544,8 +571,7 @@ def get_n_scenes_per_loop(n_samples_per_scene, n_training_scenes, n_scenes):
     """
     n_test_scenes = n_scenes - n_training_scenes
     smallest_loop = min(n_test_scenes, n_training_scenes)
-    # TODO: Maybe try to increase from 40, could give faster computations ...
-    n_scenes_per_loop = max(round(10 / n_samples_per_scene), 1)
+    n_scenes_per_loop = max(round(100 / n_samples_per_scene), 1)
     n_scenes_per_loop = min(n_scenes_per_loop, smallest_loop)
     return n_scenes_per_loop
 
