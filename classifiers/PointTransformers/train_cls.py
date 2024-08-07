@@ -315,8 +315,8 @@ def run_test(args, logger, classifier):
 
 # Choose either cls_default or cls_adaptive.
 # @hydra.main(config_path="config", config_name="cls_adaptive")
-@hydra.main(config_path="config", config_name="cls_registration_geotrans_3dmatch")
-#@hydra.main(config_path="config", config_name="cls_registration_geotrans_kitti")
+# @hydra.main(config_path="config", config_name="cls_registration_geotrans_3dmatch")
+@hydra.main(config_path="config", config_name="cls_registration_geotrans_kitti")
 # @hydra.main(config_path="config", config_name="cls_registration")
 def fact(args):
     args, logger = eu.setup_experiment(args, do_reg=False)
@@ -329,9 +329,12 @@ def fact(args):
 
         # EXTRACT FEATURES
         if not args.re_use_data:
-            logger.info("Load dataset ...") # TODO: Not necessary to use nusc if I train on KITTI, but leave for now
-            nusc = ns.nuscenes.NuScenes(
-                version=args.dataset, dataroot=args.data_folder, verbose=False)
+            logger.info("Load dataset ...")
+            if args.general_dataset == "nuscenes":
+                nusc = ns.nuscenes.NuScenes(
+                    version=args.dataset, dataroot=args.data_folder, verbose=False)
+            else:
+                nusc = None
             logger.info("Start feature extraction")
             with torch.inference_mode():
                 if args.classifier == "CorAl":
