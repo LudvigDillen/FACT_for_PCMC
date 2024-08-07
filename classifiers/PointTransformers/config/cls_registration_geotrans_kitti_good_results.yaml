@@ -1,0 +1,155 @@
+batch_size: 32
+epoch: 200 # 250
+learning_rate: 0.0001  # 0.00005, 0.0001
+lr_gamma: 0.825
+lr_step: 10
+lambda_lf: 0.5  # how to weight emd (lambda=0) vs cross entropy (lambda=1)
+gpu: 0
+optimizer: Adam
+weight_decay: 0.0001
+model:
+  nneighbor: 16
+  nblocks: 4  # Number of transformer-transition blocks in backbone
+  transformer_dim: 256
+  name: Hengshuang
+# Which features to use
+features_to_create:
+  use_label: true  # class label
+  use_jde: true  # joint differential entropy
+  use_sde: true  # separate differential entropy
+  use_sd: true  # sinkhorn divergence
+  use_c: true # covisibility weight
+  use_s: false  # static weight
+  use_cj: true  # joint cardinality ratio
+  use_cs: true  # separate cardinality ratio
+  use_csj: false #  cardinality ratio sep and joint neighborhood
+  use_xyz: false
+  use_z: false
+  use_norm_xyz: true
+features_to_use:
+  use_label: true  # class label
+  use_jde: true  # joint differential entropy
+  use_sde: true  # separate differential entropy
+  use_sd: true  # sinkhorn divergence
+  use_c: true  # covisibility weight
+  use_s: false  # static weight
+  use_cj: true  # joint cardinality ratio
+  use_cs: true  # separate cardinality ratio
+  use_csj: false #  cardinality ratio sep and joint neighborhood
+  use_xyz: false
+  use_z: false
+  use_norm_xyz: true
+inds_features:  # This will be overwritten in the code later
+  ind_joint_de: -1  
+  ind_sep_de: -1
+  ind_sink_div: -1
+aug:
+  dropout: true  # true
+  scale: true  # true
+  shift: true  # true
+  rotate: false  # false
+  jitter: false  # false
+  jitter_settings:
+    sigma: none  # [0.02, 0.06]
+    clip: none  # [0.05, 0.15]
+normalization:
+  features: false
+  pos_enc: true
+  features_batch: false
+  pos_enc_batch: false
+batch_size_feature_extraction: 512  # 256 # If crash perhaps decrease this to 128
+# Covisibility parameters (see Katz and Tal)
+covisibility:
+  inversion_kernel: "spherical_flipping"  # spherical_flipping is the other choice
+  gamma: -0.0001  # Parameter for the exponential inversion kernel
+  hpr_radius: 2.75  # Parameter for the spherical flipping method
+# Data setup
+fps:
+  num_point: 2048  # (int): How many points we should evaluate each metric for, note that the hole
+                  # point cloud is considered when stuying each sampled points' neighborhoods.
+  do_fps: true  # (bool) : Whether or not to apply farthest point sampling
+re_use_data: true  # Set to true if only running training and no feature extraction
+continue_training: false
+n_scenes: 5000 # 40000
+one_scene: False
+n_samples_per_scene: 1 # 20, set to 1 for geotrans as we look at KITTI
+dataset: 'v1.0-mini'  # ['v1.0-trainval', 'v1.0-mini']
+general_dataset: "kitti"  # ['nuscenes', 'kitti', '3d_match']
+data_folder: '/home2/lu2277di/data/nuscenes'
+feature_folder: /home/lu2277di/Projects/FACT/data/PCAC_data/geotrans_good_results
+visualization_folder: '/home/lu2277di/Projects/FACT/images/classification/PointTransformer'
+downsample_factor: 1 # Make sure that the point cloud is not so downsampled that num_point does not exist
+train_ratio: 0.60 #0.60  # The test ratio automatically becomes 1 - train_ratio - val_ratio
+val_ratio: 0.15  #0.15 Simply set to 0 if validation set in not needed
+model_identifier: geotrans_good_results
+# Rerun settings, enables us to rerun after a crash, without rerunning everything
+rerun_crash: false
+scenes_finished: 1399  # How many scenes we managed to extract before crash
+while_counter: 0 # 0 should be default or None. But for special cases, we can set this to 1
+time_gone: 19.10  # Time spent, so we can keep track of time left
+# If error is displayed, reduce scenes_finished, so that we do not look at test data ...
+# Perturbation settings
+perturb_settings:
+  n_classes: 5
+  r_bin: 0.01  # 0.03
+  t_bin: 0.1 # 0.3
+  class_distribution: uniform
+  perturbation_method: registration  # ['m_classes', 'GMM', 'registration'], GMM not tested
+  augment_before_reg: false
+  train_reg_max_dist: 5  # TODO: Should I perhaps have 2 for CorAl
+  mix_augment_before_reg: False
+
+# Plot settings
+ablation:
+  run_ablation: false
+  remove_keys: [use_label, use_jde, use_sde, use_sd]
+plot_train_acc: false
+# Sensor settings (HDL-32E)
+sensor_settings:
+  vertical_angular_res: 0.02327481098473072  # [rad]. Corresponds to 1.333548387 degrees
+  horizontal_angular_res: 0.005817764173314432  # [rad]. Corresponds to 1/3 degrees
+  scan_frequency: 20  # [Hz]. Can be changed between 5-20 Hz, but the nuScenes data is 20 Hz.
+  lower_vert_fov: -0.5352925062179565  # [rad]. Lower vertical field of view. Corresponds to -30.67 degrees.
+  upper_vert_fov: 0.18622663617134094  # [rad]. Upper vertical field of view. Corresponds to 10.67 degrees.
+  max_distance: 100  # [m]
+  vert_channels: 32
+  hori_channels: 1080
+# Neighborhood settings
+neighborhood:
+  rmin: 0.5
+  rmax: 7.5
+  alpha_scale: 5
+  k: adaptive  # adaptive, joint
+# Differential entropy settings
+diff_entropy:
+  log_epsilon: -18.0
+  E_reject: 0.20  # does not matter when we work point-wise
+# Sinkhorn divergence settings
+sinkhorn_div:
+  p: 2
+  blur: 0.05
+  max_dist: 1000  # TODO: What is an appropriate value here?
+# Preprocessing
+preprocessing:
+  T_close: 1.5  # remove all points within 1.5 meters
+  apply_hpr_operator: true
+
+# Choose classifier
+classifier: FACT  # CorAl, FACT
+coral_settings:
+  learning_rate: 0.01
+  epochs: 250_000  # Change back to 250_000
+  ordinal_regression: true
+
+# Other settings
+verbose: false  # (bool): If True, print additional information.
+debug: false
+# If I only want to run test, set the path to something
+# load_model_path: /home/lu2277di/Projects/FACT/outputs/2023-12-31/15-35-07/best_model_average_dist_bins_5_alt1_classes_34000_with_max_train_dist_5_new_val_metric.pth
+load_model_path: /home/lu2277di/Projects/FACT/outputs/2024-08-07/14-50-11/best_model_geotrans_debugging.pth
+
+running_iterations: 1  # This requires a setup in the train_cls.py file. Otherwise, set this to 1.
+# This parameter below is handled directly in the program
+# inference: false
+# whether it is train, val or test. Do not change. (It controls if we have stochasticy during
+# inference or not. For train we want it, for val and test not).
