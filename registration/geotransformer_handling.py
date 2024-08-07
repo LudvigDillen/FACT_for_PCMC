@@ -138,6 +138,30 @@ def to_PC_format(src_pc, ref_pc, params, est_trans, gt_trans, geo_args=None):
             batch_size=params.batch_size_feature_extraction,
         )
         currentPCPair.set_new_PC(PC0_cov, PC1_cov, PCUnion_cov)
+
+    if params.args.general_dataset == "kitti":
+        # Remove points close to each lidar's sensor
+        est_location_pose1 = currentPCPair.est_pc1_to_pc0[:3, 3]
+        mask0 = torch.norm(PC0_cov.pc - est_location_pose1, dim=1) > 6
+        mask1 = torch.norm(currentPCPair.pc1_CS0, dim=1) > 6
+        # pc0_removed = PC0_cov.pc[mask0]
+        # pc1_removed = currentPCPair.pc1_CS0[mask1]
+        # vis_2pcs(pc0_removed.cpu(), pc1_removed.cpu(), title="est aligned (co-visible points) with removed close neighborhoods")
+        inds_to_keep = torch.hstack((mask0, mask1))
+        device = PC0.device
+        PC_union_filt = PC(currentPCPair.PCUnion.pc[inds_to_keep],
+                        currentPCPair.PCUnion.distances_to_origin[inds_to_keep], label=2,
+                        device=device)
+
+        PC0_filt = PC(currentPCPair.PC0.pc[mask0], currentPCPair.PC0.distances_to_origin[mask0],
+                    label=0, device=device)
+        PC1_filt = PC(currentPCPair.PC1.pc[mask1], currentPCPair.PC1.distances_to_origin[mask1],
+                    label=1, device=device)
+        if params.use_c:
+            PC_union_filt.weight_c = currentPCPair.PCUnion.weight_c[inds_to_keep]
+        currentPCPair.set_new_PC(PC0_filt, PC1_filt, PC_union_filt)
+
+
     PC_scene = np.array([currentPCPair])  # this is just the format that the code expects
 
     #updated_cov_pc1 = change_coordinate_system(PC1_cov.pc, currentPCPair.pose0, currentPCPair.pose1)
