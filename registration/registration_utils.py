@@ -216,12 +216,61 @@ def get_error_class(error, reg_method="p2l"):
         else:
             error_class = 4
     elif reg_method == "geotransformer":
-        if error < 0.05:
+        if error < 0.03:
             error_class = 0
         elif error < 0.10:
             error_class = 1
-        else:
+        elif error < 0.25:
             error_class = 2
+        elif error < 0.5:
+            error_class = 3
+        else:
+            error_class = 4
+        # if error < 0.05:
+        #     error_class = 0
+        # elif error < 0.08:
+        #     error_class = 1
+        # elif error < 0.12:
+        #     error_class = 2
+        # elif error < 0.20:
+        #     error_class = 3
+        # else:
+        #     error_class = 4
+
+        # if error < 0.06:
+        #     error_class = 0
+        # elif error < 0.08:
+        #     error_class = 1
+        # elif error < 0.10:
+        #     error_class = 2
+        # elif error < 0.12:
+        #     error_class = 3
+        # elif error < 0.14:
+        #     error_class = 4
+        # elif error < 0.18:
+        #     error_class = 5
+        # elif error < 0.25:
+        #     error_class = 6
+        # else:
+        #     error_class = 7
+
+        # if error < 0.06:
+        #     error_class = 0
+        # elif error < 0.08:
+        #     error_class = 1
+        # elif error < 0.10:
+        #     error_class = 2
+        # elif error < 0.12:
+        #     error_class = 3
+        # elif error < 0.14:
+        #     error_class = 4
+        # elif error < 0.18:
+        #     error_class = 5
+        # elif error < 0.25:
+        #     error_class = 6
+        # else:
+        #     error_class = 7
+
         # if error < 0.07:
         #     error_class = 0
         # elif error < 0.085:
