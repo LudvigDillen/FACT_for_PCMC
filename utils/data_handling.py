@@ -302,13 +302,20 @@ def get_loader(mode, while_counter, cfg, train_valid_data_loader, test_data_load
         if while_counter == 0:
             print("Now using non-augmented data")
             cfg.train.use_augmentation = False
-            loader, _, _ = train_valid_data_loader(cfg, False)  # TODO: Should I augment train data or not
+            loader, _, _ = train_valid_data_loader(cfg, False)
         else:
             print("Now going to augmented data")
             cfg.train.use_augmentation = True
             loader, _, _ = train_valid_data_loader(cfg, False)
     elif mode == "validation":
-        _, loader, _ = train_valid_data_loader(cfg, False)  # TODO: Should I augment train data or not
+        if while_counter == 0:
+            print("Now using non-augmented validation data")
+            cfg.train.use_augmentation = False
+            _, loader, _ = train_valid_data_loader(cfg, False)
+        else:
+            print("Now going to augmented validation data")
+            cfg.train.use_augmentation = True
+            _, loader, _ = train_valid_data_loader(cfg, False)
     elif mode == "test":
         if params.args.general_dataset == 'kitti':
             loader, _ = test_data_loader(cfg)
@@ -353,6 +360,7 @@ def geotrans_features_to_txt_files(
 
     #region Load some GeoTransformer functions/modules
     from registration.geotransformer_handling import to_PC_format
+    # from registration.geotransformer_handling import to_PC_format_only
     from GeoTransformer_202407.geotransformer.utils.torch import to_cuda
 
     weight_dir = 'GeoTransformer_202407/weights'
@@ -433,18 +441,27 @@ def geotrans_features_to_txt_files(
         while_counter = params.args.while_counter
     else:
         while_counter = 0
+    print(f"\nExtracting features for {mode} scenes")
     print(f"Starting at scene {scene_counter}")
     print(f"Starting at while_counter {while_counter}")
 
     counter_error_classes = np.zeros(params.args.perturb_settings.n_classes)
     counter = 0
     error_list = []
+    t_loading = 0
+    t_georeg = 0
+    t_PC_format = 0
+    t_feat_extrac = 0
 
     with open(data_file, write_mode) as file:
         while scene_counter + counter < scenes_upper:
             loader, cfg = get_loader(mode, while_counter, cfg, train_valid_data_loader, test_data_loader, params)
             PC_scenes = []
+            t_done = time.time()
+            # srcs, refs, all_gt_trans, all_est_trans = [], [], [], []
             for iteration, data_dict in enumerate(loader):
+                t1 = time.time()
+                t_loading += t1 - t_done
                 data_dict = to_cuda(data_dict)
                 # GeoTransformer registration done
                 output_dict = model(data_dict)
@@ -457,14 +474,26 @@ def geotrans_features_to_txt_files(
                 # print("norms max", torch.norm(src, dim=1).max().item(), torch.norm(ref, dim=1).max().item())
                 del output_dict, data_dict
                 torch.cuda.empty_cache()
+                t2 = time.time()
+                t_georeg += t2 - t1
+                #srcs.append(src)
+                #refs.append(ref)
+                #all_gt_trans.append(gt_trans)
+                #all_est_trans.append(est_trans)
 
                 # TODO: Load more than one scene at a time ...
+                
                 PC_scene = to_PC_format(src, ref, params, est_trans, gt_trans, geo_args=None)
                 counter_error_classes[PC_scene[0].class_category] += 1
                 PC_scenes.append(PC_scene)
                 counter += 1
-                if (iteration + 1) % n_scenes_per_loop == 0 or scene_counter + counter == scenes_upper:
+                t3 = time.time()
+                t_PC_format += t3 - t2
+                if (iteration + 1) % n_scenes_per_loop == 0 or scene_counter + counter == scenes_upper or iteration == len(loader) -1:
                     print([f"Error class {i}: {counter_error_classes[i]}" for i in range(len(counter_error_classes))])
+                    #for (pc1, pc2, T_gt, T_est) in zip(srcs, refs, all_gt_trans, all_est_trans):
+                    #    PC_scene = to_PC_format_only(src, ref, params, est_trans, gt_trans, geo_args=None)
+                    #    PC_scenes.append(PC_scene)
                     scene_counter += counter
                     # Display data loading progress
                     PC_scenes = np.array(PC_scenes)
@@ -494,9 +523,18 @@ def geotrans_features_to_txt_files(
                         break
                     display_progress(scene_counter, params.n_scenes, mode, start, params.train_ratio,
                                      params.args.val_ratio)
+                    t_feat_extrac += time.time() - t3
+                    #print(f"Timings\n Loading: {t_loading:.2f}\n GeoReg: {t_georeg:.2f}\n PC_format: {t_PC_format:.2f}\n Feature extraction: {t_feat_extrac:.2f}")
+                    #del srcs, refs, all_gt_trans, all_est_trans
+                    #srcs, refs, all_gt_trans, all_est_trans = [], [], [], []
+                t_done = time.time()
             scene_counter += counter
             counter = 0
-            if mode in ["test", "validation"] or params.args.perturb_settings.mix_augment_before_reg == False:
+            if mode == "train" and params.args.perturb_settings.train_aug_before_reg == False:
+                break
+            if mode == "validation" and params.args.perturb_settings.val_aug_before_reg == False:
+                break
+            if mode == "test":
                 break
             while_counter += 1
 
