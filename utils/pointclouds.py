@@ -296,7 +296,7 @@ class PCPair:
             #         translational_offset=self.t_offset,
             #     )
             gt_pose = torch.matmul(torch.linalg.inv(self.pose0), self.pose1)
-            
+
             if self.already_registered:
                 rel_pose = self.est_pc1_to_pc0
             else:
@@ -329,7 +329,7 @@ class PCPair:
             rv = np.random.lognormal(mean=0, sigma=1, size=2)
             self.t_offset = t_pre_scaler*rv[0]
             self.R_offset = R_pre_scaler*rv[1]
-            self.pc1_CS0 = self.perform_random_perturbation_CorAl(
+            self.pc1_CS0 = self.perform_random_perturbation_mixed(
                 pc1_CS0_gt,
                 angular_offset=self.R_offset,
                 translational_offset=self.t_offset,
@@ -391,33 +391,64 @@ class PCPair:
         return perturbed_point_cloud
 
 
+    def to_cross_product_matrix(self, v):
+        """
+        This function takes a vector v and returns the cross product matrix of v.
+
+        :param v: vector
+        :return: cross product matrix of v
+        """
+        return torch.tensor(
+            [
+                [0, -v[2], v[1]],
+                [v[2], 0, -v[0]],
+                [-v[1], v[0], 0],
+            ]
+        )
+
+    def rodorigues_formula(self, ax, theta):
+        """
+        This function takes a rotation matrix R and a rotation angle theta and returns the
+        updated rotation matrix.
+
+        :param ax: rotation axis
+        :param theta: rotation angle
+        :return: updated rotation matrix
+        """
+        I = torch.eye(3, dtype=ax.dtype, device=ax.device)
+        n_cross = self.to_cross_product_matrix(ax)
+        return I + torch.sin(theta) * n_cross + (1 - torch.cos(theta)) * torch.matmul(n_cross, n_cross)
+
     def perform_random_perturbation_mixed(
         self, pc, angular_offset, translational_offset
     ):
-        """
-        This function a point cloud perturb it with an angular and translational offset.
-
-        :param pc: point cloud
-        :param angular_offset: float, angular offset in radians around the sensor's vertical axis
-                                (default: 0.01 rad)
-        :param translational_offset: float, distance of random translational offset (x,y)-coord in meters
-                                        (default: 0.1 m)
-        :return: perturbed point cloud
-        """
         # Define rotation with angle "angular_offset" around the up-vector
-        cos_off = torch.cos(torch.tensor(angular_offset))
-        sin_off = torch.sin(torch.tensor(angular_offset))
-        Ry_peturb = torch.tensor([[cos_off, -sin_off, 0], [sin_off, cos_off, 0], [0, 0, 1]])
-        Rz_peturb = torch.tensor([[cos_off, -sin_off, 0], [sin_off, cos_off, 0], [0, 0, 1]])
-        Rx_peturb = torch.tensor([[cos_off, -sin_off, 0], [sin_off, cos_off, 0], [0, 0, 1]])
+        if torch.rand(1) < 0.5:
+            angular_offset = -angular_offset
+        theta = torch.tensor(angular_offset, dtype=pc.dtype)
+        ax_x = torch.tensor([1, 0, 0])
+        ax_y = torch.tensor([0, 1, 0])
+        ax_z = torch.tensor([0, 0, 1])
+        theta_x = 0.25*torch.rand(1)*theta
+        theta_y = 0.25*torch.rand(1)*theta
+        R_x = self.rodorigues_formula(ax_x, theta_x)
+        R_y = self.rodorigues_formula(ax_y, theta_y)
+        R_z = self.rodorigues_formula(ax_z, theta)
+        # The SO(3) group is not commutative
+        if torch.rand(1) < 0.5:
+            R_peturb = torch.matmul(R_x, torch.matmul(R_y, R_z))
+        else:
+            R_peturb = torch.matmul(R_y, torch.matmul(R_x, R_z))
 
         # Define random translation offset of 0.1m in (x,y)-plane
-        random_xy_offset = torch.rand((2, 1))
-        scaled_random_xy_offset = (
-            translational_offset * random_xy_offset / torch.norm(random_xy_offset)
+        random_xyz_offset = 2*(torch.rand((3, 1))-1/2)
+        random_xyz_offset[2] = 0.25*torch.rand(1)*random_xyz_offset[2]
+
+        scaled_random_xyz_offset = (
+            translational_offset * random_xyz_offset / torch.norm(random_xyz_offset)
         )
-        z_offset = torch.tensor(0)  # there should be no offset in y-direction
-        t_peturb = torch.vstack((scaled_random_xy_offset, z_offset)).squeeze()
+
+        t_peturb = scaled_random_xyz_offset.squeeze()
 
         # Define rigid transformation matrix in homogeneuous coordinates
         T_peturb = torch.eye(4, dtype=pc.dtype, device=pc.device)
