@@ -324,28 +324,19 @@ class PCPair:
         elif self.perturbation_method == "reg_and_m_classes":
             pc1_CS0_gt = change_coordinate_system(self.PC1.pc, self.pose0, self.pose1)
             # if class_category == 0, do not perturb anything ...
-            class_to_simulate = np.random.randint(5)
-            if class_to_simulate == 0:
-                scaler = 0.05
-            elif class_to_simulate == 1:
-                scaler = 0.8
-            elif class_to_simulate == 2:
-                scaler = 1.5
-            elif class_to_simulate == 3:
-                scaler = 3
-            elif class_to_simulate == 4:
-                scaler = 5
-            t_scaler = scaler*np.random.random(1).item()
-            R_scaler = scaler*np.random.random(1).item()
-            self.R_offset = self.R_bin * R_scaler
-            self.t_offset = self.t_bin * t_scaler
+            t_pre_scaler = np.random.choice([0.0050, 0.0100, 0.0250, 0.1000, 0.2000])
+            R_pre_scaler = np.random.choice([0.0005, 0.0010, 0.0025, 0.0100, 0.0200])
+            rv = np.random.lognormal(mean=0, sigma=1, size=2)
+            self.t_offset = t_pre_scaler*rv[0]
+            self.R_offset = R_pre_scaler*rv[1]
             self.pc1_CS0 = self.perform_random_perturbation_CorAl(
                 pc1_CS0_gt,
                 angular_offset=self.R_offset,
                 translational_offset=self.t_offset,
             )
             error = self.pc_reg_error_to_class(pc1_CS0_gt)
-            # print(f"Error {error:.3f} and class {self.class_category} class_to_simulate {class_to_simulate}")
+            # print(f"Error {error:.3f} and class {self.class_category} pre_scalers" +
+            #       f"({R_pre_scaler}, {t_pre_scaler})")
         else:
             sys.exit(f"Perturbation method ({self.perturbation_method}) not known!")
 
@@ -375,6 +366,50 @@ class PCPair:
         cos_off = torch.cos(torch.tensor(angular_offset))
         sin_off = torch.sin(torch.tensor(angular_offset))
         R_peturb = torch.tensor([[cos_off, -sin_off, 0], [sin_off, cos_off, 0], [0, 0, 1]])
+
+        # Define random translation offset of 0.1m in (x,y)-plane
+        random_xy_offset = torch.rand((2, 1))
+        scaled_random_xy_offset = (
+            translational_offset * random_xy_offset / torch.norm(random_xy_offset)
+        )
+        z_offset = torch.tensor(0)  # there should be no offset in y-direction
+        t_peturb = torch.vstack((scaled_random_xy_offset, z_offset)).squeeze()
+
+        # Define rigid transformation matrix in homogeneuous coordinates
+        T_peturb = torch.eye(4, dtype=pc.dtype, device=pc.device)
+        T_peturb[:3, :3] = R_peturb
+        T_peturb[:3, 3] = t_peturb
+        self.est_rel_pose = T_peturb
+
+        # Peturb point cloud
+        n_points = pc.shape[0]
+        homog_ones = torch.ones(n_points, device=pc.device)
+        pc_homog_swapped = torch.vstack((torch.swapaxes(pc, 0, 1), homog_ones))
+        perturbed_point_cloud = torch.swapaxes(
+            torch.matmul(T_peturb, pc_homog_swapped)[:3], 0, 1
+        )
+        return perturbed_point_cloud
+
+
+    def perform_random_perturbation_mixed(
+        self, pc, angular_offset, translational_offset
+    ):
+        """
+        This function a point cloud perturb it with an angular and translational offset.
+
+        :param pc: point cloud
+        :param angular_offset: float, angular offset in radians around the sensor's vertical axis
+                                (default: 0.01 rad)
+        :param translational_offset: float, distance of random translational offset (x,y)-coord in meters
+                                        (default: 0.1 m)
+        :return: perturbed point cloud
+        """
+        # Define rotation with angle "angular_offset" around the up-vector
+        cos_off = torch.cos(torch.tensor(angular_offset))
+        sin_off = torch.sin(torch.tensor(angular_offset))
+        Ry_peturb = torch.tensor([[cos_off, -sin_off, 0], [sin_off, cos_off, 0], [0, 0, 1]])
+        Rz_peturb = torch.tensor([[cos_off, -sin_off, 0], [sin_off, cos_off, 0], [0, 0, 1]])
+        Rx_peturb = torch.tensor([[cos_off, -sin_off, 0], [sin_off, cos_off, 0], [0, 0, 1]])
 
         # Define random translation offset of 0.1m in (x,y)-plane
         random_xy_offset = torch.rand((2, 1))
