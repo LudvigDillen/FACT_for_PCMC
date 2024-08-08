@@ -107,7 +107,7 @@ def fact_prediction(args, params, model_fact, src_points, ref_points, est_trans,
     return fact_error_class
 
 
-def to_PC_format(src_pc, ref_pc, params, est_trans, gt_trans, geo_args=None):
+def to_PC_format(src_pc, ref_pc, params, est_trans, gt_trans, geo_args=None, mode="train"):
     src_pt_dists = torch.norm(src_pc, p=2, dim=1)
     ref_pt_dists = torch.norm(ref_pc, p=2, dim=1)
 
@@ -122,7 +122,7 @@ def to_PC_format(src_pc, ref_pc, params, est_trans, gt_trans, geo_args=None):
         perturb_settings=params.args.perturb_settings, change_of_pose_C1=params.args.change_of_pose_C1,
         perturbation_method=params.args.perturb_settings.perturbation_method,
         reg_method = params.args.reg_method, geo_args=geo_args, est_pc1_to_pc0=est_trans,
-        gt_pc1_to_pc0=gt_trans, geotrans_dataset=params.args.general_dataset
+        gt_pc1_to_pc0=gt_trans, mode=mode,
     )
 
 
@@ -173,3 +173,25 @@ def to_PC_format(src_pc, ref_pc, params, est_trans, gt_trans, geo_args=None):
     #vis_2pcs(PC0_cov.pc.cpu(), updated_cov_pc1.cpu(), title="Gt aligned co-visible points (colored)",
     #         cmap=PCUnion_cov.weight_c.cpu().numpy())
     return PC_scene
+
+
+def to_PC_format_only(src_pc, ref_pc, params, est_trans, gt_trans, geo_args=None):
+    src_pt_dists = torch.norm(src_pc, p=2, dim=1)
+    ref_pt_dists = torch.norm(ref_pc, p=2, dim=1)
+
+    # Load in first point cloud
+    PC1 = PC(src_pc, src_pt_dists, label=1, device=params.device)
+    # Load in second point cloud
+    PC0 = PC(ref_pc, ref_pt_dists, label=0, device=params.device)
+
+    # Set point cloud pair and their union, and perform possible perturbation
+    currentPCPair = PCPair(
+        PC0, PC1, device=params.device, PCHandler=None,
+        perturb_settings=params.args.perturb_settings, change_of_pose_C1=params.args.change_of_pose_C1,
+        perturbation_method=params.args.perturb_settings.perturbation_method,
+        reg_method = params.args.reg_method, geo_args=geo_args, est_pc1_to_pc0=est_trans,
+        gt_pc1_to_pc0=gt_trans, geotrans_dataset=params.args.general_dataset
+    )
+    PC_scene = np.array([currentPCPair])  # this is just the format that the code expects
+    return PC_scene
+

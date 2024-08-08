@@ -483,7 +483,7 @@ def geotrans_features_to_txt_files(
 
                 # TODO: Load more than one scene at a time ...
                 
-                PC_scene = to_PC_format(src, ref, params, est_trans, gt_trans, geo_args=None)
+                PC_scene = to_PC_format(src, ref, params, est_trans, gt_trans, geo_args=None, mode=mode)
                 counter_error_classes[PC_scene[0].class_category] += 1
                 PC_scenes.append(PC_scene)
                 counter += 1

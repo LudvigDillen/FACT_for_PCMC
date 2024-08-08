@@ -194,7 +194,7 @@ def subsample_point_cloud(point_cloud, fraction=0.20):
 class PCPair:
     def __init__(self, PC0, PC1, device, PCHandler, perturb_settings, change_of_pose_C1=False,
                  perturbation_method="m_classes", pc_reg_dist=1, reg_method="p2l", geo_args=None,
-                 est_pc1_to_pc0=None, gt_pc1_to_pc0=None, geotrans_dataset="kitti"):
+                 est_pc1_to_pc0=None, gt_pc1_to_pc0=None, mode="train"):
         # Set point cloud pair
         self.PC0 = PC0
         self.PC1 = PC1
@@ -228,11 +228,17 @@ class PCPair:
         self.geo_args = geo_args
         # 1 if point clouds follow each other, 2 if there is one point cloud in between and so on.
         self.pc_reg_dist = pc_reg_dist
+        self.mode = mode
         # Draw random value between 0 and 1 if we should perturb or not perturb the point cloud.
         # if perturb_settings.class_distribution == 'uniform': ... I have variant currently ...
         if perturbation_method == "m_classes":
             self.class_category = np.random.choice(np.arange(self.N_classes))
+        elif perturbation_method == "reg_and_m_classes" and mode != "train":
+            self.perturbation_method = "registration"
+        elif perturbation_method == "reg_and_m_classes" and mode == "train" and torch.rand(1) > 0.5:
+            self.perturbation_method = "registration"
 
+        self.reg_error = None
         self.set_union_of_point_clouds()
 
     def set_new_PC(self, PC0, PC1, PCUnion):
@@ -246,6 +252,11 @@ class PCPair:
 
     def set_name(self, name):
         self.name = name
+
+    def pc_reg_error_to_class(self, pc1_CS0_gt):
+        error = torch.linalg.norm(self.pc1_CS0 - pc1_CS0_gt, dim=1).mean()
+        self.class_category = ru.get_error_class(error, self.reg_method)
+        return error
 
     def set_union_of_point_clouds(self):
         pc_union_dists = torch.cat(
@@ -306,16 +317,43 @@ class PCPair:
                     self.class_category = 1
             elif version == "average distance est to gt pose":
                 pc1_CS0_gt = ru.align_pair(self, gt_pose, plot=False)
-                error = torch.linalg.norm(self.pc1_CS0 - pc1_CS0_gt, dim=1).mean()
-                self.class_category = ru.get_error_class(error, self.reg_method)
+                error = self.pc_reg_error_to_class(pc1_CS0_gt)
+                #pc1_CS0_gt = ru.align_pair(self, gt_pose, plot=False)
+                #error = torch.linalg.norm(self.pc1_CS0 - pc1_CS0_gt, dim=1).mean()
+                #self.class_category = ru.get_error_class(error, self.reg_method)
+        elif self.perturbation_method == "reg_and_m_classes":
+            pc1_CS0_gt = change_coordinate_system(self.PC1.pc, self.pose0, self.pose1)
+            # if class_category == 0, do not perturb anything ...
+            class_to_simulate = np.random.randint(5)
+            if class_to_simulate == 0:
+                scaler = 0.05
+            elif class_to_simulate == 1:
+                scaler = 0.8
+            elif class_to_simulate == 2:
+                scaler = 1.5
+            elif class_to_simulate == 3:
+                scaler = 3
+            elif class_to_simulate == 4:
+                scaler = 5
+            t_scaler = scaler*np.random.random(1).item()
+            R_scaler = scaler*np.random.random(1).item()
+            self.R_offset = self.R_bin * R_scaler
+            self.t_offset = self.t_bin * t_scaler
+            self.pc1_CS0 = self.perform_random_perturbation_CorAl(
+                pc1_CS0_gt,
+                angular_offset=self.R_offset,
+                translational_offset=self.t_offset,
+            )
+            error = self.pc_reg_error_to_class(pc1_CS0_gt)
+            # print(f"Error {error:.3f} and class {self.class_category} class_to_simulate {class_to_simulate}")
         else:
             sys.exit(f"Perturbation method ({self.perturbation_method}) not known!")
 
         # pc_union is in the coordinate system of pc0
         # print(f"Error {error:.3f} and class {self.class_category}")
+        self.reg_error = error
         pc_union = torch.cat((self.PC0.pc, self.pc1_CS0), dim=0)
         self.PCUnion = PC(pc_union, pc_union_dists, label=2, device=self.device)
-        return None
 
 
     # TODO: If I want to a speed up I should do this in batches,
