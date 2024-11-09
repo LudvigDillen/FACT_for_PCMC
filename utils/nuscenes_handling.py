@@ -303,7 +303,7 @@ class NuscenesHandling:
                 perturb_settings=self.perturb_settings, change_of_pose_C1=params.args.change_of_pose_C1,
                 perturbation_method=params.args.perturb_settings.perturbation_method,
                 pc_reg_dist = self.dist_between_sample_inds,
-                reg_method = params.args.reg_method, geo_args=geo_args
+                reg_method = params.args.reg_method, geo_args=geo_args, get_icp_residuals=params.args.get_icp_residuals
             )
 
             if self.apply_hpr_operator:

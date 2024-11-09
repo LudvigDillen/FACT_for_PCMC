@@ -11,6 +11,7 @@ from utils.experiment_utils import setup_experiment
 from classifiers.PointTransformers.classify import classify_pairs
 from classifiers.PointTransformers.train_cls import load_best_model
 from visualization.classifications import store_confusion_matrix
+from visualization.residuals import analyze_relationship
 import visualization.registration as vr
 from features.feature_extractor import feature_extraction, create_feature_map
 from features.feature_utils import normalize_data_on_condition
@@ -20,21 +21,32 @@ from visualization.presentation import visualize_and_save
 
 
 def estimate_transformation_scene(PC_scene, gt_poses, method="p2l", voxelize=False, plot=False,
-                                  geo_args=None):
+                                  geo_args=None, get_icp_residuals=False):
+    if get_icp_residuals:
+        assert method in ["ICP-p2l", "icp-p2l", "p2l"], "ICP residuals only available for p2l."
     trans_init = np.eye(4)
     rel_poses_est = torch.zeros((len(PC_scene), 4, 4), device='cuda')
+    fitness = np.zeros(len(PC_scene))
+    rmse = np.zeros(len(PC_scene))
     for j, (pair, gt_pose) in enumerate(zip(PC_scene, gt_poses)):
         # We want to find T from CS1 to CS0
         source = ru.from_tensor_to_pcd(pair.PC1.pc)
         target = ru.from_tensor_to_pcd(pair.PC0.pc)
 
-        rel_poses_est[j] = ru.register_pair(source, target, method=method,
-                                            trans_init=trans_init, voxelize=voxelize,
-                                            gt_pose=gt_pose, geo_args=geo_args)
+        if get_icp_residuals:
+            rel_poses_est[j], fitness[j], rmse[j] = ru.register_pair(
+                source, target, method=method, trans_init=trans_init, voxelize=voxelize,
+                gt_pose=gt_pose, geo_args=geo_args, get_icp_residuals=get_icp_residuals)
+        else:
+            rel_poses_est[j] = ru.register_pair(
+                source, target, method=method, trans_init=trans_init, voxelize=voxelize,
+                gt_pose=gt_pose, geo_args=geo_args)
 
         if plot:
             vr.draw_registration_result(source, target, rel_poses_est[j].cpu().numpy(),
                                         title=f"{method}")
+    if get_icp_residuals:
+        return rel_poses_est, fitness, rmse
     return rel_poses_est
 
 
@@ -65,15 +77,18 @@ def reg_mpe(args):
     n_samples_per_scene = args.n_samples_per_scene
     n_classes = args.perturb_settings.n_classes
     DO_REG = True
-    CHANGE_OF_POSE_C1 = True
+    CHANGE_OF_POSE_C1 = True  # TODO: Perhaps change back to True
     VISUALIZE_RESULT = False
     REPAIR_METHOD = "gt"  # [gt, p2l]
     REG_METHOD = "p2l"  # [p2l, geotrans]
+    GET_ICP_RESIDUALS = True
+    args["get_icp_residuals"] = GET_ICP_RESIDUALS
 
     # Some settings if I use geotrans. Mode in [kitti, 3dmatch]
     geo_args = ru.get_geo_config(mode="kitti") if REG_METHOD == "geotrans" else None
     #
-    test_start_scene = args.n_scenes - 1 if args.one_scene else 0
+    # test_start_scene = args.n_scenes - 1 if args.one_scene else 0
+    test_start_scene = 638
     # Set to 638 if we want to only test at test data
     n_scenes = args.n_scenes - test_start_scene
 
@@ -87,7 +102,7 @@ def reg_mpe(args):
                                      scene_counter=test_start_scene)
         max_samples = PCHandler.get_number_lidar_samples_in_scene()
         if n_samples_per_scene >= max_samples:
-            print(f"There are not {n_samples_per_scene} samples in scene {n_scenes}." + 
+            print(f"There are not {n_samples_per_scene} samples in scene {n_scenes}." +
                   f" Let's use the max number of samples: {max_samples}.")
             n_samples_per_scene = max_samples - 1
 
@@ -98,6 +113,8 @@ def reg_mpe(args):
     gts = np.zeros((n_scenes, n_samples_per_scene))
     poses_est_scenes = torch.zeros((n_scenes, n_samples_per_scene, 4, 4), device='cuda')
     poses_gt_scenes = torch.zeros((n_scenes, n_samples_per_scene, 4, 4), device='cuda')
+    fitness = np.zeros((n_scenes, n_samples_per_scene))
+    rmse = np.zeros((n_scenes, n_samples_per_scene))
     for i in range(n_scenes):
         if args.one_scene:
             PC_scene = PCHandler.sample_from_scenes(params, n_samples=n_samples_per_scene, n_scenes=1,
@@ -111,10 +128,18 @@ def reg_mpe(args):
         # Register scene
         poses_gt_scenes[i] = ru.get_gt_poses(PC_scene)
         if CHANGE_OF_POSE_C1:
-            poses_est_scenes[i] = ru.get_est_rel_poses(PC_scene)
+            if GET_ICP_RESIDUALS:
+                poses_est_scenes[i], fitness[i], rmse[i] = ru.get_est_rel_poses(
+                    PC_scene, get_icp_residuals=GET_ICP_RESIDUALS)
+            else:
+                poses_est_scenes[i] = ru.get_est_rel_poses(PC_scene)
+        elif GET_ICP_RESIDUALS:
+            poses_est_scenes[i], fitness[i], rmse[i] = estimate_transformation_scene(
+                PC_scene, gt_poses=poses_gt_scenes[i], method=REG_METHOD, geo_args=geo_args,
+                get_icp_residuals=GET_ICP_RESIDUALS)
         else:
-            poses_est_scenes[i] = estimate_transformation_scene(PC_scene, gt_poses=poses_gt_scenes[i],
-                                                                method=REG_METHOD, geo_args=geo_args)
+            poses_est_scenes[i] = estimate_transformation_scene(
+                PC_scene, gt_poses=poses_gt_scenes[i], method=REG_METHOD, geo_args=geo_args)
         # Calculate errors
         errors_scenes[i] = ru.get_mean_point_error(PC_scene, poses_est_scenes[i], poses_gt_scenes[i])
         gts[i] = ru.get_gt_classes(errors_scenes[i])
@@ -142,12 +167,23 @@ def reg_mpe(args):
         points_batches = torch.split(points, batch_size)
         for j, ps in enumerate(points_batches):
             if j == 0:
-                p = classify_pairs(pcac_model, ps)
+                p, logits = classify_pairs(pcac_model, ps)
             else:
                 p  = torch.cat((p, classify_pairs(pcac_model, ps)))
         preds[i] = p.cpu().numpy()
-    store_confusion_matrix(y_pred=preds.ravel(), y_true=gts.ravel(), N_classes=n_classes,
-                           logger=logger, args=args, accumulate=True)
+    # Ravel data
+    preds_flat = preds.ravel()
+    fitness_flat = fitness.ravel()
+    rmse_flat = rmse.ravel()
+    gts_flat = gts.ravel()
+    analyze_relationship(preds_flat, fitness_flat, rmse_flat, gts_flat, args)
+    for i in range(n_scenes*n_samples_per_scene):
+        print(f"preds: {preds_flat[i]}; fitness: {fitness_flat[i]:.3f}; rmse: {rmse_flat[i]:.3f} gts: {gts_flat[i]}")
+    # for i in range(n_scenes):
+    #     print("preds: ", preds[i], "fitness", fitness[i], "rmse", rmse[i], "gts: ", gts[i])
+
+    # store_confusion_matrix(y_pred=preds.ravel(), y_true=gts.ravel(), N_classes=n_classes,
+    #                        logger=logger, args=args, accumulate=True)
     if VISUALIZE_RESULT:
         #region Visualize
         def _align_pc(pc, pose):

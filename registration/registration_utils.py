@@ -114,10 +114,17 @@ def get_gt_poses(PC_scene):
     return rel_poses_gt
 
 
-def get_est_rel_poses(PC_scene):
+def get_est_rel_poses(PC_scene, get_icp_residuals=False):
     rel_poses_est = torch.zeros((len(PC_scene), 4, 4), device='cuda')
     for j, pair in enumerate(PC_scene):
         rel_poses_est[j] = pair.est_rel_pose
+    if get_icp_residuals:
+        fitness = np.zeros((len(PC_scene)))
+        inlier_rmse = np.zeros((len(PC_scene)))
+        for j, pair in enumerate(PC_scene):
+            fitness[j] = pair.fitness
+            inlier_rmse[j] = pair.inlier_rmse
+        return rel_poses_est, fitness, inlier_rmse
     return rel_poses_est
 
 
@@ -139,7 +146,9 @@ def  align_pair(pair, rel_pose, plot=False):
 
 
 def register_pair(source, target, method="p2l", trans_init=None, voxelize=False,
-                  gt_pose=None, geo_args=None):
+                  gt_pose=None, geo_args=None, get_icp_residuals=False):
+    if get_icp_residuals:
+        assert method in ["ICP-p2l", "icp-p2l", "p2l"], "Only ICP-p2l is supported for now"
     if trans_init is None:
         trans_init = np.asarray([[1.0, 0.0, 0.0, 0.0],
                                  [0.0, 1.0, 0.0, 0.0],
@@ -172,6 +181,8 @@ def register_pair(source, target, method="p2l", trans_init=None, voxelize=False,
             source, target, threshold, trans_init,
             treg.TransformationEstimationPointToPlane(),
             treg.ICPConvergenceCriteria(max_iteration=1000))
+        fitness = reg_res.fitness
+        inlier_rmse = reg_res.inlier_rmse
         rel_pose = reg_res.transformation.copy()
     elif method == "init":
         rel_pose = trans_init.copy()
@@ -200,6 +211,8 @@ def register_pair(source, target, method="p2l", trans_init=None, voxelize=False,
         sys.exit("Have no other method")
     rel_pose = torch.from_numpy(rel_pose).cuda()
     # print(f"T_Est:\n {rel_pose}")
+    if get_icp_residuals:
+        return rel_pose, fitness, inlier_rmse
     return rel_pose
 
 
