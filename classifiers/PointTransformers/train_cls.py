@@ -23,6 +23,7 @@ from classifiers.loss_functions import get_loss
 from classifiers.coral import get_coral_features, perform_coral_training, perform_coral_inference
 from classifiers.PointTransformers.classify import classify_pairs
 from utils.other import display_to_logger_before, display_to_logger_after
+from registration.registration_utils import get_error_class
 
 
 def get_mean_acc(class_acc):
@@ -44,7 +45,9 @@ def get_overall_acc(class_acc):
 
 
 def inference_loop(data, args, model, class_acc):
-    points, target, scene_numbers = data
+    points, target, scene_numbers, reg_error = data
+    if (reg_error == -1).any():
+        del reg_error
     # same_scene = (scene_numbers == scene_numbers[0]).sum() == len(scene_numbers)
     # assert same_scene, "All samples does not come from the same scene"
 
@@ -54,7 +57,7 @@ def inference_loop(data, args, model, class_acc):
         target = target[:, 0]
 
     points = fu.normalize_data_on_condition(args, points)
-    pred_choice, logits = classify_pairs(model, points)
+    pred_choice, logits = classify_pairs(model, points, regression=args.regression, reg_method=args.reg_method)
 
     for cat in np.unique(target.cpu()):
         ind_for_cat_target = target == cat
@@ -107,7 +110,7 @@ def test_results(args, model, loader):
     mean_acc = get_mean_acc(class_acc)
     instance_acc = get_overall_acc(class_acc)
     vis_cls.hist_of_logits(all_logits, args)
-    
+
     return instance_acc, mean_acc, y_true, y_pred
 
 
@@ -116,38 +119,6 @@ def load_model(model_path, classifier):
     start_epoch = checkpoint["epoch"]
     classifier.load_state_dict(checkpoint["model_state_dict"])
     return classifier, start_epoch
-
-
-# def load_best_model(cfg, logger, pretrained=True):
-#     if cfg.classifier == "FACT":
-#         cfg.input_dim, cfg = fu.number_of_features(cfg)
-#         shutil.copy(
-#             hydra.utils.to_absolute_path(
-#                 f"classifiers/PointTransformers/models/{cfg.model.name}/model.py"), ".")
-
-#         if torch.cuda.is_available():
-#             classifier = getattr(
-#                 importlib.import_module(
-#                     f"classifiers.PointTransformers.models.{cfg.model.name}.model"),
-#                 "PointTransformerCls")(cfg).cuda()
-#         else:
-#             classifier = getattr(
-#                 importlib.import_module(
-#                     f"classifiers.PointTransformers.models.{cfg.model.name}.model"),
-#                 "PointTransformerCls")(cfg)
-#     elif cfg.classifier == "CorAl":
-#         shutil.copy(
-#             hydra.utils.to_absolute_path("classifiers/regression.py"), ".")
-#         classifier = getattr(
-#             importlib.import_module("classifiers.regression"),
-#             "LogisticRegression")(input_dim=2, output_dim=1)
-
-#     start_epoch = 0
-#     if pretrained and cfg.load_model_path:
-#         classifier, start_epoch = load_model(cfg.load_model_path, classifier)
-#         logger.info("Use pretrain model")
-
-#     return classifier, start_epoch, cfg
 
 
 def load_best_model(args, logger, pretrained=True):
@@ -196,6 +167,7 @@ def run_cls(args, logger, pretrained=True):
     # MODEL LOADING
     classifier, start_epoch, args = load_best_model(args, logger, pretrained=pretrained)
     criterion = torch.nn.CrossEntropyLoss()
+    softplus = torch.nn.Softplus()
 
     if args.optimizer == "Adam":
         optimizer = torch.optim.Adam(classifier.parameters(), lr=args.learning_rate,
@@ -225,9 +197,14 @@ def run_cls(args, logger, pretrained=True):
         for _, data in tqdm(
             enumerate(trainDataLoader, 0), total=len(trainDataLoader), smoothing=0.9
         ):
-            points, target, scene_numbers = data
+            points, target, scene_numbers, reg_error = data
+            if args.regression:
+                reg_error = reg_error.float()[:, None]
+
             if torch.cuda.is_available():
                 points, target = points.cuda(), target[:, 0].cuda()
+                if args.regression:
+                    reg_error = reg_error.cuda()
             else:
                 target = target[:, 0]
 
@@ -236,10 +213,21 @@ def run_cls(args, logger, pretrained=True):
 
             optimizer.zero_grad()
 
-            pred = classifier(points, inference=False)
-            loss = get_loss(criterion, pred, target.long(), args.lambda_lf)
+            # TODO: If regression, make sure the output is of dim 1. Perhaps I can just the number of clases to 1 in my classification network ...
+            # TODO: but that I perhaps want to store the actual classes as well for plotting later ...
 
-            pred_choice = pred.data.max(1)[1]
+            pred = classifier(points, inference=False)
+            loss = get_loss(criterion, pred, target.long(), args.lambda_lf, args.regression,
+                            reg_error, softplus)
+
+            if args.regression:
+                n_samples = pred.shape[0]
+                pred_choice = torch.empty(n_samples, device=pred.device, dtype=torch.long)
+                pred_Rplus = softplus(pred)
+                for i in range(n_samples):
+                    pred_choice[i] = get_error_class(pred_Rplus[i], reg_method=args.reg_method)
+            else:
+                pred_choice = pred.data.max(1)[1]
             correct = pred_choice.eq(target.long().data).cpu().sum()
             mean_correct.append(correct.item() / float(points.size()[0]))
 
@@ -314,10 +302,12 @@ def run_test(args, logger, classifier):
     return test_instance_acc, test_class_acc, y_true, y_pred
 
 # Choose either cls_default or cls_adaptive.
-# @hydra.main(config_path="config", config_name="cls_adaptive")
+#@hydra.main(config_path="config", config_name="cls_adaptive")
+@hydra.main(config_path="config", config_name="regression")
 # @hydra.main(config_path="config", config_name="cls_registration_geotrans_3dmatch")
-@hydra.main(config_path="config", config_name="cls_registration_geotrans_kitti")
-# @hydra.main(config_path="config", config_name="cls_registration")
+#@hydra.main(config_path="config", config_name="cls_registration_geotrans_kitti")
+#@hydra.main(config_path="config", config_name="cls_registration_geotrans_kitti_good_results")
+#@hydra.main(config_path="config", config_name="cls_registration")
 def fact(args):
     args, logger = eu.setup_experiment(args, do_reg=False)
 
@@ -395,7 +385,7 @@ def fact(args):
         elif args.classifier == "FACT" and not args.load_model_path:
             vis_cls.plot_accuracies(train_accuracies, val_accuracies, args=args)
         vis_cls.store_confusion_matrix(y_pred, y_test, args.perturb_settings.n_classes, logger,
-                                       args)
+                                       args, accumulate=True)
 
         # LOGGING
         display_to_logger_after(i, args, logger)

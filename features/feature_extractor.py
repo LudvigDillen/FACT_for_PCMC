@@ -169,7 +169,6 @@ def feature_extraction(PC_scenes, params):
 def create_feature_map(PC_pair, params):
     PC0 = PC_pair.PC0
     PC1 = PC_pair.PC1
-
     # Set xyz feature channels
     xyz_channels = np.vstack(
         (PC0.pc[PC0.fps_inds].cpu().numpy(), PC1.pc[PC1.fps_inds].cpu().numpy())
@@ -227,6 +226,34 @@ def create_feature_map(PC_pair, params):
 
 
 def write_features_to_txt_files(PC_scenes, params, data_folder):
+    for PC_scene in PC_scenes:
+        for PC_pair in PC_scene:
+            # Get feature map
+            feature_map = create_feature_map(PC_pair, params)
+            # Output to txt file
+            category_folder = os.path.join(
+                data_folder, params.class_names[PC_pair.class_category]
+            )
+            save_file = os.path.join(category_folder, PC_pair.name + ".txt")
+            # Get the directory name from the save_file path
+            dir_name = os.path.dirname(save_file)
+            # Check if the directory exists
+            if not os.path.exists(dir_name):
+                # If the directory doesn't exist, create it
+                os.makedirs(dir_name)
+            # If the file already contains content, we overwrite it
+            reg_error = PC_pair.reg_error.item()
+            s = f"GT registration error: {reg_error}\n"
+            # Open the file in write mode
+            with open(save_file, 'w') as f:
+                # Write the registration error line
+                f.write(s)
+                # Now save the feature map data below the registration error line
+                np.savetxt(f, feature_map, delimiter=",", fmt="%.6f")
+
+
+def write_features_to_txt_files_error(PC_scenes, params):
+    data_folder = params.args.feature_folder
     for PC_scene in PC_scenes:
         for PC_pair in PC_scene:
             # Get feature map

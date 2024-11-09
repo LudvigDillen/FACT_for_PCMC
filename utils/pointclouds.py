@@ -63,20 +63,40 @@ class PCAC_dataset(torch.utils.data.Dataset):
 
     def _get_item(self, index):
         if index in self.cache:
-            point_set, cls, scene_number = self.cache[index]
+            point_set, cls, scene_number, reg_error = self.cache[index]
         else:
             fn = self.datapath[index]
             cls = self.classes[self.datapath[index][0]]
             cls = np.array([cls]).astype(np.int32)
-            point_set = np.loadtxt(fn[1], delimiter=",").astype(np.float32)
+
+            # Initialize reg_error to -1 to handle cases where it might not exist
+            reg_error = -1
+
+            # Open the file and check the first line
+            with open(fn[1], 'r') as file:
+                first_line = file.readline().strip()  # Read and strip any extra whitespace
+
+                # Check if the first line contains the registration error
+                if first_line.startswith("GT registration error:"):
+                    # Extract the registration error from the first line
+                    reg_error = float(first_line.split(":")[1].strip())
+                    
+                    # Load the remaining lines as the point set
+                    point_set = np.loadtxt(fn[1], delimiter=",", skiprows=1).astype(np.float32)
+                else:
+                    # If no registration error, load the entire file as the point set
+                    point_set = np.loadtxt(fn[1], delimiter=",").astype(np.float32)
+
+            # point_set = np.loadtxt(fn[1], delimiter=",").astype(np.float32)
+
             # Remove some of the features which we do not want to use
             point_set = point_set[:, self.feature_channels]
             scene_number = int(fn[1].split("/")[-1].split("_")[1])
 
             if len(self.cache) < self.cache_size:
-                self.cache[index] = (point_set, cls, scene_number)
+                self.cache[index] = (point_set, cls, scene_number, reg_error)
 
-        return point_set, cls, scene_number
+        return point_set, cls, scene_number, reg_error
 
     def __getitem__(self, index):
         return self._get_item(index)
@@ -194,7 +214,7 @@ def subsample_point_cloud(point_cloud, fraction=0.20):
 class PCPair:
     def __init__(self, PC0, PC1, device, PCHandler, perturb_settings, change_of_pose_C1=False,
                  perturbation_method="m_classes", pc_reg_dist=1, reg_method="p2l", geo_args=None,
-                 est_pc1_to_pc0=None, gt_pc1_to_pc0=None, mode="train"):
+                 est_pc1_to_pc0=None, gt_pc1_to_pc0=None, mode="train", get_icp_residuals=False):
         # Set point cloud pair
         self.PC0 = PC0
         self.PC1 = PC1
@@ -238,7 +258,8 @@ class PCPair:
         elif perturbation_method == "reg_and_m_classes" and mode == "train" and torch.rand(1) > 0.5:
             self.perturbation_method = "registration"
 
-        self.reg_error = None
+        self.reg_error = None  # TODO: This is what we want for the loss
+        self.get_icp_residuals = get_icp_residuals
         self.set_union_of_point_clouds()
 
     def set_new_PC(self, PC0, PC1, PCUnion):
@@ -302,8 +323,15 @@ class PCPair:
             else:
                 source = ru.from_tensor_to_pcd(self.PC1.pc)
                 target = ru.from_tensor_to_pcd(self.PC0.pc)
-                rel_pose = ru.register_pair(source, target, method=self.reg_method,
-                                            gt_pose=gt_pose, geo_args=self.geo_args)
+                if self.get_icp_residuals:
+                    rel_pose, fitness, inlier_rmse = ru.register_pair(
+                        source, target, method=self.reg_method, gt_pose=gt_pose,
+                        geo_args=self.geo_args, get_icp_residuals=self.get_icp_residuals)
+                    self.fitness = fitness
+                    self.inlier_rmse = inlier_rmse
+                else:
+                    rel_pose = ru.register_pair(source, target, method=self.reg_method,
+                                                gt_pose=gt_pose, geo_args=self.geo_args)
             self.est_rel_pose = rel_pose
             self.gt_pose = gt_pose
             self.pc1_CS0 = ru.align_pair(self, rel_pose, plot=False)
@@ -321,6 +349,7 @@ class PCPair:
                 #pc1_CS0_gt = ru.align_pair(self, gt_pose, plot=False)
                 #error = torch.linalg.norm(self.pc1_CS0 - pc1_CS0_gt, dim=1).mean()
                 #self.class_category = ru.get_error_class(error, self.reg_method)
+            self.reg_error = error
         elif self.perturbation_method == "reg_and_m_classes":
             pc1_CS0_gt = change_coordinate_system(self.PC1.pc, self.pose0, self.pose1)
             # if class_category == 0, do not perturb anything ...
@@ -337,12 +366,12 @@ class PCPair:
             error = self.pc_reg_error_to_class(pc1_CS0_gt)
             # print(f"Error {error:.3f} and class {self.class_category} pre_scalers" +
             #       f"({R_pre_scaler}, {t_pre_scaler})")
+            self.reg_error = error
         else:
             sys.exit(f"Perturbation method ({self.perturbation_method}) not known!")
 
         # pc_union is in the coordinate system of pc0
         # print(f"Error {error:.3f} and class {self.class_category}")
-        self.reg_error = error
         pc_union = torch.cat((self.PC0.pc, self.pc1_CS0), dim=0)
         self.PCUnion = PC(pc_union, pc_union_dists, label=2, device=self.device)
 

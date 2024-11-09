@@ -20,7 +20,22 @@ def emd_loss(logits, labels):
     return average_loss
 
 
-def get_loss(cross_entropy, pred, target, lambda_lf):
+def mse_loss(logits, labels, softplus):
+    """
+    logits: Bx1
+    labels: Bx1
+    sfotplus: softplus function
+    """
+    pred_error = softplus(logits)  # Bx1
+    loss = F.mse_loss(pred_error, labels)  # Bx1
+    return loss
+
+
+def get_loss(cross_entropy, pred, target, lambda_lf, regression, reg_error, softplus=None):
+    if regression:
+        loss = mse_loss(pred, reg_error, softplus)
+        return loss
+
     if lambda_lf == 0:
         loss = emd_loss(pred, target)
         return loss
