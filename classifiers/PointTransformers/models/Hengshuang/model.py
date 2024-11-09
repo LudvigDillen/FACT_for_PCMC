@@ -89,13 +89,22 @@ class PointTransformerCls(nn.Module):
         self.backbone = Backbone(cfg)
         npoints, nblocks, nneighbor, n_c, d_points = (cfg.fps.num_point, cfg.model.nblocks,
             cfg.model.nneighbor, cfg.perturb_settings.n_classes, cfg.input_dim)
-        self.fc2 = nn.Sequential(
-            nn.Linear(32 * 2 ** nblocks, 256),
-            nn.ReLU(),
-            nn.Linear(256, 64),
-            nn.ReLU(),
-            nn.Linear(64, n_c)
-        )
+        if cfg.regression:
+            self.fc2 = nn.Sequential(
+                nn.Linear(32 * 2 ** nblocks, 256),
+                nn.ReLU(),
+                nn.Linear(256, 64),
+                nn.ReLU(),
+                nn.Linear(64, 1)
+            )
+        else:
+            self.fc2 = nn.Sequential(
+                nn.Linear(32 * 2 ** nblocks, 256),
+                nn.ReLU(),
+                nn.Linear(256, 64),
+                nn.ReLU(),
+                nn.Linear(64, n_c)
+            )   
         self.nblocks = nblocks
 
     def forward(self, x, inference):
