@@ -1,0 +1,129 @@
+batch_size: 64
+epoch: 200
+learning_rate: 5.0e-05
+lr_gamma: 0.85
+lr_step: 10
+lambda_lf: 0.5
+gpu: 0
+optimizer: Adam
+weight_decay: 0.0001
+model:
+  nneighbor: 16
+  nblocks: 4
+  transformer_dim: 256
+  name: Hengshuang
+features_to_create:
+  use_label: true
+  use_jde: true
+  use_sde: true
+  use_sd: true
+  use_c: true
+  use_s: false
+  use_cj: true
+  use_cs: true
+  use_csj: false
+  use_xyz: false
+  use_z: false
+  use_norm_xyz: true
+features_to_use:
+  use_label: true
+  use_jde: true
+  use_sde: true
+  use_sd: true
+  use_c: true
+  use_s: false
+  use_cj: true
+  use_cs: true
+  use_csj: false
+  use_xyz: false
+  use_z: false
+  use_norm_xyz: true
+inds_features:
+  ind_joint_de: -1
+  ind_sep_de: -1
+  ind_sink_div: -1
+aug:
+  dropout: true
+  scale: true
+  shift: true
+  rotate: false
+  jitter: false
+  jitter_settings:
+    sigma: none
+    clip: none
+normalization:
+  features: false
+  pos_enc: true
+  features_batch: false
+  pos_enc_batch: false
+batch_size_feature_extraction: 256
+covisibility:
+  inversion_kernel: spherical_flipping
+  gamma: -0.0001
+  hpr_radius: 2.75
+fps:
+  num_point: 2048
+  do_fps: true
+re_use_data: false
+n_scenes: 850
+n_samples_per_scene: 40
+dataset: v1.0-trainval
+data_folder: /home/lu2277di/Projects/FACT/data/nuscenes
+feature_folder: /home/lu2277di/Projects/FACT/data/PCAC_data/average_dist_bins_5_alt1_classes_34000_with_max_train_dist_5
+visualization_folder: /home/lu2277di/Projects/FACT/images/classification/PointTransformer
+downsample_factor: 1
+train_ratio: 0.6
+val_ratio: 0.15
+model_identifier: average_dist_bins_5_alt1_classes_34000_with_max_train_dist_5_new_val_metric
+rerun_crash: false
+scenes_finished: 256
+time_gone: 19.1
+perturb_settings:
+  n_classes: 5
+  r_bin: 0.01
+  t_bin: 0.1
+  class_distribution: uniform
+  perturbation_method: registration
+  train_reg_max_dist: 5
+ablation:
+  run_ablation: false
+  remove_keys:
+  - use_label
+  - use_jde
+  - use_sde
+  - use_sd
+plot_train_acc: false
+sensor_settings:
+  vertical_angular_res: 0.02327481098473072
+  horizontal_angular_res: 0.005817764173314432
+  scan_frequency: 20
+  lower_vert_fov: -0.5352925062179565
+  upper_vert_fov: 0.18622663617134094
+  max_distance: 100
+  vert_channels: 32
+  hori_channels: 1080
+neighborhood:
+  rmin: 0.5
+  rmax: 7.5
+  alpha_scale: 5
+  k: adaptive
+diff_entropy:
+  log_epsilon: -18.0
+  E_reject: 0.2
+sinkhorn_div:
+  p: 2
+  blur: 0.05
+  max_dist: 1000
+preprocessing:
+  T_close: 1.5
+  apply_hpr_operator: false
+classifier: FACT
+coral_settings:
+  learning_rate: 0.01
+  epochs: 250000
+reparation_settings:
+  run_strong_registration_alg: true
+verbose: false
+debug: false
+load_model_path: false
+running_iterations: 1

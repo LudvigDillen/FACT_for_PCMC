@@ -100,6 +100,8 @@ perturb_settings:
   class_distribution: uniform
   perturbation_method: m_classes  # ['m_classes', 'GMM', 'registration'], GMM not tested
   train_reg_max_dist: 5  # TODO: Should I perhaps have 2 for CorAl
+get_icp_residuals: false
+regression: false
 
 # Plot settings
 ablation:

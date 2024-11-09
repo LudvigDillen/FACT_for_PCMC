@@ -69,6 +69,7 @@ fps:
                   # point cloud is considered when stuying each sampled points' neighborhoods.
   do_fps: true  # (bool) : Whether or not to apply farthest point sampling
 re_use_data: true  # Set to true if only running training and no feature extraction
+continue_training: false
 n_scenes: 850 # 335, 850 max
 one_scene: False
 n_samples_per_scene: 40 # 20
@@ -84,6 +85,7 @@ val_ratio: 0.15  # Simply set to 0 if validation set in not needed
 model_identifier: average_dist_bins_5_alt1_classes_34000_with_max_train_dist_5_new_val_metric
 # model_identifier: FACT_best_network_optimal_cross_entropy_old_network_new_data
 # model_identifier: FACT_best_network_optimal_cross_entropy_new_network_old_data
+general_dataset: "nuscenes"  # ['nuscenes', 'kitti']
 
 
 # Rerun settings, enables us to rerun after a crash, without rerunning everything
@@ -99,6 +101,8 @@ perturb_settings:
   class_distribution: uniform
   perturbation_method: registration  # ['m_classes', 'GMM', 'registration'], GMM not tested
   train_reg_max_dist: 5  # TODO: Should I perhaps have 2 for CorAl
+get_icp_residuals: false
+regression: false
 
 # Plot settings
 ablation:
@@ -133,7 +137,7 @@ sinkhorn_div:
 # Preprocessing
 preprocessing:
   T_close: 1.5  # remove all points within 1.5 meters
-  apply_hpr_operator: true  # TODO: Change back to true
+  apply_hpr_operator: true
 
 # Choose classifier
 classifier: FACT  # CorAl, FACT

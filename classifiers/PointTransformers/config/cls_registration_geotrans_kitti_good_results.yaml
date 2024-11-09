@@ -98,6 +98,8 @@ perturb_settings:
   augment_before_reg: false
   train_reg_max_dist: 5  # TODO: Should I perhaps have 2 for CorAl
   mix_augment_before_reg: False
+get_icp_residuals: false
+regression: false
 
 # Plot settings
 ablation:
