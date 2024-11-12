@@ -108,6 +108,8 @@ class NuscenesHandling:
             pc_xyz_filtered = self.remove_close_points_from_pc(
                 pc_xyz, self.T_close_thresh
             )
+        else:
+            return pc_xyz
         return pc_xyz_filtered
 
     def remove_close_points_from_pc(self, pc, T_close_thresh=1.5):
@@ -290,9 +292,6 @@ class NuscenesHandling:
         )
         n_skip_samples = len(skip_samples_list)
         while True:
-            if count % 50 == 0 and count != 0:
-                print(f"We have collected {count} number of samples")
-
             # Load in first point cloud
             PC0 = PC(self.pc0_CS0, self.point_distances0, label=0, device=params.device)
             # Load in second point cloud

@@ -242,12 +242,17 @@ def write_features_to_txt_files(PC_scenes, params, data_folder):
                 # If the directory doesn't exist, create it
                 os.makedirs(dir_name)
             # If the file already contains content, we overwrite it
-            reg_error = PC_pair.reg_error.item()
-            s = f"GT registration error: {reg_error}\n"
+            if PC_pair.reg_error is not None:
+                reg_error = PC_pair.reg_error.item()
+                s = f"GT registration error: {reg_error}\n"
+            else:
+                s = None
+
             # Open the file in write mode
             with open(save_file, 'w') as f:
-                # Write the registration error line
-                f.write(s)
+                if s is not None:
+                    # Write the registration error line
+                    f.write(s)
                 # Now save the feature map data below the registration error line
                 np.savetxt(f, feature_map, delimiter=",", fmt="%.6f")
 
