@@ -268,7 +268,6 @@ def features_to_txt_files(
             read_n_samples = read_n_scenes * params.n_samples_per_scene
 
             # Load data sequentially (can't read all at once, too high memory requirement)
-            # TODO: Probably I can read KITTI instead or use dataloader or something ... Perhaps I create a completely new function for this ...
             PC_scenes = read_nuscenes_data(
                 params,
                 mode,

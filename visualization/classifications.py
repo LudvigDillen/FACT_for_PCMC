@@ -291,13 +291,18 @@ def text_color(background):
     return 'white' if sum(background[:3]) < 1.5 else 'black'
 
 
-def store_confusion_matrix(y_pred, y_true, N_classes, logger, args, accumulate=False):
+def store_confusion_matrix(y_pred, y_true, N_classes, logger, args, accumulate=False, conf_matrix=None):
     # Create a list of all expected classes
     classes = list(range(N_classes))
 
     # Calculate the confusion matrix, ensuring it has the expected shape
-    cm = confusion_matrix(y_true, y_pred, labels=classes)
-    logger.info(f"Confusion matrix {args.model_identifier}\n {cm}")
+    if conf_matrix is None:
+        cm = confusion_matrix(y_true, y_pred, labels=classes)
+    else:
+        cm = conf_matrix
+
+    if logger is not None:
+        logger.info(f"Confusion matrix {args.model_identifier}\n {cm}")
 
     n_ticks = N_classes + int(accumulate)
     # Extend the confusion matrix with an extra row and column for the sums if required
@@ -313,7 +318,8 @@ def store_confusion_matrix(y_pred, y_true, N_classes, logger, args, accumulate=F
     # Plot the confusion matrix
     fig, ax = plt.subplots()
     cax = ax.matshow(cm, cmap=plt.cm.Blues)
-    plt.title("Confusion matrix of the classifier")
+    if logger is not None:
+       plt.title("Confusion matrix of the classifier")
 
     # Draw a thick line to separate the sums
     if accumulate:
@@ -321,17 +327,27 @@ def store_confusion_matrix(y_pred, y_true, N_classes, logger, args, accumulate=F
         ax.axvline(x=N_classes - 0.5, color='black', linewidth=2)
 
     # Adjust color bar position
-    fig.colorbar(cax, fraction=0.046, pad=0.04)
+    if logger is not None:  # HACK: The things just correlated with the logger
+        fig.colorbar(cax, fraction=0.046, pad=0.04)
 
     # Setting x and y axis labels
-    class_labels = ["Class {}".format(i) if i < N_classes else "Sum" for i in range(n_ticks)]
+    if logger is not None:
+        class_labels = ["Class {}".format(i) if i < N_classes else "Sum" for i in range(n_ticks)]
+    else:
+        class_labels = [f"{i}" if i < N_classes else "Sum" for i in range(n_ticks)]
     ax.set_xticks(np.arange(n_ticks))
     ax.set_yticks(np.arange(n_ticks))
-    fontsize = min(int(60 / N_classes), 11)
-    ax.set_xticklabels(class_labels, fontsize=fontsize, rotation=90)
+    if logger is not None:
+        fontsize = min(int(60 / N_classes), 11)
+    else:
+        fontsize = min(int(80 / N_classes), 15)
+    if logger is not None:
+        ax.set_xticklabels(class_labels, fontsize=fontsize, rotation=90)
+    else:
+        ax.set_xticklabels(class_labels, fontsize=fontsize)
     ax.set_yticklabels(class_labels, fontsize=fontsize)
-    plt.xlabel("Predicted")
-    plt.ylabel("True")
+    plt.xlabel("Predicted", fontsize=fontsize+3)
+    plt.ylabel("True", fontsize=fontsize+3)
     plt.grid(False)  # Hide the grid lines
 
     # Display the counts on the matrix
@@ -340,7 +356,7 @@ def store_confusion_matrix(y_pred, y_true, N_classes, logger, args, accumulate=F
             if i < N_classes or j < N_classes:
                 cell_color = cax.to_rgba(cm[i, j])[:3]
                 plt.text(
-                    j, i, cm[i, j], ha="center", va="center", color=text_color(cell_color)
+                    j, i, cm[i, j], ha="center", va="center", color=text_color(cell_color), fontsize=fontsize
                 )
 
     plt.tight_layout()
@@ -420,11 +436,29 @@ def hist_of_logits(logits, args):
     plt.close()  # Close the figure
 
 
+import hydra
+@hydra.main(config_path="../classifiers/PointTransformers/config", config_name="cls_registration_geotrans_kitti")
+def main(args):
+    cm_in = np.array([
+    [6174, 384, 14, 0, 0],
+    [845, 224, 8, 1, 0],
+    [52, 28, 40, 78, 0],
+    [4, 1, 34, 352, 38],
+    [0, 0, 3, 57, 143]
+    ])
+    args.model_identifier = "regression-by-classification_34000samples_pretty_plot"
+    y_pred = None
+    y_true = None
+    N_classes = 5
+    logger = None
+    store_confusion_matrix(y_pred, y_true, N_classes, logger, args, accumulate=True, conf_matrix=cm_in)
+
 if __name__ == "__main__":
-    filename = input("Enter the path to the file: ")
-    train_accuracies, val_accuracies = extract_accuracies(filename)
-    print("Train Accuracies:", train_accuracies)
-    print("Val Accuracies:", val_accuracies)
+    # filename = input("Enter the path to the file: ")
+    # train_accuracies, val_accuracies = extract_accuracies(filename)
+    # print("Train Accuracies:", train_accuracies)
+    # print("Val Accuracies:", val_accuracies)
+
     # plot_accuracies(
     #     train_accuracies,
     #     val_accuracies,
@@ -432,3 +466,4 @@ if __name__ == "__main__":
     #     plot_train_acc=False,
     #     default_tick_step=10,
     # )
+    main()

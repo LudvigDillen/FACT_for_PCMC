@@ -109,7 +109,7 @@ def test_results(args, model, loader):
             ind = ind + current_batch_size
     mean_acc = get_mean_acc(class_acc)
     instance_acc = get_overall_acc(class_acc)
-    vis_cls.hist_of_logits(all_logits, args)
+    #vis_cls.hist_of_logits(all_logits, args)
 
     return instance_acc, mean_acc, y_true, y_pred
 
@@ -302,8 +302,9 @@ def run_test(args, logger, classifier):
     return test_instance_acc, test_class_acc, y_true, y_pred
 
 # Choose either cls_default or cls_adaptive.
-#@hydra.main(config_path="config", config_name="cls_adaptive")
-@hydra.main(config_path="config", config_name="regression")
+@hydra.main(config_path="config", config_name="cls_adaptive")
+#@hydra.main(config_path="config", config_name="regression")
+#@hydra.main(config_path="config", config_name="cls_binary_fixed")
 # @hydra.main(config_path="config", config_name="cls_registration_geotrans_3dmatch")
 #@hydra.main(config_path="config", config_name="cls_registration_geotrans_kitti")
 #@hydra.main(config_path="config", config_name="cls_registration_geotrans_kitti_good_results")
@@ -384,8 +385,9 @@ def fact(args):
                 vis_cls.model_plot(classifier, X_test, y_test, fig_title, args)
         elif args.classifier == "FACT" and not args.load_model_path:
             vis_cls.plot_accuracies(train_accuracies, val_accuracies, args=args)
-        vis_cls.store_confusion_matrix(y_pred, y_test, args.perturb_settings.n_classes, logger,
-                                       args, accumulate=True)
+        in_logger = None
+        vis_cls.store_confusion_matrix(y_pred, y_test, args.perturb_settings.n_classes, in_logger,
+                                       args, accumulate=False)
 
         # LOGGING
         display_to_logger_after(i, args, logger)
