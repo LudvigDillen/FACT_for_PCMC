@@ -4,12 +4,10 @@ import torch
 from classifiers.PointTransformers.train_cls import fact
 from registration.registration import reg_mpe
 from registration.geotransformer_handling import geotransformer_with_fact
+from misc.metrics import metrics_vs_gt_class
 
 
 # TODO: Maybe, I should not have an EMD loss when doing binary classification.
-# TODO: Why is the previous confusion matrices looking worse than the previous once I gathered?
-#      Compare latex with the most previous confusion matrices. They should be run on the same model
-#      but the results vastly differs.
 # TODO: Cannot seem overlap_pred to work or Minkowski engine. Try some other method.
 if __name__ == "__main__":
     if True:
@@ -20,3 +18,5 @@ if __name__ == "__main__":
         torch.cuda.manual_seed(1)
 
     fact()
+    #metrics_vs_gt_class()
+    # reg_mpe()
