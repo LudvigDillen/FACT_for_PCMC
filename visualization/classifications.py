@@ -291,7 +291,7 @@ def text_color(background):
     return 'white' if sum(background[:3]) < 1.5 else 'black'
 
 
-def store_confusion_matrix(y_pred, y_true, N_classes, logger, args, accumulate=False, conf_matrix=None):
+def store_confusion_matrix(y_pred, y_true, N_classes, logger, args, accumulate=False, conf_matrix=None, decimals=False):
     # Create a list of all expected classes
     classes = list(range(N_classes))
 
@@ -306,7 +306,10 @@ def store_confusion_matrix(y_pred, y_true, N_classes, logger, args, accumulate=F
 
     n_ticks = N_classes + int(accumulate)
     # Extend the confusion matrix with an extra row and column for the sums if required
-    extended_cm = np.zeros((n_ticks, n_ticks), dtype=int)
+    if decimals:
+        extended_cm = np.zeros((n_ticks, n_ticks), dtype=float)
+    else:
+        extended_cm = np.zeros((n_ticks, n_ticks), dtype=int)
     extended_cm[:N_classes, :N_classes] = cm
     if accumulate:
         row_sums = cm.sum(axis=1)
@@ -355,9 +358,15 @@ def store_confusion_matrix(y_pred, y_true, N_classes, logger, args, accumulate=F
         for j in range(n_ticks):
             if i < N_classes or j < N_classes:
                 cell_color = cax.to_rgba(cm[i, j])[:3]
-                plt.text(
-                    j, i, cm[i, j], ha="center", va="center", color=text_color(cell_color), fontsize=fontsize
-                )
+                if decimals:
+                    plt.text(
+                        j, i, f"{cm[i, j]:.1f}", ha="center", va="center", color=text_color(cell_color), fontsize=fontsize
+                    )
+                else:
+                    plt.text(
+                        j, i, cm[i, j], ha="center", va="center", color=text_color(cell_color), fontsize=fontsize
+                    )
+
 
     plt.tight_layout()
 
@@ -439,19 +448,88 @@ def hist_of_logits(logits, args):
 import hydra
 @hydra.main(config_path="../classifiers/PointTransformers/config", config_name="cls_registration_geotrans_kitti")
 def main(args):
+    # cm_in = np.array([
+    # [265, 33, 0, 0, 0],
+    # [6,    4, 0, 0, 0],
+    # [0,    0, 0, 0, 0],
+    # [0,    0, 0, 56, 20],
+    # [0,    0, 0, 1, 2]
+    # ])  # Scene 709
     cm_in = np.array([
-    [6174, 384, 14, 0, 0],
-    [845, 224, 8, 1, 0],
-    [52, 28, 40, 78, 0],
-    [4, 1, 34, 352, 38],
-    [0, 0, 3, 57, 143]
-    ])
-    args.model_identifier = "regression-by-classification_34000samples_pretty_plot"
+        [255, 23, 0, 0, 0],
+        [38, 22, 0, 1, 0],
+        [1, 1, 1, 15, 0],
+        [0, 0, 1, 33, 3],
+        [0, 0, 0, 0, 1]])  # scene 777
+    # D1N1 = np.array(
+    #                 [[396,  11,   1,   0,   0,   0,   0,   0,   0,   0],
+    #                  [  7, 431,   6,   0,   0,   0,   0,   0,   0,   0],
+    #                  [  0,   1, 385,  15,   0,   0,   0,   0,   0,   0],
+    #                  [  0,   0,  13, 362,  22,   0,   0,   0,   0,   0],
+    #                  [  0,   0,   0,  14, 391,  18,   0,   0,   0,   0],
+    #                  [  0,   0,   0,   0,  28, 378,  16,   0,   0,   0],
+    #                  [  0,   0,   0,   0,   0,  35, 381,  26,   0,   0],
+    #                  [  0,   0,   0,   0,   0,   0,  21, 396,  19,   0],
+    #                  [  0,   0,   0,   0,   0,   0,   0,  25, 407,  13],
+    #                  [  0,   0,   0,   0,   0,   0,   0,   0,  32, 390]])
+
+    # D1N2 = np.array(
+    #                 [[404,   4,   0,   0,   0,   0,   0,   0,   0,   0],
+    #                  [ 21, 415,   8,   0,   0,   0,   0,   0,   0,   0],
+    #                  [  0,   7, 385,   9,   0,   0,   0,   0,   0,   0],
+    #                  [  0,   0,  18, 367,  12,   0,   0,   0,   0,   0],
+    #                  [  0,   0,   0,  32, 372,  19,   0,   0,   0,   0],
+    #                  [  0,   0,   0,   0,  35, 368,  19,   0,   0,   0],
+    #                  [  0,   0,   0,   0,   0,  43, 379,  20,   0,   0],
+    #                  [  0,   0,   0,   0,   0,   0,  34, 370,  32,   0],
+    #                  [  0,   0,   0,   0,   0,   0,   0,  23, 398,  24],
+    #                  [  0,   0,   0,   0,   0,   0,   0,   0,  30, 392]])
+
+    # D2N1 = np.array([[417,  23,   0,   0,   0,   0,   0,   0,   0,   0],
+    #                  [ 17, 402,   4,   0,   0,   0,   0,   0,   0,   0],
+    #                  [  0,   3, 385,  13,   0,   0,   0,   0,   0,   0],
+    #                  [  0,   0,   7, 420,  15,   0,   0,   0,   0,   0],
+    #                  [  0,   0,   0,  26, 383,  20,   0,   0,   0,   0],
+    #                  [  0,   0,   0,   0,  32, 396,  18,   0,   0,   0],
+    #                  [  0,   0,   0,   0,   0,  36, 352,  16,   0,   0],
+    #                  [  0,   0,   0,   0,   0,   0,  28, 363,  13,   1],
+    #                  [  0,   0,   0,   0,   0,   0,   0,  38, 347,  28],
+    #                  [  0,   0,   0,   0,   0,   0,   0,   0,  32, 405]]) 
+                    
+
+    # D2N2 = np.array(
+    #                 [[434,   6,   0,   0,   0,   0,   0,   0,   0,   0],
+    #                  [ 19, 401,   3,   0,   0,   0,   0,   0,   0,   0],
+    #                  [  0,  12, 378,  11,   0,   0,   0,   0,   0,   0],
+    #                  [  0,   0,  19, 413,  10,   0,   0,   0,   0,   0],
+    #                  [  0,   0,   0,  36, 375,  18,   0,   0,   0,   0],
+    #                  [  0,   0,   0,   0,  43, 384,  19,   0,   0,   0],
+    #                  [  0,   0,   0,   0,   0,  47, 340,  17,   0,   0],
+    #                  [  0,   0,   0,   0,   0,   0,  45, 333,  27,   0],
+    #                  [  0,   0,   0,   0,   0,   0,   0,  33, 343,  37],
+    #                  [  0,   0,   0,   0,   0,   0,   0,   0,  32, 405]]) 
+
+    # List of confusion matrices
+    #confusion_matrices = [D1N1, D1N2, D2N1, D2N2]
+
+    # # Calculate accuracy for each confusion matrix
+    # accuracies = [np.trace(cm) / np.sum(cm) for cm in confusion_matrices]
+    # average_accuracy = np.mean(accuracies)
+
+    # # Calculate the average confusion matrix
+    # np.set_printoptions(suppress=True, precision=1)
+
+    # average_confusion_matrix = np.mean(confusion_matrices, axis=0)
+    # print(average_accuracy)
+    # print(average_confusion_matrix.round(1))
+
+    #args.model_identifier = "regression-by-classification_34000samples_pretty_plot"
+    args.model_identifier = "point_cloud_map_correction_scene_777"
     y_pred = None
     y_true = None
     N_classes = 5
     logger = None
-    store_confusion_matrix(y_pred, y_true, N_classes, logger, args, accumulate=True, conf_matrix=cm_in)
+    store_confusion_matrix(y_pred, y_true, N_classes, logger, args, accumulate=False, conf_matrix=cm_in)
 
 if __name__ == "__main__":
     # filename = input("Enter the path to the file: ")
