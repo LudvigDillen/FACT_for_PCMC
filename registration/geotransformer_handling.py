@@ -126,8 +126,8 @@ def to_PC_format(src_pc, ref_pc, params, est_trans, gt_trans, geo_args=None, mod
     )
 
 
-    #updated_pc1 = change_coordinate_system(PC1.pc, currentPCPair.pose0, currentPCPair.pose1)
-    #v'is_2pcs(PC0.pc.cpu(), updated_pc1.cpu())
+    # updated_pc1 = change_coordinate_system(PC1.pc, currentPCPair.pose0, currentPCPair.pose1)
+    # vis_2pcs(PC0.pc.cpu(), updated_pc1.cpu())
     if params.args.preprocessing.apply_hpr_operator:
         # Calculate the co-visible points
         PC0_cov, PC1_cov, PCUnion_cov = keep_covisible_points(
@@ -141,9 +141,13 @@ def to_PC_format(src_pc, ref_pc, params, est_trans, gt_trans, geo_args=None, mod
 
     if params.args.general_dataset == "kitti":
         # Remove points close to each lidar's sensor
-        est_location_pose1 = currentPCPair.est_pc1_to_pc0[:3, 3]
+        est_location_pose1 = currentPCPair.est_pc1_to_pc0[:3, 3]  # Translation part of the transformation
         mask0 = torch.norm(PC0_cov.pc - est_location_pose1, dim=1) > 6
         mask1 = torch.norm(currentPCPair.pc1_CS0, dim=1) > 6
+        # TODO: I should have used the masks below instead, but I didn't. The results are though quite similar.
+        #mask0 = (torch.norm(PC0_cov.pc - est_location_pose1, dim=1) > 6) & (torch.norm(PC0_cov.pc, dim=1) > 6)
+        #mask1 = (torch.norm(currentPCPair.pc1_CS0 - est_location_pose1, dim=1) > 6) & (torch.norm(currentPCPair.pc1_CS0, dim=1) > 6)
+
         # pc0_removed = PC0_cov.pc[mask0]
         # pc1_removed = currentPCPair.pc1_CS0[mask1]
         # vis_2pcs(pc0_removed.cpu(), pc1_removed.cpu(), title="est aligned (co-visible points) with removed close neighborhoods")
@@ -164,13 +168,13 @@ def to_PC_format(src_pc, ref_pc, params, est_trans, gt_trans, geo_args=None, mod
 
     PC_scene = np.array([currentPCPair])  # this is just the format that the code expects
 
-    #updated_cov_pc1 = change_coordinate_system(PC1_cov.pc, currentPCPair.pose0, currentPCPair.pose1)
-    #vis_2pcs(PC0_cov.pc.cpu(), updated_cov_pc1.cpu(), title="Gt aligned co-visible points")
+    # updated_cov_pc1 = change_coordinate_system(PC1_cov.pc, currentPCPair.pose0, currentPCPair.pose1)
+    # vis_2pcs(PC0_cov.pc.cpu(), updated_cov_pc1.cpu(), title="Gt aligned co-visible points")
 
-    #far_points0 = PC0_cov.pc[torch.norm(PC0_cov.pc, dim=1) > 10]
-    #far_points1 = updated_cov_pc1[torch.norm(updated_cov_pc1, dim=1) > 10]
+    # far_points0 = PC0_cov.pc[torch.norm(PC0_cov.pc, dim=1) > 10]
+    # far_points1 = updated_cov_pc1[torch.norm(updated_cov_pc1, dim=1) > 10]
 
-    #vis_2pcs(PC0_cov.pc.cpu(), updated_cov_pc1.cpu(), title="Gt aligned co-visible points (colored)",
+    # vis_2pcs(PC0_cov.pc.cpu(), updated_cov_pc1.cpu(), title="Gt aligned co-visible points (colored)",
     #         cmap=PCUnion_cov.weight_c.cpu().numpy())
     return PC_scene
 
