@@ -15,8 +15,6 @@ Point cloud pairs that we try to correct can look something like this. GT class 
 The pipeline of FACT looks like this:
 ![alt text](docs/flowchart_v11.jpg)
 
-For scene 708, FACT gets this result. The idea is to get map (b) to look like map (c) which it largely does here. The color denotes the $z$ coordinate. Figure (d) show the ground
-![alt text](docs/scene708.png)
 
 ## Installation
 This project uses [Poetry](https://python-poetry.org/) for dependency management. Follow these steps to set up the environment:
@@ -56,9 +54,38 @@ The full download should be 221 GB (I think)
 The full download (after following steps in Geo)
 
 
-
-
 ## Usage
+To run the code there are a few things to know. First off, the all configuration files can be found in `classifiers/PointTransformers/config/`, for different experiments, different configuration files are suitable to use. We'll get back to which one to use for which experiment, and also a bit of what it contains.
+
+Where are going to go through how to reproduce the result of the paper and by doing so, also go through how to run the code.
+
+Exp 1:
+
+**Table 1.** Classification accuracy for CorAl and FACT on two classification tasks.
+
+|             **Task**             | **[CorAl](https://ieeexplore.ieee.org/stamp/stamp.jsp?arnumber=9568846)** | **Mapped FACT** |
+|:--------------------------------:|:------------------------------:|:---------------:|
+| $(\theta, e_d)=(0.01, 0.1)$       | 75.3%                         | **97.4%**      |
+| $(\theta, e_d)=(0.03, 0.3)$       | 95.6%                         | **100.0%**     |
+
+Exp 2:
+![alt text](docs/confusion_rbc_vs_regression.png)
+
+Exp 3:
+
+**Table 2.** Comparison between regression-by-classification (RbC) and regression.  
+*Note: $\xi_k$ represents the fraction of samples where the predicted label is at least $k$ classes away from the true label.*
+
+|                 | $\xi_1$      | $\xi_2$      | $\xi_3$      | $\xi_4$      |
+|-----------------|--------------|--------------|--------------|--------------|
+| **RbC**       | **18.24%**   | **0.88%**    | **0.05%**   | **0.00%**   |
+| **Regression**| 23.57%       | 1.07%       | **0.05%**   | **0.00%**   |
+
+
+Exp 4:
+For scene 708, FACT gets this result. The idea is to get map (b) to look like map (c) which it largely does here. The color denotes the $z$ coordinate. Figure (d) show the ground
+![alt text](docs/scene708.png)
+
 Use examples liberally, and show the expected output if you can. It's helpful to have inline the smallest example of usage that you can demonstrate, while providing links to more sophisticated examples if they are too long to reasonably include in the README.
 
 ## Support
