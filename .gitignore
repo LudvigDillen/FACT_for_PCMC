@@ -9,5 +9,3 @@ to_remove.py
 data_aug.py
 visualization/network.py
 old_weights/
-GeoTransformer_202407/data/
-GeoTransformer_202407/weights/
