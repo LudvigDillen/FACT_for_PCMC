@@ -24,7 +24,7 @@ from visualization.point_clouds import vis_2pcs
 def geotransformer_with_fact(args):
     # Set the environment variable
     os.environ['CUDA_VISIBLE_DEVICES'] = '0'
-    
+
     # Define the path to the test script and the argument
     script_path = os.path.abspath(os.path.join(
         os.path.dirname(__file__),
@@ -99,7 +99,8 @@ def fact_prediction(args, params, model_fact, src_points, ref_points, est_trans,
     points = normalize_data_on_condition(args, points)
 
     # Get the absolute path from the new working directory including extra path specification
-    fact_error_class = classify_pairs(model_fact, points)
+    fact_error_class, _ = classify_pairs(model_fact, points, regression=args.regression,
+                                         reg_method=args.reg_method)
     # Free up GPU memory used by points
     del points
     torch.cuda.empty_cache()  # Free up GPU memory again
