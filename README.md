@@ -59,22 +59,26 @@ To run the code there are a few things to know. First off, the all configuration
 
 Where are going to go through how to reproduce the result of the paper and by doing so, also go through how to run the code.
 
-Exp 1:
+Exp 1: (Not possible to fully recreate right now, some data is missing)
+I did not find the data to reproduce this experiment, but the model used for FACT is
+weights/best_model_FACT_best_network_optimal.pth
+Likewise, the data for CorAl is not found either. It is likely on my old computer at LiU.  # TODO: Ask Per-Erik if he has it
+The model here is easily trained, just use the file `cls_coral.yaml`
+For FACT use `cls_fixed_reg_error.yaml`
 
 **Table 1.** Classification accuracy for CorAl and FACT on two classification tasks.
-
 |             **Task**             | **[CorAl](https://ieeexplore.ieee.org/stamp/stamp.jsp?arnumber=9568846)** | **Mapped FACT** |
 |:--------------------------------:|:------------------------------:|:---------------:|
 | $(\theta, e_d)=(0.01, 0.1)$       | 75.3%                         | **97.4%**      |
 | $(\theta, e_d)=(0.03, 0.3)$       | 95.6%                         | **100.0%**     |
+Note, we can recreate better results on the data "binary_fix_reg_error_17000_01". Mapped FACT got 99.1% for (0.01, 0.1).
 
 Exp 2:
 ![alt text](docs/confusion_rbc_vs_regression.png)
 
 Exp 3:
 
-**Table 2.** Comparison between regression-by-classification (RbC) and regression.  
-*Note: $\xi_k$ represents the fraction of samples where the predicted label is at least $k$ classes away from the true label.*
+**Table 2.** Comparison between regression-by-classification (RbC) and regression. $\xi_k$ represents the fraction of samples where the predicted label is at least $k$ classes away from the true label.
 
 |                 | $\xi_1$      | $\xi_2$      | $\xi_3$      | $\xi_4$      |
 |-----------------|--------------|--------------|--------------|--------------|
@@ -99,7 +103,7 @@ State if you are open to contributions and what your requirements are for accept
 
 For people who want to make changes to your project, it's helpful to have some documentation on how to get started. Perhaps there is a script that they should run or some environment variables that they need to set. Make these steps explicit. These instructions could also be useful to your future self.
 
-You can also document commands to lint the code or run tests. These steps help to ensure high code quality and reduce the likelihood that the changes inadvertently break something. Having instructions for running tests is especially helpful if it requires external setup, such as starting a Selenium server for testing in a browser.
+You can also document commands to lint the code or run tests. These steps help to ensure high code quality and reduce the likelihood that the changes inadvertently break something. Having instructions for running test's is especially helpful if it requires external setup, such as starting a Selenium server for testing in a browser.
 
 ## Authors and acknowledgment
 Show your appreciation to those who have contributed to the project.
