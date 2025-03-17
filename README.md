@@ -40,14 +40,14 @@ Follow the instructions on Poetry's official installation guide.
 To run experiments, you need to download nuScenes and potentially KITTI.
 
 1. **Download nuScenes lidar data**
-    1. Go to [nuscenes](https://www.nuscenes.org/nuscenes)
+    1. Go to [nuScenes](https://www.nuscenes.org/nuscenes)
     2. Create an account
     3. Login
     4. Go to nuScenes/Downloads/Full dataset (v1.0) and download Mini and Trainval. For Trainval, it suffices to download the Metadata + Lidar blobs for all parts (i.e. part 1 - part 10) (so 850 scenes in total).
 The full download should be 221 GB (I think)
 
 2. **Download KITTI**
-    1. Go to [kitti](https://www.cvlibs.net/datasets/kitti/)
+    1. Go to [KITTI](https://www.cvlibs.net/datasets/kitti/)
     2. Create an account
     3. Login (once the account is accepted, can take some time)
     4. Follow [Geotransformer](https://github.com/qinzheng93/GeoTransformer?tab=readme-ov-file) for how to download and organize the KITTI data.
@@ -64,7 +64,31 @@ set it to false. The `feature_folder` will determine which data that is used. As
 if `feature_folder` is is the same as earler and `re_use_data: False`, then the data will be overwritten, so PAY ATTENTION TO THIS.
 To run the code, simply run `python main.py`. It can be good to debug and the I recommend setting `debug: True`.
 
-To specify which config-file to use, change it to the correspond file over the function `fact()` in `classifiers/PointTransformers/train_cls.py`.
+To specify which config file to use, change it to the correspond file over the function `fact()` in `classifiers/PointTransformers/train_cls.py`.
+
+### Code Structure
+I will say something about the code structure so things can be more easily found.
+We could device the code into 5 parts:
+1. Dataset Handling
+    - `registration` some tools for registering point clouds that create our datasets.
+    - `utils/data_handling` loading of data
+    - `utils/nuscenes_handling` loading of nuScenes data
+2. Feature Extraction
+    - `features/` includes tool for feature extraction both for us and CorAl
+    - `utils/pointclouds.py` keeps track of classes of point cloud characteristics and extracted features. 
+3. Classification
+    - `classifiers/PointTransformers/train_cls.py` is the main classification script.
+4. External Code
+    - `GeoTransformer_202407` (like [original repo](https://github.com/qinzheng93/GeoTransformer) with some small modifications)
+    - `classifiers/PointTransformers` is mostly based on the [code](https://github.com/qq456cvb/Point-Transformers)
+5. Other Stuff
+    - `classifiers/PointTransformers/config/` configuration files
+    - `weights/` including our model weights
+    - `images/` some important plots I`ve saved.
+
+Files I don't mention are perhaps not as important. Or I think their purpose is self-explanatory. Or I forgot to mention them.
+
+### Details of the Config File
 
 Some caveats: 
 1. Some of the directories in the config-files are currently set using absolute path. You do need to adjust this to your machine.
