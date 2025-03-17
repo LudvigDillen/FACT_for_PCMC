@@ -123,6 +123,7 @@ Note, we can recreate better results on the data "binary_fix_reg_error_17000_01"
 
 #### Experiment 2:
 **Setup**
+
 To reproduce the left figure, use weights
 - `best_model_average_dist_bins_5_alt1_classes_34000_with_max_train_dist_5_new_val_metric.pth`
 - The data is found under `average_dist_bins_5_alt1_classes_34000_with_max_train_dist_5.zip` on OneDrive.
@@ -146,6 +147,10 @@ This table can easily be calculated from the confusion matrices in experiment 2,
 | **Regression**| 23.57%       | 1.07%       | **0.05%**   | **0.00%**   |
 
 #### Experiment 4:
+To reproduce the results use
+- `best_model_geotrans_kitti_remove_centers_5000_normal_feat_extrac_nuscenes_pretrained_short_training.pth` is the weights.
+- The data is found under `geotrans_kitti_remove_centers_5000_normal_feat_extrac_nuscenes_pretrained.zip` on OneDrive.
+- Use the config file `cls_registration_geotrans_kitti_good_results.yaml`.
 
 **Table 3.** The confusion matrix for the GeoTransformer registration-based test dataset on KITTI.  
 *Classes 0 and 1 have been collapsed into one class.*
@@ -164,8 +169,6 @@ This table can easily be calculated from the confusion matrices in experiment 2,
 - Run with `python main.py` and wait approximately 10 mins (on an RTX4090).
 For scene 708, FACT gets this result. The idea is to get map (b) to look like map (c) which it largely does here. The color denotes the $z$ coordinate. Figure (d) show the ground
 ![alt text](docs/scene708.png)
-
-Use examples liberally, and show the expected output if you can. It's helpful to have inline the smallest example of usage that you can demonstrate, while providing links to more sophisticated examples if they are too long to reasonably include in the README.
 
 ## Authors and acknowledgment
 This project is based on the joint work of Ludvig Dillén, Per-Erik Forssén, and Johan Edstedt.
