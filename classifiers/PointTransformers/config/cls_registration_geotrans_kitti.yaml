@@ -68,7 +68,7 @@ fps:
   num_point: 2048  # (int): How many points we should evaluate each metric for, note that the hole
                   # point cloud is considered when stuying each sampled points' neighborhoods.
   do_fps: true  # (bool) : Whether or not to apply farthest point sampling
-re_use_data: false  # Set to true if only running training and no feature extraction
+re_use_data: true  # Set to true if only running training and no feature extraction
 continue_training: true
 n_scenes: 5000 # 40000
 one_scene: False
@@ -83,9 +83,10 @@ data_folder: '/home2/lu2277di/data/nuscenes'
 # feature_folder: '/home/lu2277di/Projects/FACT/data/PCAC_data/geotrans_kitti_remove_centers_all_data'
 # feature_folder: '/home/lu2277di/Projects/FACT/data/PCAC_data/geotrans_kitti_remove_centers_40000_with_dataset_aug'
 #feature_folder: '/home/lu2277di/Projects/FACT/data/PCAC_data/geotrans_debugging_no_aug_anywhere'
-# feature_folder: '/home/lu2277di/Projects/FACT/data/PCAC_data/geotrans_kitti_remove_centers_5000_normal_feat_extrac_nuscenes_pretrained'
+#feature_folder: '/home/lu2277di/Projects/FACT/data/PCAC_data/geotrans_kitti_remove_centers_5000_normal_feat_extrac_nuscenes_pretrained'
+feature_folder: '/home/lu2277di/Projects/FACT/data/PCAC_data/geotrans_kitti_remove_centers_all_data_with_dataset_aug'
 #feature_folder: '/home/lu2277di/Projects/FACT/data/PCAC_data/geotrans_kitti_reg_and_m_classes_v01'
-feature_folder: '/home/lu2277di/Projects/FACT/data/PCAC_data/geotrans_kitti_debugging'
+#feature_folder: '/home/lu2277di/Projects/FACT/data/PCAC_data/geotrans_kitti_debugging'
 
 
 #feature_folder: /home/lu2277di/Projects/FACT/data/PCAC_data/geotrans_good_results
@@ -93,7 +94,7 @@ feature_folder: '/home/lu2277di/Projects/FACT/data/PCAC_data/geotrans_kitti_debu
 visualization_folder: '/home/lu2277di/Projects/FACT/images/classification/PointTransformer'
 downsample_factor: 1 # Make sure that the point cloud is not so downsampled that num_point does not exist
 train_ratio: 0.60 #0.60  # The test ratio automatically becomes 1 - train_ratio - val_ratio
-val_ratio: 0.15  #0.15 Simply set to 0 if validation set in not needed
+val_ratio: 0  #0.15 Simply set to 0 if validation set in not needed
 # model_identifier: geotrans_17000
 # model_identifier: geotrans_kitti_remove_centers_all_data
 #model_identifier: geotrans_kitti_remove_centers_all_data_with_dataset_aug
@@ -171,7 +172,7 @@ coral_settings:
 
 # Other settings
 verbose: false  # (bool): If True, print additional information.
-debug: true
+debug: false
 # If I only want to run test, set the path to something
 # load_model_path: /home/lu2277di/Projects/FACT/old_weights/2023-09-09/09-21-13/best_model_FACT_best_network_optimal.pth
 # load_model_path: /home/lu2277di/Projects/FACT/outputs/2024-02-23/17-43-18/best_model_FACT_best_network_optimal.pth
@@ -180,7 +181,7 @@ debug: true
 # load_model_path: /home/lu2277di/Projects/FACT/outputs/2023-12-31/15-35-07/best_model_average_dist_bins_5_alt1_classes_34000_with_max_train_dist_5_new_val_metric.pth
 # load_model_path: /home/lu2277di/Projects/FACT/outputs/2024-02-26/14-05-27/best_model_FACT_best_network_optimal_cross_entropy_thesis_data.pth
 #load_model_path: false
-load_model_path: /home/lu2277di/Projects/FACT/outputs/2023-12-31/15-35-07/best_model_average_dist_bins_5_alt1_classes_34000_with_max_train_dist_5_new_val_metric.pth
+load_model_path: /outputs/2023-12-31/15-35-07/best_model_average_dist_bins_5_alt1_classes_34000_with_max_train_dist_5_new_val_metric.pth
 # load_model_path: /home/lu2277di/Projects/FACT/outputs/2024-08-07/14-50-11/best_model_geotrans_debugging.pth
 # load_model_path: /home/lu2277di/Projects/FACT/outputs/2024-08-06/19-47-48/best_model_geotrans_kitti_remove_centers_40000_with_dataset_aug.pth
 

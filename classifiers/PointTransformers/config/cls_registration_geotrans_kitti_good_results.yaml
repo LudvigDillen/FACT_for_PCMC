@@ -76,7 +76,7 @@ n_samples_per_scene: 1 # 20, set to 1 for geotrans as we look at KITTI
 dataset: 'v1.0-mini'  # ['v1.0-trainval', 'v1.0-mini']
 general_dataset: "kitti"  # ['nuscenes', 'kitti', '3d_match']
 data_folder: '/home2/lu2277di/data/nuscenes'
-feature_folder: /home/lu2277di/Projects/FACT/data/PCAC_data/geotrans_good_results
+feature_folder: /home/lu2277di/Projects/FACT/data/PCAC_data/geotrans_kitti_remove_centers_5000_normal_feat_extrac_nuscenes_pretrained_2025_03_17
 visualization_folder: '/home/lu2277di/Projects/FACT/images/classification/PointTransformer'
 downsample_factor: 1 # Make sure that the point cloud is not so downsampled that num_point does not exist
 train_ratio: 0.60 #0.60  # The test ratio automatically becomes 1 - train_ratio - val_ratio
@@ -147,9 +147,7 @@ coral_settings:
 verbose: false  # (bool): If True, print additional information.
 debug: false
 # If I only want to run test, set the path to something
-# load_model_path: /home/lu2277di/Projects/FACT/outputs/2023-12-31/15-35-07/best_model_average_dist_bins_5_alt1_classes_34000_with_max_train_dist_5_new_val_metric.pth
-load_model_path: /home/lu2277di/Projects/FACT/outputs/2024-08-07/14-50-11/best_model_geotrans_debugging.pth
-
+load_model_path: /outputs/2024-08-08/09-34-58/best_model_geotrans_kitti_remove_centers_5000_normal_feat_extrac_nuscenes_pretrained_short_training.pth
 running_iterations: 1  # This requires a setup in the train_cls.py file. Otherwise, set this to 1.
 # This parameter below is handled directly in the program
 # inference: false
