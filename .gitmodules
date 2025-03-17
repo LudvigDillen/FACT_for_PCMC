@@ -4,3 +4,6 @@
 [submodule "LIDAR-SLAM"]
 	path = LIDAR-SLAM
 	url = https://github.com/LudvigDillen/LIDAR-SLAM
+[submodule "GeoTransformer_202407"]
+	path = GeoTransformer_202407
+	url = https://github.com/LudvigDillen/GeoTransformer_202407
