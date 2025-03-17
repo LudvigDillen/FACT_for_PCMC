@@ -69,22 +69,23 @@ fps:
                   # point cloud is considered when stuying each sampled points' neighborhoods.
   do_fps: true  # (bool) : Whether or not to apply farthest point sampling
 re_use_data: true  # Set to true if only running training and no feature extraction
+continue_training: false
 n_scenes: 850 # 335, 850 max
 one_scene: False
-n_samples_per_scene: 40 # 20
-dataset: 'v1.0-mini'  # ['v1.0-trainval', 'v1.0-mini']
+n_samples_per_scene: 20 # 20
+dataset: 'v1.0-trainval'  # ['v1.0-trainval', 'v1.0-mini']
 data_folder: '/home2/lu2277di/data/nuscenes'
-# feature_folder: '/home/lu2277di/Projects/FACT/data/PCAC_data/average_dist_bins_5_alt1_classes_34000_with_max_train_dist_5'  # TODO: Set by new user ...
-# feature_folder: '/home/lu2277di/Projects/FACT/data/PCAC_data/test'  # TODO: Set by new user ...
-# feature_folder: /home/lu2277di/Projects/FACT/data/PCAC_data/FACT_best_network_optimal
-feature_folder: '/home/lu2277di/Projects/FACT/data/PCAC_data/multinomial_fixed_reg_error_17000'
+# feature_folder: '/home/lu2277di/Projects/FACT/data/PCAC_data/multinomial_fixed_reg_error_17000'
+# feature_folder: '/home/lu2277di/Projects/FACT/data/PCAC_data/binary_fixed_reg_error_17000_01'
+feature_folder: data missing ...
+
 visualization_folder: '/home/lu2277di/Projects/FACT/images/classification/PointTransformer'
 downsample_factor: 1 # Make sure that the point cloud is not so downsampled that num_point does not exist
 train_ratio: 0.60  # The test ratio automatically becomes 1 - train_ratio - val_ratio
 val_ratio: 0.15  # Simply set to 0 if validation set in not needed
 # model_identifier: average_dist_bins_5_alt1_classes_34000_with_max_train_dist_5_new_val_metric
 # model_identifier: FACT_best_network_optimal_cross_entropy_old_network_new_data
-model_identifier: FACT_best_network_optimal_cross_entropy_new_network_old_data
+model_identifier: binary_fixed_reg_error_17000_01
 
 
 # Rerun settings, enables us to rerun after a crash, without rerunning everything
@@ -102,6 +103,7 @@ perturb_settings:
   train_reg_max_dist: 5  # TODO: Should I perhaps have 2 for CorAl
 get_icp_residuals: false
 regression: false
+general_dataset: nuscenes
 
 # Plot settings
 ablation:
@@ -147,18 +149,10 @@ coral_settings:
 
 # Other settings
 verbose: false  # (bool): If True, print additional information.
-debug: false
+debug: true
 # If I only want to run test, set the path to something
-# load_model_path: /home/lu2277di/Projects/FACT/outputs/2023-12-18/11-49-27/best_model_binary_850samples.pth
-# load_model_path: /home/lu2277di/Projects/FACT/old_weights/2023-09-09/09-21-13/best_model_FACT_best_network_optimal.pth
-# load_model_path: /home/lu2277di/Projects/FACT/outputs/2024-02-23/17-43-18/best_model_FACT_best_network_optimal.pth
-# load_model_path: /home/lu2277di/Projects/FACT/old_weights/2023-09-11/18-03-22/best_model_FACT_binary0_1_upd.pth
-# load_model_path: /home/lu2277di/Projects/FACT/old_weights/2023-09-09/09-21-13/best_model_FACT_best_network_fast.pth
-# load_model_path: /home/lu2277di/Projects/FACT/outputs/2023-12-31/15-35-07/best_model_average_dist_bins_5_alt1_classes_34000_with_max_train_dist_5_new_val_metric.pth
-load_model_path: /home/lu2277di/Projects/FACT/outputs/2024-02-26/14-05-27/best_model_FACT_best_network_optimal_cross_entropy_thesis_data.pth
-# load_model_path: false
-# load_model_path: /home/lu2277di/Projects/FACT/outputs/2024-02-23/17-43-18/best_model_FACT_best_network_optimal_lambda0.pth
-# load_model_path: /home/lu2277di/Projects/FACT/outputs/2024-02-23/17-43-18/best_model_FACT_best_network_optimal_lambda1.pth
+load_model_path: /weights/best_model_FACT_best_network_optimal.pth
+
 running_iterations: 1  # This requires a setup in the train_cls.py file. Otherwise, set this to 1.
 # This parameter below is handled directly in the program
 # inference: false
