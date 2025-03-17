@@ -3,15 +3,13 @@ Author: Benny
 Date: Nov 2019
 """
 import sys
+import os
 import numpy as np
 import torch
 from tqdm import tqdm
 import importlib
 import shutil
 import hydra
-from hydra import compose, initialize
-from omegaconf import OmegaConf
-
 
 import nuscenes as ns
 from features.feature_extractor import extract_features_to_txt_files
@@ -115,7 +113,8 @@ def test_results(args, model, loader):
 
 
 def load_model(model_path, classifier):
-    checkpoint = torch.load(model_path)
+    base_dir = os.path.dirname(__file__)
+    checkpoint = torch.load(os.path.abspath(os.path.join(base_dir, '..', '..')) + model_path)
     start_epoch = checkpoint["epoch"]
     classifier.load_state_dict(checkpoint["model_state_dict"])
     return classifier, start_epoch
@@ -302,9 +301,11 @@ def run_test(args, logger, classifier):
     return test_instance_acc, test_class_acc, y_true, y_pred
 
 # Choose either cls_default or cls_adaptive.
-@hydra.main(config_path="config", config_name="cls_adaptive")
+#@hydra.main(config_path="config", config_name="cls_adaptive")
 #@hydra.main(config_path="config", config_name="regression")
-#@hydra.main(config_path="config", config_name="cls_binary_fixed")
+# @hydra.main(config_path="config", config_name="cls_binary_fixed")
+@hydra.main(config_path="config", config_name="cls_fixed_reg_error")
+#@hydra.main(config_path="config", config_name="cls_coral")
 # @hydra.main(config_path="config", config_name="cls_registration_geotrans_3dmatch")
 #@hydra.main(config_path="config", config_name="cls_registration_geotrans_kitti")
 #@hydra.main(config_path="config", config_name="cls_registration_geotrans_kitti_good_results")
