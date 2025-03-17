@@ -77,20 +77,21 @@ def reg_mpe(args):
     n_samples_per_scene = args.n_samples_per_scene
     n_classes = args.perturb_settings.n_classes
     DO_REG = True
-    CHANGE_OF_POSE_C1 = True  # TODO: Perhaps change back to True
-    VISUALIZE_RESULT = False
+    CHANGE_OF_POSE_C1 = True
+    VISUALIZE_RESULT = True
     REPAIR_METHOD = "gt"  # [gt, p2l]
     REG_METHOD = "p2l"  # [p2l, geotrans]
-    GET_ICP_RESIDUALS = True
+    GET_ICP_RESIDUALS = False
     args["get_icp_residuals"] = GET_ICP_RESIDUALS
 
     # Some settings if I use geotrans. Mode in [kitti, 3dmatch]
     geo_args = ru.get_geo_config(mode="kitti") if REG_METHOD == "geotrans" else None
     #
-    # test_start_scene = args.n_scenes - 1 if args.one_scene else 0
-    test_start_scene = 638
+    test_start_scene = args.n_scenes - 1 if args.one_scene else 0
+    n_scenes = 1
+    #test_start_scene = 707
     # Set to 638 if we want to only test at test data
-    n_scenes = args.n_scenes - test_start_scene
+    #n_scenes = args.n_scenes - test_start_scene
 
 
     args, logger = setup_experiment(args, do_reg=DO_REG, change_of_pose_C1=CHANGE_OF_POSE_C1,
@@ -167,20 +168,21 @@ def reg_mpe(args):
         points_batches = torch.split(points, batch_size)
         for j, ps in enumerate(points_batches):
             if j == 0:
-                p, logits = classify_pairs(pcac_model, ps)
+                p, _ = classify_pairs(pcac_model, ps, regression=args.regression, reg_method=args.reg_method)
             else:
-                p  = torch.cat((p, classify_pairs(pcac_model, ps)))
+                p  = torch.cat((p, classify_pairs(pcac_model, ps, regression=args.regression, reg_method=args.reg_method)[0]))
         preds[i] = p.cpu().numpy()
     # Ravel data
-    preds_flat = preds.ravel()
-    fitness_flat = fitness.ravel()
-    rmse_flat = rmse.ravel()
-    gts_flat = gts.ravel()
-    analyze_relationship(preds_flat, fitness_flat, rmse_flat, gts_flat, args)
-    for i in range(n_scenes*n_samples_per_scene):
-        print(f"preds: {preds_flat[i]}; fitness: {fitness_flat[i]:.3f}; rmse: {rmse_flat[i]:.3f} gts: {gts_flat[i]}")
-    # for i in range(n_scenes):
-    #     print("preds: ", preds[i], "fitness", fitness[i], "rmse", rmse[i], "gts: ", gts[i])
+    if GET_ICP_RESIDUALS:
+        preds_flat = preds.ravel()
+        fitness_flat = fitness.ravel()
+        rmse_flat = rmse.ravel()
+        gts_flat = gts.ravel()
+        analyze_relationship(preds_flat, fitness_flat, rmse_flat, gts_flat, args)
+        for i in range(n_scenes*n_samples_per_scene):
+            print(f"preds: {preds_flat[i]}; fitness: {fitness_flat[i]:.3f}; rmse: {rmse_flat[i]:.3f} gts: {gts_flat[i]}")
+        # for i in range(n_scenes):
+        #     print("preds: ", preds[i], "fitness", fitness[i], "rmse", rmse[i], "gts: ", gts[i])
 
     # store_confusion_matrix(y_pred=preds.ravel(), y_true=gts.ravel(), N_classes=n_classes,
     #                        logger=logger, args=args, accumulate=True)
