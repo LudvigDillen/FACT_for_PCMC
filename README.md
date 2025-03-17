@@ -99,6 +99,8 @@ Now the config file is a bit involved, so I will mention the most important thin
 - To train a new model, set `load_model_path: False`
 - `running_iterations: 1` could doing several runs after one another.
 
+- In wasserstein.py there is a parameter controlling how large neighborhood batch we use. It is hard-coded now, so if something crashed due to memory issues, maybe decrease `COMPUTATION_THRESHOLD`.
+
 ### Re-producing Experiments
 Where are going to go through how to reproduce the result of the paper and by doing so, also go through how to run the code.
 
@@ -116,6 +118,7 @@ Likewise, the data for CorAl is not found either. It is likely at my old compute
 |:--------------------------------:|:------------------------------:|:---------------:|
 | $(\theta, e_d)=(0.01, 0.1)$       | 75.3%                         | **97.4%**      |
 | $(\theta, e_d)=(0.03, 0.3)$       | 95.6%                         | **100.0%**     |
+
 Note, we can recreate better results on the data "binary_fix_reg_error_17000_01". Mapped FACT got 99.1% for (0.01, 0.1).
 
 #### Experiment 2:
