@@ -35,6 +35,10 @@ Follow the instructions on Poetry's official installation guide.
     ```bash
     poetry install
     ```
+4. **Activate poetry environment**
+   ```bash
+   poetry shell
+   ```
 
 ### Data Setup
 To run experiments, you need to download nuScenes and potentially KITTI.
