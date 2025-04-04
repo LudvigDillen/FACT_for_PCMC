@@ -112,9 +112,12 @@ def test_results(args, model, loader):
     return instance_acc, mean_acc, y_true, y_pred
 
 
-def load_model(model_path, classifier):
-    base_dir = os.path.dirname(__file__)
-    checkpoint = torch.load(os.path.abspath(os.path.join(base_dir, '..', '..')) + model_path)
+def load_model(model_path, classifier, pretrained=False):
+    if pretrained:
+        base_dir = os.path.dirname(__file__)
+        checkpoint = torch.load(os.path.abspath(os.path.join(base_dir, '..', '..')) + model_path)
+    else:
+        checkpoint = torch.load(model_path)
     start_epoch = checkpoint["epoch"]
     classifier.load_state_dict(checkpoint["model_state_dict"])
     return classifier, start_epoch
@@ -146,7 +149,7 @@ def load_best_model(args, logger, pretrained=True):
 
     start_epoch = 0
     if pretrained and args.load_model_path:
-        classifier, start_epoch = load_model(args.load_model_path, classifier)
+        classifier, start_epoch = load_model(args.load_model_path, classifier, pretrained=True)
         logger.info("Use pretrain model")
 
     return classifier, start_epoch, args
@@ -280,7 +283,7 @@ def run_cls(args, logger, pretrained=True):
 
     # Load best validation model
     best_model_path = "best_model_" + args.model_identifier + ".pth"
-    classifier, start_epoch = load_model(best_model_path, classifier)
+    classifier, start_epoch = load_model(best_model_path, classifier, pretrained=False)
     return train_accuracies, val_accuracies, classifier
 
 
