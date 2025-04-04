@@ -5,7 +5,7 @@
 ## Description
 This project is the code-base for FACT. Given two point clouds, and an estimated rigid transformation between the point cloud, FACT predicts the registration quality of the alignment.
 
-The abstract of the paper: "We present FACT, a method for predicting alignment quality (i.e., registration error) of registered lidar point cloud pairs. This is useful e.g. for quality assurance in large, automatically registered 3D models. FACT extracts local features from a registered pair and processes them with a point transformer-based network to predict a misalignment class. We generalize prior work that study binary alignment classification of registration errors, by recasting it as multinomial misalignment classifi- cation. To achieve this, we introduce a custom regression-by-classification loss function that combines the cross-entropy and Wasserstein losses, and demonstrate that it outperforms both direct regression and prior binary classification. FACT successfully classifies point-cloud pairs registered with both the classical ICP and GeoTransformer, while other choices, such as standard point-cloud-quality metrics and registration residuals are shown to be poor choices for predicting misalignment. On a synthetically perturbed point-cloud task introduced by the CorAl method, we show that FACT achieves substantially better performance than CorAl. Finally, we demonstrate how FACT can assist experts in correcting misaligned point-cloud maps. Our code will be made publicly available."
+The abstract of the paper: "We present FACT, a method for predicting alignment quality (i.e., registration error) of registered lidar point cloud pairs. This is useful, e.g., for quality assurance in large, automatically registered 3D models. FACT extracts local features from a registered pair and processes them with a point transformer-based network to predict a misalignment class. We generalize prior work that study binary alignment classification of registration errors, by recasting it as multinomial misalignment classification. To achieve this, we introduce a custom regression-by-classification loss function that combines the cross-entropy and Wasserstein losses, and demonstrate that it outperforms both direct regression and prior binary classification. FACT successfully classifies point-cloud pairs registered with both the classical ICP and GeoTransformer, while other choices, such as standard point-cloud-quality metrics and registration residuals are shown to be poor choices for predicting misalignment. On a synthetically perturbed point-cloud task introduced by the CorAl method, we show that FACT achieves substantially better performance than CorAl. Finally, we demonstrate how FACT can assist experts in correcting misaligned point-cloud maps. Our code will be made publicly available."
 
 Good sources for this project is the paper with the name: "FACT: Multinomial Misalignment Classification for Point Cloud Registration" (not publically available yet) and this [master thesis](https://liu.diva-portal.org/smash/get/diva2:1803604/FULLTEXT01.pdf).
 
@@ -72,7 +72,7 @@ To specify which config file to use, change it to the correspond file over the f
 
 ### Code Structure
 I will say something about the code structure so things can be more easily found.
-We could device the code into 5 parts:
+We could devide the code into 5 parts:
 1. Dataset Handling
     - `registration` some tools for registering point clouds that create our datasets.
     - `utils/data_handling` loading of data
@@ -195,14 +195,11 @@ To reproduce the results use
 - In `main.py` change to `reg_mpe()`.
 - Use `cls_registration.yaml` as config.
 - Run with `python main.py` and wait approximately 10 mins (on an RTX4090).
-For scene 708, FACT gets this result. The idea is to get map (b) to look like map (c) which it largely does here. The color denotes the $z$ coordinate. Figure (d) show the ground
+For scene 708, FACT gets this result. The idea is to get map (b) to look like map (c) which it largely does here. The color denotes the $z$ coordinate. Figure (d) shows the corresponding confusion matrix.
 ![alt text](docs/scene708.png)
 
 ## Authors and acknowledgment
 This project is based on the joint work of Ludvig Dillén, Per-Erik Forssén, and Johan Edstedt.
-
-## License
-TODO: fix later.
 
 ## Project status
 - Code can be faster, more readable, and documented. I'll try to fix this if I have time in the future.
