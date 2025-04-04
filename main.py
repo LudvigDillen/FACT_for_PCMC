@@ -7,8 +7,6 @@ from registration.geotransformer_handling import geotransformer_with_fact
 from misc.metrics import metrics_vs_gt_class
 
 
-# TODO: Maybe, I should not have an EMD loss when doing binary classification.
-# TODO: Cannot seem overlap_pred to work or Minkowski engine. Try some other method.
 if __name__ == "__main__":
     if True:
         np.random.seed(1)
