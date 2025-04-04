@@ -12,6 +12,12 @@ from utils.nuscenes_handling import read_nuscenes_data, NuscenesHandling
 from utils.experiment_utils import setup_experiment
 import visualization.registration as vr
 import registration.registration_utils as ru
+from utils.pointclouds import farthest_point_sample_PC_scenes
+from classifiers.PointTransformers.classify import classify_pairs
+from features.feature_extractor import feature_extraction, create_feature_map
+from features.feature_utils import normalize_data_on_condition
+from registration.registration import align_scene
+from classifiers.PointTransformers.train_cls import load_best_model
 
 
 def estimate_transformation_scene(PC_scene, gt_poses, method="p2l", voxelize=False, plot=False,
@@ -77,8 +83,35 @@ def get_chamfer_distance(pc0, pc1):
 
 
 def compute_sinkhorn(pc0, pc1, blur=0.05):
-    loss_fn = SamplesLoss(loss="sinkhorn", p=2, blur=blur)
+    loss_fn = SamplesLoss(loss="sinkhorn", p=2, blur=blur, backend="tensorized")
     return loss_fn(pc0, pc1).item()
+
+
+def classify_pairs(pcac_model, args, params, poses_est_scenes, PC_scene, i):
+    PC_scene_reg = align_scene(poses_est_scenes[i], PC_scene, plot=False)
+    # EXTRACT FEATURE DATA
+    # FPS on scenes
+    if params.args.fps.do_fps:
+        farthest_point_sample_PC_scenes(PC_scene_reg[None, ...], params.N_fps_points)
+    # Feature extraction. [0]: Go from scenes to scene
+    PC_scene_with_features = feature_extraction(PC_scene_reg[None, ...], params)[0]
+    feature_maps = create_feature_map(PC_scene_with_features[0], params)[None, ...]
+    for pair in PC_scene_with_features[1:]:
+        feature_maps = np.concatenate((feature_maps,
+                                        create_feature_map(pair, params)[None, ...]), axis=0)
+    # B, N, D (batch_size, N_pts, feature_dim)
+    points = torch.from_numpy(feature_maps).to(params.device).float()
+    # Note that since we just normalize so that xyz lie within the unit ball,
+    # with the farthest point on the ball => It does not matter which batch size we use.
+    points = normalize_data_on_condition(args, points)
+    batch_size = 8  # Doesn't matter which bs we use in test, as store lots, lets keep it low.
+    points_batches = torch.split(points, batch_size)
+    for j, ps in enumerate(points_batches):
+        if j == 0:
+            p, _ = classify_pairs(pcac_model, ps, regression=args.regression, reg_method=args.reg_method)
+        else:
+            p  = torch.cat((p, classify_pairs(pcac_model, ps, regression=args.regression, reg_method=args.reg_method)[0]))
+    return p
 
 
 @hydra.main(config_path="../classifiers/PointTransformers/config", config_name="cls_metrics")
@@ -129,6 +162,10 @@ def metrics_vs_gt_class(args):
     chamfer_distances = torch.zeros((n_scenes, n_samples_per_scene), device='cuda')
     sinkhorn_distances_0_05 = torch.zeros((n_scenes, n_samples_per_scene), device='cuda')
     sinkhorn_distances_1em9 = torch.zeros((n_scenes, n_samples_per_scene), device='cuda')
+
+    preds = np.zeros((n_scenes, n_samples_per_scene))
+    pcac_model, _, args = load_best_model(args, logger)
+
     
     for i in range(n_scenes):
         if args.one_scene:
@@ -150,7 +187,9 @@ def metrics_vs_gt_class(args):
             sinkhorn_distances_1em9[i, j] = compute_sinkhorn(pc0, pc1, blur=1e-9)
             t5 = time.time()
             #print(f"Time: Hausdorff: {t2-t1:.3f}, Chamfer: {t3-t2:.3f}, Sinkhorn 0.05: {t4-t3:.3f}, Sinkhorn 1e-9: {t5-t4:.3f}")
-
+        p = classify_pairs(pcac_model, args, params, poses_est_scenes, PC_scene, i)
+        preds[i] = p.cpu().numpy()
+            
         if i % 5 == 0:
             print(f"Scene {i}")
         # Register scene

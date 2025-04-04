@@ -337,13 +337,16 @@ def store_confusion_matrix(y_pred, y_true, N_classes, logger, args, accumulate=F
     if logger is not None:
         class_labels = ["Class {}".format(i) if i < N_classes else "Sum" for i in range(n_ticks)]
     else:
-        class_labels = [f"{i}" if i < N_classes else "Sum" for i in range(n_ticks)]
+        #class_labels = [f"{i}" if i < N_classes else "Sum" for i in range(n_ticks)]
+        #class_labels = [r'$I_0$', r'$I_1$', r'$I_2$', r'$I_3$', r'$I_4$', 'Sum']
+        class_labels = [r'$I_0$', r'$I_1$', r'$I_2$', r'$I_3$', r'$I_4$']
     ax.set_xticks(np.arange(n_ticks))
     ax.set_yticks(np.arange(n_ticks))
     if logger is not None:
         fontsize = min(int(60 / N_classes), 11)
     else:
-        fontsize = min(int(80 / N_classes), 15)
+        fontsize = min(int(80 / N_classes), 19)
+    fontsize = 20
     if logger is not None:
         ax.set_xticklabels(class_labels, fontsize=fontsize, rotation=90)
     else:
@@ -455,12 +458,33 @@ def main(args):
     # [0,    0, 0, 56, 20],
     # [0,    0, 0, 1, 2]
     # ])  # Scene 709
+    # cm_in = np.array([
+    #     [255, 23, 0, 0, 0],
+    #     [38, 22, 0, 1, 0],
+    #     [1, 1, 1, 15, 0],
+    #     [0, 0, 1, 33, 3],
+    #     [0, 0, 0, 0, 1]])  # scene 777
+    # cm_in = np.array([
+    #     [6174, 384, 14, 0, 0],
+    #     [845, 224, 8, 1, 0],
+    #     [52, 28, 40, 78, 0],
+    #     [4, 1, 34, 352, 38],
+    #     [0, 0, 3, 57, 143],
+    # ])
+    # cm_in = np.array([
+    #     [5573, 969, 28, 2, 0],
+    #     [641, 420, 15, 2, 0],
+    #     [36, 73, 59, 30, 0],
+    #     [2, 18, 76, 266, 67],
+    #     [0, 0, 3, 37, 163],
+    # ])
     cm_in = np.array([
-        [255, 23, 0, 0, 0],
-        [38, 22, 0, 1, 0],
-        [1, 1, 1, 15, 0],
-        [0, 0, 1, 33, 3],
-        [0, 0, 0, 0, 1]])  # scene 777
+        [331, 14, 0, 0, 0],
+        [7, 3, 0, 0, 0],
+        [0, 0, 4, 0, 0],
+        [0, 0, 0, 30, 7],
+        [0, 0, 0, 0, 0],
+    ])
     # D1N1 = np.array(
     #                 [[396,  11,   1,   0,   0,   0,   0,   0,   0,   0],
     #                  [  7, 431,   6,   0,   0,   0,   0,   0,   0,   0],
@@ -524,7 +548,7 @@ def main(args):
     # print(average_confusion_matrix.round(1))
 
     #args.model_identifier = "regression-by-classification_34000samples_pretty_plot"
-    args.model_identifier = "point_cloud_map_correction_scene_777"
+    args.model_identifier = "upd2_scene708"
     y_pred = None
     y_true = None
     N_classes = 5
