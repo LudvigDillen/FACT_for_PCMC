@@ -1,11 +1,6 @@
 data/
 __pycache__
 nohups/
-old_nohups/
 outputs/
 images/
-to_remove.py
 .pylintrc
-data_aug.py
-visualization/network.py
-old_weights/
