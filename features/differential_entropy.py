@@ -2,7 +2,6 @@ import torch
 import numpy as np
 import time
 
-#from classifiers.regression import perform_logistic_regression
 from features.feature_utils import get_dynamic_radii
 
 
@@ -297,18 +296,3 @@ def differential_entropy_dataset(PC_scenes, params):
     input_data = np.array(input_data)
     labels = np.array(labels)
     return input_data, labels
-
-
-# def differential_entropy_test_accuracy(
-#     params, PC_scenes_training, PC_scenes_test, verbose=False
-# ):
-#     print("\nGetting training data\n")
-#     X_train, y_train = differential_entropy_dataset(PC_scenes_training, params)
-#     print("\nGetting test data\n")
-#     X_test, y_test = differential_entropy_dataset(PC_scenes_test, params)
-#     print("\nPerform logistic regression\n")
-#     model, accuracy_test = perform_logistic_regression(
-#         X_train, X_test, y_train, y_test, verbose=verbose
-#     )
-#     print(f"Accuracy: {accuracy_test} with parameters\n {params}", flush=True)
-#     return accuracy_test
