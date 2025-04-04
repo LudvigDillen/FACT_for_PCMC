@@ -24,13 +24,6 @@ def sample_from_scene(scene, samples):
     return sampled_scene
 
 
-def split_data(PC_scenes, scenes_training):
-    n_scenes = len(PC_scenes)
-    PC_scenes_training = PC_scenes[0:scenes_training]
-    PC_scenes_test = PC_scenes[scenes_training:n_scenes]
-    return PC_scenes_training, PC_scenes_test
-
-
 def gather_data(PC_scenes, samples_training, samples_test):
     """
     Divide scenes into training and test scenes. Furthermore, we take
