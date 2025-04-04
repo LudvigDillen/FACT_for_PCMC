@@ -119,26 +119,6 @@ def setup_experiment(args, do_reg, change_of_pose_C1=True, reg_method="p2l"):
 
 
 def setup_args_for_iteration(i, args):
-    # High Performance
-    # if i == 0:
-    #     args.feature_folder = (
-    #         "/home/luddi824/thesis/PCAC/data/PCAC_data/FACT_best_network_optimal"
-    #     )
-    #     args.model_identifier = "FACT_best_network_optimal"
-    #     args.re_use_data = True
-    # elif i == 1:  # Fast
-    #     args.feature_folder = (
-    #         "/home/luddi824/thesis/PCAC/data/PCAC_data/FACT_best_network_fast"
-    #     )
-    #     args.model_identifier = "FACT_best_network_fast"
-    #     args.preprocessing.T_close = 2.5
-    #     args.features_to_create.use_c = False
-    #     args.features_to_use.use_c = False
-    #     args.fps.num_point = 1024
-    #     args.batch_size = 32
-    #     args.epoch = 200
-    #     args.lr_gamma = 0.80
-    #     args.re_use_data = False
     if i == 0:
         args.model_identifier = "FACT_best_network_optimal"
         args.lambda_lf = 0.5

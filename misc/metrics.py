@@ -125,7 +125,7 @@ def metrics_vs_gt_class(args):
     n_samples_per_scene = args.n_samples_per_scene
     DO_REG = True
     CHANGE_OF_POSE_C1 = True  # TODO: Perhaps change back to True
-    REG_METHOD = "p2l"  # [p2l, geotrans]
+    REG_METHOD = "p2l"  # [p2l]
     GET_ICP_RESIDUALS = False
     args["get_icp_residuals"] = GET_ICP_RESIDUALS
 
