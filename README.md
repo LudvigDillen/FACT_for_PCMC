@@ -7,7 +7,7 @@ This project is the code-base for FACT. Given two point clouds, and an estimated
 
 The abstract of the paper: "We present FACT, a method for predicting alignment quality (i.e., registration error) of registered lidar point cloud pairs. This is useful, e.g., for quality assurance in large, automatically registered 3D models. FACT extracts local features from a registered pair and processes them with a point transformer-based network to predict a misalignment class. We generalize prior work that study binary alignment classification of registration errors, by recasting it as multinomial misalignment classification. To achieve this, we introduce a custom regression-by-classification loss function that combines the cross-entropy and Wasserstein losses, and demonstrate that it outperforms both direct regression and prior binary classification. FACT successfully classifies point-cloud pairs registered with both the classical ICP and GeoTransformer, while other choices, such as standard point-cloud-quality metrics and registration residuals are shown to be poor choices for predicting misalignment. On a synthetically perturbed point-cloud task introduced by the CorAl method, we show that FACT achieves substantially better performance than CorAl. Finally, we demonstrate how FACT can assist experts in correcting misaligned point-cloud maps. Our code will be made publicly available."
 
-Good sources for this project is the paper with the name: "FACT: Multinomial Misalignment Classification for Point Cloud Registration" (not publically available yet) and this [master thesis](https://liu.diva-portal.org/smash/get/diva2:1803604/FULLTEXT01.pdf).
+Good sources for this project is the paper with the name: "FACT: Multinomial Misalignment Classification for Point Cloud Registration" (not publically available yet).
 
 Point cloud pairs that we try to correct can look something like this. GT class 0 means that the actual error is zero. GT class 9 is the highest error class for this experiment.
 ![alt text](docs/point_cloud_pair.png)
@@ -55,8 +55,7 @@ The full download should be 221 GB (I think)
     2. Create an account
     3. Login (once the account is accepted, can take some time)
     4. Follow [Geotransformer](https://github.com/qinzheng93/GeoTransformer?tab=readme-ov-file) for how to download and organize the KITTI data.
-The full download (after following steps in Geo)
-
+The full download (after following steps in GeoTransformer)
 
 ## Usage
 To run the code there are a few things to know. First off, the all configuration files can be found in `classifiers/PointTransformers/config/`, for different experiments, different configuration files are suitable to use. We'll get back to which one to use for which experiment, and also a bit of what it contains.
@@ -65,8 +64,8 @@ To load a specific model, specify the model path after `load_model_path:`
 
 To train with the same data use `re_use_data: True`, to do feature extraction on new data,
 set it to false. The `feature_folder` will determine which data that is used. As it is right now,
-if `feature_folder` is is the same as earler and `re_use_data: False`, then the data will be overwritten, so PAY ATTENTION TO THIS.
-To run the code, simply run `python main.py`. It can be good to debug and the I recommend setting `debug: True`.
+if `feature_folder` is is the same as earler and `re_use_data: False`, then the data will be overwritten, so **PAY ATTENTION TO THIS**.
+To run the code, simply run `python main.py`. It can be good to debug and the I recommend setting `debug: True` in the config file.
 
 To specify which config file to use, change it to the correspond file over the function `fact()` in `classifiers/PointTransformers/train_cls.py`.
 
@@ -88,18 +87,17 @@ We could devide the code into 5 parts:
 5. Other Stuff
     - `classifiers/PointTransformers/config/` configuration files
     - `weights/` including our model weights
-    - `images/` some important plots I`ve saved.
 
 Files I don't mention are perhaps not as important. Or I think their purpose is self-explanatory. Or I forgot to mention them.
 
 ### Details of the Config File
 
-Some caveats: 
-1. Some of the directories in the config-files are currently set using absolute path. You do need to adjust this to your machine.
+A caveat: 
+- Some of the directories in the config-files are currently set using absolute path. You do need to adjust this to your machine.
 
 Now the config file is a bit involved, so I will mention the most important things to consider
 
-- with `features_to_use:` one can do classification on other examples than ones that were extracted.
+- `features_to_use:` one can do classification on other examples than ones that were extracted.
 - `re_use_data:` Set to true if only running training and no feature extraction
 - `continue_training:` to continue training from already trained model
 - `n_scenes:` to train on. 850 is max for v1.0-trainval
@@ -134,10 +132,8 @@ Where are going to go through how to reproduce the result of the paper and by do
 
 #### Experiment 1: (Not possible to fully recreate right now, some data is missing)
 
-I did not find the data to reproduce this experiment, but the model used for FACT is
+The model used for FACT is
 - `weights/best_model_FACT_best_network_optimal.pth`
-Likewise, the data for CorAl is not found either. It is likely at my old computer at LiU.
-
 - For FACT use `cls_fixed_reg_error.yaml`
 - For CorAl, use `cls_coral.yaml`. The model is fast to train.
 
@@ -147,19 +143,17 @@ Likewise, the data for CorAl is not found either. It is likely at my old compute
 | $(\theta, e_d)=(0.01, 0.1)$       | 75.3%                         | **97.4%**      |
 | $(\theta, e_d)=(0.03, 0.3)$       | 95.6%                         | **100.0%**     |
 
-Note, we can recreate better results on the data "binary_fix_reg_error_17000_01". Mapped FACT got 99.1% for (0.01, 0.1).
-
 #### Experiment 2:
 **Setup**
 
 To reproduce the left figure, use weights
 - `best_model_average_dist_bins_5_alt1_classes_34000_with_max_train_dist_5_new_val_metric.pth`
-- The data is found under `average_dist_bins_5_alt1_classes_34000_with_max_train_dist_5.zip` on OneDrive.
+- The data is found under `average_dist_bins_5_alt1_classes_34000_with_max_train_dist_5.zip` on OneDrive (ask if you want access).
 - Use the config file `cls_adaptive.yaml`.
 
 To reproduce the right figure, use weights
 - `best_model_regression_34000samples.pth`
-- The data is found under `regression_34000samples.zip` on OneDrive.
+- The data is found under `regression_34000samples.zip` on OneDrive (ask if you want access).
 - Use the config file `regression.yaml`.
 
 ![alt text](docs/confusion_rbc_vs_regression.png)
@@ -177,7 +171,7 @@ This table can easily be calculated from the confusion matrices in experiment 2,
 #### Experiment 4:
 To reproduce the results use
 - `best_model_geotrans_kitti_remove_centers_5000_normal_feat_extrac_nuscenes_pretrained_short_training.pth` is the weights.
-- The data is found under `geotrans_kitti_remove_centers_5000_normal_feat_extrac_nuscenes_pretrained.zip` on OneDrive.
+- The data is found under `geotrans_kitti_remove_centers_5000_normal_feat_extrac_nuscenes_pretrained.zip` on OneDrive (ask if you want access).
 - Use the config file `cls_registration_geotrans_kitti_good_results.yaml`.
 
 **Table 3.** The confusion matrix for the GeoTransformer registration-based test dataset on KITTI.  
@@ -204,3 +198,6 @@ This project is based on the joint work of Ludvig Dillén, Per-Erik Forssén, an
 ## Project status
 - Code can be faster, more readable, and documented. I'll try to fix this if I have time in the future.
 - I have probably missed a few things here.
+**TODO**
+- Use PointTransformerV3 for more high-performing classification.
+- Learn features to classify instead of hand-crafting them.
