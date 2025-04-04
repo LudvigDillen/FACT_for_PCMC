@@ -1,8 +1,0 @@
-# To start a run over night and output to a specific file
-nohup python main.py > <filename> 2>&1 &  (write mode)
-nohup python main.py >> <filename> 2>&1 &  (append mode)
-
-# To find PID numbers
-ps aux | grep python
-# To kill an ongoing process
-kill <PID>
