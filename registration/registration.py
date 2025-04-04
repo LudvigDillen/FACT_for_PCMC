@@ -80,7 +80,7 @@ def reg_mpe(args):
     CHANGE_OF_POSE_C1 = True
     VISUALIZE_RESULT = True
     REPAIR_METHOD = "gt"  # [gt, p2l]
-    REG_METHOD = "p2l"  # [p2l, geotrans]
+    REG_METHOD = "p2l"  # [p2l]
     GET_ICP_RESIDUALS = False
     args["get_icp_residuals"] = GET_ICP_RESIDUALS
 

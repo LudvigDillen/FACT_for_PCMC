@@ -266,9 +266,6 @@ class PCPair:
         self.PC0 = PC0
         self.PC1 = PC1
         self.PCUnion = PCUnion
-        # TODO: Remove line this later ... There was a bugg here previously where we had this line:
-        # self.pc1_CS0 = change_coordinate_system(PC1.pc, self.pose0, self.pose1)
-        # instead of the one below
         self.pc1_CS0 = PCUnion.pc[PC0.pc.shape[0] :]
 
     def set_name(self, name):

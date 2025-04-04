@@ -15,12 +15,9 @@ import os
 
 # from geotransformer.utils.data import registration_collate_fn_stack_mode
 # from geotransformer.utils.torch import to_cuda, release_cuda
-# from geotransformer.utils.open3d import make_open3d_point_cloud, get_color, draw_geometries
-# from geotransformer.utils.registration import compute_registration_error
 
 from utils.geometrics import change_coordinate_system
 import visualization.registration as vr
-import registration.overlap_predator as op
 from visualization.point_clouds import vis_2pcs
 
 
@@ -135,7 +132,7 @@ def plot_pc_pair(pair, title):
     vr.draw_registration_result(source, target, np.eye(4), title=title)
 
 
-def  align_pair(pair, rel_pose, plot=False):
+def align_pair(pair, rel_pose, plot=False):
     if plot:
         vis_2pcs(pair.PC0.pc.cpu(), pair.PC1.pc.cpu(), title="Before registration")
     pose0_CS0 = torch.eye(4).to(pair.device).to(pair.PC1.dtype)
@@ -186,18 +183,6 @@ def register_pair(source, target, method="p2l", trans_init=None, voxelize=False,
         rel_pose = reg_res.transformation.copy()
     elif method == "init":
         rel_pose = trans_init.copy()
-    elif method == "predator":
-        config = op.setup_op_registration()
-        neighborhood_limits = None
-        s = 0.1  # scale_factor
-        src_pc, tgt_pc = s*np.asarray(source.points), s*np.asarray(target.points)
-        dir = '/home/lu2277di/Projects/FACT/data/point_clouds/'
-        src_pth = dir + 'pc0.pth'
-        tgt_pth = dir + 'pc1.pth'
-        torch.save(tgt_pc.squeeze(), src_pth)
-        torch.save(src_pc.squeeze(), tgt_pth)
-        demo_loader = op.get_pair_loader(config, neighborhood_limits, src_pth, tgt_pth)
-        rel_pose = op.main(config, demo_loader).copy()
     elif method == "geotrans":
         s = 1
         if geo_args["mode"] == "3dmatch":
@@ -239,61 +224,6 @@ def get_error_class(error, reg_method="p2l"):
             error_class = 3
         else:
             error_class = 4
-        # if error < 0.05:
-        #     error_class = 0
-        # elif error < 0.08:
-        #     error_class = 1
-        # elif error < 0.12:
-        #     error_class = 2
-        # elif error < 0.20:
-        #     error_class = 3
-        # else:
-        #     error_class = 4
-
-        # if error < 0.06:
-        #     error_class = 0
-        # elif error < 0.08:
-        #     error_class = 1
-        # elif error < 0.10:
-        #     error_class = 2
-        # elif error < 0.12:
-        #     error_class = 3
-        # elif error < 0.14:
-        #     error_class = 4
-        # elif error < 0.18:
-        #     error_class = 5
-        # elif error < 0.25:
-        #     error_class = 6
-        # else:
-        #     error_class = 7
-
-        # if error < 0.06:
-        #     error_class = 0
-        # elif error < 0.08:
-        #     error_class = 1
-        # elif error < 0.10:
-        #     error_class = 2
-        # elif error < 0.12:
-        #     error_class = 3
-        # elif error < 0.14:
-        #     error_class = 4
-        # elif error < 0.18:
-        #     error_class = 5
-        # elif error < 0.25:
-        #     error_class = 6
-        # else:
-        #     error_class = 7
-
-        # if error < 0.07:
-        #     error_class = 0
-        # elif error < 0.085:
-        #     error_class = 1
-        # elif error < 0.10:
-        #     error_class = 2
-        # elif error < 0.14:
-        #     error_class = 3
-        # else:
-        #     error_class = 4
     else:
         sys.exit(f"Registration method {reg_method} not recognized")
     return error_class
@@ -367,32 +297,3 @@ def get_geo_config(mode):
         "weight_pth": f"/weights/geotransformer-{mode}.pth.tar"
     }
     return geo_args
-
-
-def reg_and_plot(pc0, pc1, gt_pose):
-    # prepare data
-    cfg, neighbor_limits = get_geo_config()
-
-    output_dict, data_dict = reg_with_geo(pc0, pc1, gt_pose, cfg, neighbor_limits)
-
-    # get results
-    ref_points = output_dict["ref_points"]
-    src_points = output_dict["src_points"]
-    estimated_transform = output_dict["estimated_transform"]
-    #transform = 
-    transform = data_dict["transform"]
-
-    # visualization
-    ref_pcd = make_open3d_point_cloud(ref_points)
-    ref_pcd.estimate_normals()
-    ref_pcd.paint_uniform_color(get_color("custom_yellow"))
-    src_pcd = make_open3d_point_cloud(src_points)
-    src_pcd.estimate_normals()
-    src_pcd.paint_uniform_color(get_color("custom_blue"))
-    draw_geometries(ref_pcd, src_pcd)
-    src_pcd = src_pcd.transform(estimated_transform)
-    draw_geometries(ref_pcd, src_pcd)
-
-    # compute error
-    rre, rte = compute_registration_error(transform, estimated_transform)
-    print(f"RRE(deg): {rre:.3f}, RTE(m): {rte:.3f}")

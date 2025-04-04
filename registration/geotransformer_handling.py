@@ -75,12 +75,8 @@ def setup_params_for_fact(args):
 
 
 def fact_prediction(args, params, model_fact, src_points, ref_points, est_trans, gt_trans):
-    # TODO: If things does not work, I could double-check that these points are on the same
-    # scale as the nuscenes points and that the density is somewhat similar.
-    # TODO: If thing does not work, I could also retrain FACT on KITTI.
-
     PC_scene = to_PC_format(src_points, ref_points, params, est_trans, gt_trans, geo_args=None)
-    PC_scene_reg = copy.deepcopy(PC_scene)  # TODO: Perhaps not necessary
+    PC_scene_reg = copy.deepcopy(PC_scene)
 
     # EXTRACT FEATURE DATA
     # FPS on scenes
