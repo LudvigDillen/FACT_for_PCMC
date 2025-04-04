@@ -301,15 +301,8 @@ def run_test(args, logger, classifier):
     return test_instance_acc, test_class_acc, y_true, y_pred
 
 # Choose either cls_default or cls_adaptive.
-#@hydra.main(config_path="config", config_name="cls_adaptive")
-#@hydra.main(config_path="config", config_name="regression")
-# @hydra.main(config_path="config", config_name="cls_binary_fixed")
-@hydra.main(config_path="config", config_name="cls_fixed_reg_error")
-#@hydra.main(config_path="config", config_name="cls_coral")
-# @hydra.main(config_path="config", config_name="cls_registration_geotrans_3dmatch")
-#@hydra.main(config_path="config", config_name="cls_registration_geotrans_kitti")
-#@hydra.main(config_path="config", config_name="cls_registration_geotrans_kitti_good_results")
-#@hydra.main(config_path="config", config_name="cls_registration")
+@hydra.main(config_path="config", config_name="cls_adaptive")
+#@hydra.main(config_path="config", config_name="cls_fixed_reg_error")
 def fact(args):
     args, logger = eu.setup_experiment(args, do_reg=False)
 
