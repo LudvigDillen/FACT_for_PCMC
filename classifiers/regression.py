@@ -1,16 +1,16 @@
+"""
+The code is based on Denny Loevlie's code (see below). (MIT license exists)
+https://towardsdatascience.com/logistic-regression-with-pytorch-3c8bbea594be
+https://gist.github.com/loevlie/5044e62aea2ce625b70d6d6d75113d25
+"""
+
+
 import torch
 from tqdm import tqdm
 import numpy as np
 import pandas as pd
 import scipy.stats as stats
 from statsmodels.miscmodels.ordinal_model import OrderedModel
-
-
-"""
-Kudos to Denny Loevlie from whom I've got code inspiration from. See link. (MIT license exists)
-https://towardsdatascience.com/logistic-regression-with-pytorch-3c8bbea594be
-https://gist.github.com/loevlie/5044e62aea2ce625b70d6d6d75113d25
-"""
 
 
 class LogisticRegression(torch.nn.Module):
@@ -50,7 +50,7 @@ def perform_logistic_regression_training(
     # Define optimizer. Here Stochastic Gradient Descent
     optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate)
     # Convart data to tensors
-    # TODO: Should I move the computations to GPU (cuda)?
+
     X_train, X_val = torch.Tensor(X_train), torch.Tensor(X_val)
     y_train, y_val = torch.Tensor(y_train), torch.Tensor(y_val)
 
