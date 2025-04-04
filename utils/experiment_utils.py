@@ -1,3 +1,4 @@
+import os
 import numpy as np
 import omegaconf
 import logging
@@ -115,6 +116,10 @@ def setup_experiment(args, do_reg, change_of_pose_C1=True, reg_method="p2l"):
     args.do_reg = do_reg
     args.change_of_pose_C1 = change_of_pose_C1
     args.reg_method = reg_method
+    directory = args.visualization_folder
+
+    # Create the directory if it doesn't exist
+    os.makedirs(directory, exist_ok=True)
     return args, logger
 
 
