@@ -191,7 +191,19 @@ For scene 708, FACT gets this result. The idea is to get map (b) to look like ma
 ![alt text](docs/scene708.png)
 
 ## Authors and acknowledgment
-This project is based on the joint work of Ludvig Dillén, Per-Erik Forssén, and Johan Edstedt.
+This project is based on the joint work of Ludvig Dillén, Per-Erik Forssén, and Johan Edstedt. If you find our work useful, please consider citing our paper!
+```bash
+@InProceedings{dillen25fact,
+  author =    {Ludvig Dill\'en and Per-Erik Forss\'en and Johan Edstedt},
+  title =     {{FACT}: Multinomial Misalignment Classification for Point Cloud Registration},
+  booktitle = {Proceedings of the Scandinavian Conference on Image Analysis (SCIA)},
+  year =      {2025},
+  month =     {June},
+  address =   {Reykjav\'ik, Iceland},
+  publisher = {Springer},
+  note =      {\url{https://scia2025.org/}},
+}
+```
 
 ## Project status
 - Code can be faster, more readable, and documented. I'll try to fix this if I have time in the future.
