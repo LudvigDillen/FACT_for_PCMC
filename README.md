@@ -3,7 +3,7 @@
 ## FACT: Multinomial Misalignment Classification for Point Cloud Registration
 
 ## Description
-This project is the code-base for FACT. Given two point clouds, and an estimated rigid transformation between the point cloud, FACT predicts the registration quality of the alignment.
+This project is the code-base for FACT. Given two point clouds, and an estimated rigid transformation between the point clouds, FACT predicts the registration quality of the alignment.
 
 Link to corresponding paper: TODO (coming soon)
 
