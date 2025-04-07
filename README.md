@@ -128,7 +128,7 @@ Now the config file is a bit involved, so I will mention the most important thin
 ### Re-producing Experiments
 Where are going to go through how to reproduce the result of the paper and by doing so, also go through how to run the code.
 
-#### Experiment 1: (Not possible to fully recreate right now, some data is missing)
+#### Experiment 1:
 
 The model used for FACT is
 - `weights/best_model_FACT_best_network_optimal.pth`
