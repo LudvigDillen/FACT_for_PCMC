@@ -5,7 +5,7 @@
 ## Description
 This project is the code-base for FACT. Given two point clouds, and an estimated rigid transformation between the point clouds, FACT predicts the registration quality of the alignment.
 
-Link to corresponding paper: TODO (coming soon)
+Link to corresponding paper: [FACT](https://arxiv.org/abs/2504.06627) (published version coming soon)
 
 Point cloud pairs that we try to correct can look something like this. GT class 0 means that the actual error is zero. GT class 9 is the highest error class for this experiment.
 ![alt text](docs/point_cloud_pair.png)
@@ -37,6 +37,7 @@ Follow the instructions on Poetry's official installation guide.
    ```bash
    poetry shell
    ```
+If `poetry shell` didn't work: Note that if your poetry env is relatively new, you also have to enable running a shell with: `poetry self add poetry-plugin-shell`. Once that is executed, try `poetry shell` again.
 
 ### Data Setup
 To run experiments, you need to download nuScenes and potentially KITTI.
@@ -53,7 +54,7 @@ The full download should be 221 GB (I think)
     2. Create an account
     3. Login (once the account is accepted, can take some time)
     4. Follow [Geotransformer](https://github.com/qinzheng93/GeoTransformer?tab=readme-ov-file) for how to download and organize the KITTI data.
-The full download (after following steps in GeoTransformer)
+The full download (after following steps in GeoTransformer) should be 84GB (I think)
 
 ## Usage
 To run the code there are a few things to know. First off, the all configuration files can be found in `classifiers/PointTransformers/config/`, for different experiments, different configuration files are suitable to use. We'll get back to which one to use for which experiment, and also a bit of what it contains.

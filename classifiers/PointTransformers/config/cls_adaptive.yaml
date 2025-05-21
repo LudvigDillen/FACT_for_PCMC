@@ -3,7 +3,7 @@ epoch: 250 # 250
 learning_rate: 0.0001  # 0.00005
 lr_gamma: 0.825
 lr_step: 10
-lambda_lf: 1  # how to weight emd (lambda=0) vs cross entropy (lambda=1)
+lambda_lf: 0.5  # how to weight emd (lambda=0) vs cross entropy (lambda=1)
 gpu: 0
 optimizer: Adam
 weight_decay: 0.0001

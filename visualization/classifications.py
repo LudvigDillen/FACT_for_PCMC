@@ -336,9 +336,8 @@ def store_confusion_matrix(y_pred, y_true, N_classes, logger, args, accumulate=F
     if logger is not None:
         class_labels = ["Class {}".format(i) if i < N_classes else "Sum" for i in range(n_ticks)]
     else:
-        #class_labels = [f"{i}" if i < N_classes else "Sum" for i in range(n_ticks)]
-        #class_labels = [r'$I_0$', r'$I_1$', r'$I_2$', r'$I_3$', r'$I_4$', 'Sum']
-        class_labels = [r'$I_0$', r'$I_1$', r'$I_2$', r'$I_3$', r'$I_4$']
+        class_labels = [rf'$I_{{{i}}}$' if i < N_classes else 'Sum' for i in range(n_ticks)]
+
     ax.set_xticks(np.arange(n_ticks))
     ax.set_yticks(np.arange(n_ticks))
     if logger is not None:
