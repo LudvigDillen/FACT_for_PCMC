@@ -25,7 +25,7 @@ def sinkhorn_divergence(PC_pair, neighbor_mask_0, neighbor_mask_1, params_sinkho
     batch_neighborhood_pc0 = (PC_pair.PC0.pc.unsqueeze(dim=0)) * (
         masked_tensor0.unsqueeze(dim=2)
     )
-    batch_neighborhood_pc1 = (PC_pair.PC1.pc.unsqueeze(dim=0)) * (
+    batch_neighborhood_pc1 = (PC_pair.pc1_CS0.unsqueeze(dim=0)) * (
         masked_tensor1.unsqueeze(dim=2)
     )
 
