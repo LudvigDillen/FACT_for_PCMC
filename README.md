@@ -37,6 +37,7 @@ Follow the instructions on Poetry's official installation guide.
    ```bash
    poetry shell
    ```
+If `poetry shell` didn't work: Note that if your poetry env is relatively new, you also have to enable running a shell with: `poetry self add poetry-plugin-shell`. Once that is executed, try `poetry shell` again.
 
 ### Data Setup
 To run experiments, you need to download nuScenes and potentially KITTI.
