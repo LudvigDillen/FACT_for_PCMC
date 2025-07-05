@@ -5,7 +5,7 @@
 ## Description
 This project is the code-base for FACT. Given two point clouds, and an estimated rigid transformation between the point clouds, FACT predicts the registration quality of the alignment.
 
-Link to corresponding paper: [FACT](https://arxiv.org/abs/2504.06627) (published version coming soon)
+Link to corresponding paper: [FACT](https://arxiv.org/abs/2504.06627) (or look into the [proceedings](https://link.springer.com/book/10.1007/978-3-031-95911-0?srsltid=AfmBOopknQUTsAyrXUR_e-P_WxcbExMD2Gs9Zuj6pqMSJhwu0m0ESWGu))
 
 Point cloud pairs that we try to correct can look something like this. GT class 0 means that the actual error is zero. GT class 9 is the highest error class for this experiment.
 ![alt text](docs/point_cloud_pair.png)
@@ -54,29 +54,29 @@ The full download should be 221 GB (I think)
     2. Create an account
     3. Login (once the account is accepted, can take some time)
     4. Follow [Geotransformer](https://github.com/qinzheng93/GeoTransformer?tab=readme-ov-file) for how to download and organize the KITTI data.
-The full download (after following steps in GeoTransformer) should be 84GB (I think)
+The full download (after following the steps in GeoTransformer) should be 84GB (I think)
 
 ## Usage
-To run the code there are a few things to know. First off, the all configuration files can be found in `classifiers/PointTransformers/config/`, for different experiments, different configuration files are suitable to use. We'll get back to which one to use for which experiment, and also a bit of what it contains.
+To run the code, there are a few things to know. First off, all configuration files can be found in `classifiers/PointTransformers/config/`, for different experiments, different configuration files are suitable to use. We'll get back to which one to use for which experiment, and also a bit of what it contains.
 
 To load a specific model, specify the model path after `load_model_path:`
 
 To train with the same data use `re_use_data: True`, to do feature extraction on new data,
-set it to false. The `feature_folder` will determine which data that is used. As it is right now,
-if `feature_folder` is is the same as earler and `re_use_data: False`, then the data will be overwritten, so **PAY ATTENTION TO THIS**.
-To run the code, simply run `python main.py`. It can be good to debug and the I recommend setting `debug: True` in the config file.
+set it to false. The `feature_folder` will determine which data is used. As it is right now,
+if `feature_folder` is the same as earlier and `re_use_data: False`, then the data will be overwritten, so **PAY ATTENTION TO THIS**.
+To run the code, simply run `python main.py`. It can be good to debug and I recommend setting `debug: True` in the config file.
 
-To specify which config file to use, change it to the correspond file over the function `fact()` in `classifiers/PointTransformers/train_cls.py`.
+To specify which config file to use, change it to the corresponding file over the function `fact()` in `classifiers/PointTransformers/train_cls.py`.
 
 ### Code Structure
 I will say something about the code structure so things can be more easily found.
-We could devide the code into 5 parts:
+We could divide the code into 5 parts:
 1. Dataset Handling
     - `registration` some tools for registering point clouds that create our datasets.
     - `utils/data_handling` loading of data
     - `utils/nuscenes_handling` loading of nuScenes data
 2. Feature Extraction
-    - `features/` includes tool for feature extraction both for us and CorAl
+    - `features/` includes tools for feature extraction for both FACT and CorAl
     - `utils/pointclouds.py` keeps track of classes of point cloud characteristics and extracted features. 
 3. Classification
     - `classifiers/PointTransformers/train_cls.py` is the main classification script.
@@ -116,17 +116,17 @@ Now the config file is a bit involved, so I will mention the most important thin
   - `train_reg_max_dist: 5`  The distance between samples nuScenes to register. 1 will be like registering pc0 to pc1, but n will be like registering pc_i to pc_{i+n}, making the training examples more difficult.
 - `regression: false` whether to do registration or not.
 
-- `neighborhood:` the min and max size of local neighborhoods to extract features from. The neighborhood size increases with the distance from the sensors as the point cloud becomes more sparse further away.
+- `neighborhood:` the min and max size of local neighborhoods to extract features from. The neighborhood size increases with the distance from the sensors as the point cloud becomes sparser further away.
 - `preprocessing:`
-  - `T_close: 1.5` removes all point within 1.5 meters from the sensor
-  - `apply_hpr_operator: true` whether to use the hidden point operator or not. Will remove some non-covisibile points if set to true.
+  - `T_close: 1.5` removes all points within 1.5 meters from the sensor
+  - `apply_hpr_operator: true` whether to use the hidden point operator or not. Will remove some non covisibile points if set to true.
 - `debug:` whether to enter debug mode or not.
 - To train a new model, set `load_model_path: False`
-- `running_iterations: 1` could doing several runs after one another.
+- `running_iterations: 1` can do several runs after one another.
 
 - In wasserstein.py there is a parameter controlling how large neighborhood batch we use. It is hard-coded now, so if something crashed due to memory issues, maybe decrease `COMPUTATION_THRESHOLD`.
 
-### Re-producing Experiments
+### Reproducing Experiments
 Where are going to go through how to reproduce the result of the paper and by doing so, also go through how to run the code.
 
 #### Experiment 1:
@@ -147,18 +147,18 @@ The model used for FACT is
 
 To reproduce the left figure, use weights
 - `best_model_average_dist_bins_5_alt1_classes_34000_with_max_train_dist_5_new_val_metric.pth`
-- The data is found under `average_dist_bins_5_alt1_classes_34000_with_max_train_dist_5.zip` on OneDrive (ask if you want access).
+- The data is found under `average_dist_bins_5_alt1_classes_34000_with_max_train_dist_5.zip` on OneDrive ([link](https://lunduniversityo365-my.sharepoint.com/:f:/g/personal/lu2277di_lu_se/EiuTEaX8yIJMlRK8j5SLZpkBcqe9RdE7OTwmYMhv56h-eA?e=gBhf4H)).
 - Use the config file `cls_adaptive.yaml`.
 
 To reproduce the right figure, use weights
 - `best_model_regression_34000samples.pth`
-- The data is found under `regression_34000samples.zip` on OneDrive (ask if you want access).
+- The data is found under `regression_34000samples.zip` on OneDrive ([link](https://lunduniversityo365-my.sharepoint.com/:f:/g/personal/lu2277di_lu_se/EiuTEaX8yIJMlRK8j5SLZpkBcqe9RdE7OTwmYMhv56h-eA?e=gBhf4H)).
 - Use the config file `regression.yaml`.
 
 ![alt text](docs/confusion_rbc_vs_regression.png)
 
 #### Experiment 3:
-This table can easily be calculated from the confusion matrices in experiment 2, just do the math according the caption of table 2.
+This table can easily be calculated from the confusion matrices in experiment 2, just do the math according to the caption of table 2.
 
 **Table 2.** Comparison between regression-by-classification (RbC) and regression. $\xi_k$ represents the fraction of samples where the predicted label is at least $k$ classes away from the true label.
 
@@ -168,9 +168,9 @@ This table can easily be calculated from the confusion matrices in experiment 2,
 | **Regression**| 23.57%       | 1.07%       | **0.05%**   | **0.00%**   |
 
 #### Experiment 4:
-To reproduce the results use
+To reproduce the results, use
 - `best_model_geotrans_kitti_remove_centers_5000_normal_feat_extrac_nuscenes_pretrained_short_training.pth` is the weights.
-- The data is found under `geotrans_kitti_remove_centers_5000_normal_feat_extrac_nuscenes_pretrained.zip` on OneDrive (ask if you want access).
+- The data is found under `geotrans_kitti_remove_centers_5000_normal_feat_extrac_nuscenes_pretrained.zip` on OneDrive ([link](https://lunduniversityo365-my.sharepoint.com/:f:/g/personal/lu2277di_lu_se/EiuTEaX8yIJMlRK8j5SLZpkBcqe9RdE7OTwmYMhv56h-eA?e=gBhf4H)).
 - Use the config file `cls_registration_geotrans_kitti_good_results.yaml`.
 
 **Table 3.** The confusion matrix for the GeoTransformer registration-based test dataset on KITTI.  
@@ -188,7 +188,7 @@ To reproduce the results use
 - In `main.py` change to `reg_mpe()`.
 - Use `cls_registration.yaml` as config.
 - Run with `python main.py` and wait approximately 10 mins (on an RTX4090).
-For scene 708, FACT gets this result. The idea is to get map (b) to look like map (c) which it largely does here. The color denotes the $z$ coordinate. Figure (d) shows the corresponding confusion matrix.
+For scene 708, FACT gets this result. The idea is to get map (b) to look like map (c), which it largely does here. The color denotes the $z$ coordinate. Figure (d) shows the corresponding confusion matrix.
 ![alt text](docs/scene708.png)
 
 ## Authors and acknowledgment
