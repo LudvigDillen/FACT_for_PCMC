@@ -147,12 +147,12 @@ The model used for FACT is
 
 To reproduce the left figure, use weights
 - `best_model_average_dist_bins_5_alt1_classes_34000_with_max_train_dist_5_new_val_metric.pth`
-- The data is found under `average_dist_bins_5_alt1_classes_34000_with_max_train_dist_5.zip` on OneDrive ([link](https://lunduniversityo365-my.sharepoint.com/:f:/g/personal/lu2277di_lu_se/EiuTEaX8yIJMlRK8j5SLZpkBcqe9RdE7OTwmYMhv56h-eA?e=gBhf4H)).
+- The data is found in `average_dist_bins_5_alt1_classes_34000_with_max_train_dist_5.zip` in [assets](https://vision.maths.lth.se/ludvigdillen/assets_fact/).
 - Use the config file `cls_adaptive.yaml`.
 
 To reproduce the right figure, use weights
 - `best_model_regression_34000samples.pth`
-- The data is found under `regression_34000samples.zip` on OneDrive ([link](https://lunduniversityo365-my.sharepoint.com/:f:/g/personal/lu2277di_lu_se/EiuTEaX8yIJMlRK8j5SLZpkBcqe9RdE7OTwmYMhv56h-eA?e=gBhf4H)).
+- The data is found in `regression_34000samples.zip` in [assets](https://vision.maths.lth.se/ludvigdillen/assets_fact/).
 - Use the config file `regression.yaml`.
 
 ![alt text](docs/confusion_rbc_vs_regression.png)
@@ -170,7 +170,7 @@ This table can easily be calculated from the confusion matrices in experiment 2,
 #### Experiment 4:
 To reproduce the results, use
 - `best_model_geotrans_kitti_remove_centers_5000_normal_feat_extrac_nuscenes_pretrained_short_training.pth` is the weights.
-- The data is found under `geotrans_kitti_remove_centers_5000_normal_feat_extrac_nuscenes_pretrained.zip` on OneDrive ([link](https://lunduniversityo365-my.sharepoint.com/:f:/g/personal/lu2277di_lu_se/EiuTEaX8yIJMlRK8j5SLZpkBcqe9RdE7OTwmYMhv56h-eA?e=gBhf4H)).
+- The data is found in `geotrans_kitti_remove_centers_5000_normal_feat_extrac_nuscenes_pretrained.zip` in [assets](https://vision.maths.lth.se/ludvigdillen/assets_fact/).
 - Use the config file `cls_registration_geotrans_kitti_good_results.yaml`.
 
 **Table 3.** The confusion matrix for the GeoTransformer registration-based test dataset on KITTI.  
